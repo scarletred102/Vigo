@@ -90,4 +90,9 @@ contextBridge.exposeInMainWorld('vigo', {
     syncGetDeviceInfo: () => ipcRenderer.invoke('sync-get-device-info'),
     syncExport: (masterPassword) => ipcRenderer.invoke('sync-export', masterPassword),
     syncImport: (masterPassword) => ipcRenderer.invoke('sync-import', masterPassword),
+
+    // Extensions
+    getExtensions: () => ipcRenderer.invoke('extensions-list'),
+    installExtension: () => ipcRenderer.invoke('extensions-install-unpacked'),
+    removeExtension: (id) => ipcRenderer.invoke('extensions-remove', id),
 });

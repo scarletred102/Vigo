@@ -95,6 +95,11 @@ const TabManager = (() => {
             if (e.isMainFrame) {
                 updateTab(tab.id, { url: e.url });
                 updateNavState();
+                // Add to history for SPAs
+                if (window.vigo && e.url && !e.url.startsWith('about:')) {
+                    const t = getTab(tab.id);
+                    window.vigo.addHistory({ url: e.url, title: t?.title || e.url });
+                }
             }
         });
 

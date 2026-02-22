@@ -62,19 +62,22 @@ const PanelManager = (() => {
 
     switch (panel) {
       case 'bookmarks':
-        BookmarkManager.load().then(() => BookmarkManager.render(content));
+        BookmarkManager.load().then(() => BookmarkManager.render(content)).catch(e => { content.innerHTML = `Error: ${e.message}`; console.error('Bookmarks error:', e); });
         break;
       case 'history':
-        HistoryManager.load().then(() => HistoryManager.render(content));
+        HistoryManager.load().then(() => HistoryManager.render(content)).catch(e => { content.innerHTML = `Error: ${e.message}`; console.error('History error:', e); });
         break;
       case 'notes':
-        NotesManager.load().then(() => NotesManager.render(content));
+        NotesManager.load().then(() => NotesManager.render(content)).catch(e => { content.innerHTML = `Error: ${e.message}`; console.error('Notes error:', e); });
         break;
       case 'downloads':
         DownloadManager.render(content);
         break;
       case 'settings':
-        renderSettings(content);
+        renderSettings(content).catch(e => {
+          content.innerHTML += `<div style="color:red;padding:20px;word-break:break-all">Settings Render Error: ${e.stack || e.message}</div>`;
+          console.error('Settings error:', e);
+        });
         break;
     }
   }
@@ -248,6 +251,12 @@ async function renderSettings(container) {
       <div id="settings-vault-config"></div>
     </div>
 
+    <!-- EXTENSIONS -->
+    <div class="settings-group">
+      <div class="settings-group-title">Extensions</div>
+      <div id="settings-extensions-config"></div>
+    </div>
+
     <!-- DOWNLOADS -->
     <div class="settings-group">
       <div class="settings-group-title">📥 Downloads</div>
@@ -306,7 +315,7 @@ async function renderSettings(container) {
       <div style="padding:12px 0;text-align:center">
         <div style="font-size:18px;font-weight:700;background:var(--accent-gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px">Vigo Browser</div>
         <div style="font-size:12px;color:var(--text-tertiary)">Version 1.0.0 — Built with ❤️</div>
-        <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Electron ${process.versions?.electron || 'N/A'} • Chromium ${process.versions?.chrome || 'N/A'}</div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Powered by Electron & Chromium</div>
       </div>
     </div>`;
 
@@ -340,129 +349,205 @@ async function renderSettings(container) {
 
   // Privacy Engine — render privacy report and settings into containers
   if (typeof PrivacyEngine !== 'undefined') {
-    await PrivacyEngine.getStats();
-    const reportContainer = container.querySelector('#settings-privacy-report');
-    if (reportContainer) PrivacyEngine.renderPrivacyReport(reportContainer);
-    const configContainer = container.querySelector('#settings-privacy-config');
-    if (configContainer) PrivacyEngine.renderPrivacySettings(configContainer);
+    try {
+      await PrivacyEngine.getStats();
+      const reportContainer = container.querySelector('#settings-privacy-report');
+      if (reportContainer) PrivacyEngine.renderPrivacyReport(reportContainer);
+      const configContainer = container.querySelector('#settings-privacy-config');
+      if (configContainer) PrivacyEngine.renderPrivacySettings(configContainer);
+    } catch (err) { console.error('Settings - Privacy Engine error:', err); }
   }
 
   // Ad Blocker — render adblock settings into the ad blocker group
   if (typeof AdBlocker !== 'undefined' && AdBlocker.renderAdblockSettings) {
-    await AdBlocker.getStatus();
-    const adblockContainer = container.querySelector('#settings-adblock-config');
-    if (adblockContainer) AdBlocker.renderAdblockSettings(adblockContainer);
+    try {
+      await AdBlocker.getStatus();
+      const adblockContainer = container.querySelector('#settings-adblock-config');
+      if (adblockContainer) AdBlocker.renderAdblockSettings(adblockContainer);
+    } catch (err) { console.error('Settings - AdBlocker error:', err); }
   }
 
   // Security — render security settings
   if (typeof SecurityManager !== 'undefined') {
-    const secContainer = container.querySelector('#settings-security-config');
-    if (secContainer) SecurityManager.renderSecuritySettings(secContainer);
+    try {
+      const secContainer = container.querySelector('#settings-security-config');
+      if (secContainer) SecurityManager.renderSecuritySettings(secContainer);
+    } catch (err) { console.error('Settings - SecurityManager error:', err); }
   }
 
   // Media Orchestrator — render media settings
   if (typeof MediaOrchestrator !== 'undefined') {
-    const mediaContainer = container.querySelector('#settings-media-config');
-    if (mediaContainer) MediaOrchestrator.renderMediaSettings(mediaContainer);
+    try {
+      const mediaContainer = container.querySelector('#settings-media-config');
+      if (mediaContainer) MediaOrchestrator.renderMediaSettings(mediaContainer);
+    } catch (err) { console.error('Settings - MediaOrchestrator error:', err); }
   }
 
   // Password Vault — render vault settings
   if (typeof PasswordVault !== 'undefined') {
-    const vaultContainer = container.querySelector('#settings-vault-config');
-    if (vaultContainer) PasswordVault.renderSettings(vaultContainer);
+    try {
+      const vaultContainer = container.querySelector('#settings-vault-config');
+      if (vaultContainer) PasswordVault.renderSettings(vaultContainer);
+    } catch (err) { console.error('Settings - PasswordVault error:', err); }
   }
+
+  // Extensions — render extension management
+  (async () => {
+    try {
+      const extContainer = container.querySelector('#settings-extensions-config');
+      if (!extContainer) return;
+
+      const renderExtensions = async () => {
+        const exts = await window.vigo?.getExtensions() || [];
+        extContainer.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+             <div class="settings-desc" style="margin:0">Manage installed extensions (Manifest V3)</div>
+             <button id="btn-load-unpacked" class="vault-btn vault-btn-primary vault-btn-small">Load Unpacked...</button>
+          </div>
+          ${exts.length === 0 ? '<div class="settings-desc" style="opacity:0.6;text-align:center;padding:20px 0">No extensions installed.</div>' : ''}
+          <div style="display:flex;flex-direction:column;gap:12px">
+            ${exts.map(ext => `
+              <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div style="font-weight:600;font-size:15px;margin-bottom:4px">${escapeHtmlSafe(ext.name)} <span style="font-size:12px;color:var(--text-tertiary);font-weight:normal;margin-left:8px">v${ext.version}</span></div>
+                  <div style="font-size:13px;color:var(--text-secondary)">${escapeHtmlSafe(ext.description || 'No description provided.')}</div>
+                  <div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;font-family:monospace">ID: ${ext.id}</div>
+                </div>
+                <button class="vault-btn vault-btn-danger vault-btn-small btn-remove-ext" data-id="${ext.id}">Remove</button>
+              </div>
+            `).join('')}
+          </div>
+        `;
+
+        extContainer.querySelector('#btn-load-unpacked')?.addEventListener('click', async () => {
+          const res = await window.vigo?.installExtension();
+          if (res?.success) {
+            renderExtensions();
+          } else if (res?.error && res.error !== 'Cancelled') {
+            alert('Failed to load extension: ' + res.error);
+          }
+        });
+
+        extContainer.querySelectorAll('.btn-remove-ext').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (confirm('Remove this extension?')) {
+              await window.vigo?.removeExtension(btn.dataset.id);
+              renderExtensions();
+            }
+          });
+        });
+      };
+
+      renderExtensions();
+    } catch (err) { console.error('Settings - Extensions error:', err); }
+  })();
 
   // Profile Import — detect browsers and render import options
   (async () => {
-    const browsersList = container.querySelector('#import-browsers-list');
-    if (!browsersList) return;
+    try {
+      const browsersList = container.querySelector('#import-browsers-list');
+      if (!browsersList) return;
 
-    const browsers = await window.vigo?.importDetectBrowsers() || [];
-    if (browsers.length === 0) {
-      browsersList.innerHTML = '<div class="settings-desc" style="opacity:0.6">No importable browsers detected</div>';
-    } else {
-      browsersList.innerHTML = browsers.map(b => `
-        <div class="import-browser-row">
-          <span class="import-browser-icon">${b.icon}</span>
-          <div class="import-browser-info">
-            <div class="import-browser-name">${b.name}</div>
-            <div class="import-browser-profile">${b.profileName}</div>
+      const browsers = await window.vigo?.importDetectBrowsers() || [];
+      if (browsers.length === 0) {
+        browsersList.innerHTML = '<div class="settings-desc" style="opacity:0.6">No importable browsers detected</div>';
+      } else {
+        browsersList.innerHTML = browsers.map(b => `
+          <div class="import-browser-row">
+            <span class="import-browser-icon">${b.icon}</span>
+            <div class="import-browser-info">
+              <div class="import-browser-name">${b.name}</div>
+              <div class="import-browser-profile">${b.profileName}</div>
+            </div>
+            <button class="vault-btn vault-btn-small import-btn" data-id="${b.id}" data-path="${b.profilePath}" data-type="${b.type}"
+              ${b.hasBookmarks ? '' : 'disabled title="No bookmarks found"'}>
+              📥 Import
+            </button>
           </div>
-          <button class="vault-btn vault-btn-small import-btn" data-id="${b.id}" data-path="${b.profilePath}" data-type="${b.type}"
-            ${b.hasBookmarks ? '' : 'disabled title="No bookmarks found"'}>
-            📥 Import
-          </button>
-        </div>
-      `).join('');
+        `).join('');
 
-      browsersList.querySelectorAll('.import-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          btn.textContent = '⏳ Importing...';
-          btn.disabled = true;
-          const result = await window.vigo?.importBookmarks({
-            browserId: btn.dataset.id,
-            profilePath: btn.dataset.path,
-            type: btn.dataset.type
+        browsersList.querySelectorAll('.import-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.textContent = '⏳ Importing...';
+            btn.disabled = true;
+            try {
+              const result = await window.vigo?.importBookmarks({
+                browserId: btn.dataset.id,
+                profilePath: btn.dataset.path,
+                type: btn.dataset.type
+              });
+              if (result?.success) {
+                btn.textContent = `✅ ${result.count} imported`;
+              } else {
+                btn.textContent = '❌ Failed';
+                console.warn('[Import] Error:', result?.error);
+              }
+            } catch (err) {
+              btn.textContent = '❌ Failed';
+              console.error('Import error:', err);
+            }
+            setTimeout(() => { btn.textContent = '📥 Import'; btn.disabled = false; }, 3000);
           });
-          if (result?.success) {
-            btn.textContent = `✅ ${result.count} imported`;
-          } else {
-            btn.textContent = '❌ Failed';
-            console.warn('[Import] Error:', result?.error);
-          }
-          setTimeout(() => { btn.textContent = '📥 Import'; btn.disabled = false; }, 3000);
         });
-      });
-    }
-
-    container.querySelector('#btn-import-file')?.addEventListener('click', async () => {
-      const result = await window.vigo?.importFromFile();
-      if (result?.success) {
-        const count = result.count || 0;
-        alert(`Successfully imported ${count} item(s)!`);
-      } else if (result?.error && result.error !== 'Cancelled') {
-        alert(`Import failed: ${result.error}`);
       }
-    });
+
+      container.querySelector('#btn-import-file')?.addEventListener('click', async () => {
+        try {
+          const result = await window.vigo?.importFromFile();
+          if (result?.success) {
+            const count = result.count || 0;
+            alert(`Successfully imported ${count} item(s)!`);
+          } else if (result?.error && result.error !== 'Cancelled') {
+            alert(`Import failed: ${result.error}`);
+          }
+        } catch (err) { console.error('Import from file error:', err); }
+      });
+    } catch (err) { console.error('Settings - Profile Import error:', err); }
   })();
 
   // Sync — render device info and wire export/import buttons
   (async () => {
-    const deviceSection = container.querySelector('#sync-device-section');
-    if (!deviceSection) return;
+    try {
+      const deviceSection = container.querySelector('#sync-device-section');
+      if (!deviceSection) return;
 
-    const device = await window.vigo?.syncGetDeviceInfo();
-    if (device && !device.error) {
-      deviceSection.innerHTML = `
-        <div class="sync-device-card">
-          <div class="settings-label">📱 ${device.deviceName || 'This Device'}</div>
-          <div class="sync-device-id">ID: ${device.deviceId}</div>
-          <div class="settings-desc" style="margin-top:4px">Registered: ${new Date(device.createdAt).toLocaleDateString()}</div>
-        </div>
-      `;
-    }
-
-    container.querySelector('#btn-sync-export')?.addEventListener('click', async () => {
-      const pw = prompt('Enter a password to encrypt your sync bundle:');
-      if (!pw) return;
-      const result = await window.vigo?.syncExport(pw);
-      if (result?.success) {
-        alert(`Sync bundle exported! (${result.stats.bookmarks} bookmarks, ${result.stats.history} history items)`);
-      } else if (result?.error && result.error !== 'Cancelled') {
-        alert(`Export failed: ${result.error}`);
+      const device = await window.vigo?.syncGetDeviceInfo();
+      if (device && !device.error) {
+        deviceSection.innerHTML = `
+          <div class="sync-device-card">
+            <div class="settings-label">📱 ${device.deviceName || 'This Device'}</div>
+            <div class="sync-device-id">ID: ${device.deviceId}</div>
+            <div class="settings-desc" style="margin-top:4px">Registered: ${new Date(device.createdAt).toLocaleDateString()}</div>
+          </div>
+        `;
       }
-    });
 
-    container.querySelector('#btn-sync-import')?.addEventListener('click', async () => {
-      const pw = prompt('Enter the password used to encrypt the sync bundle:');
-      if (!pw) return;
-      const result = await window.vigo?.syncImport(pw);
-      if (result?.success) {
-        alert(`Import complete! ${result.imported.bookmarks} new bookmarks, ${result.imported.history} new history items`);
-      } else if (result?.error && result.error !== 'Cancelled') {
-        alert(`Import failed: ${result.error}`);
-      }
-    });
+      container.querySelector('#btn-sync-export')?.addEventListener('click', async () => {
+        const pw = prompt('Enter a password to encrypt your sync bundle:');
+        if (!pw) return;
+        try {
+          const result = await window.vigo?.syncExport(pw);
+          if (result?.success) {
+            alert(`Sync bundle exported! (${result.stats.bookmarks} bookmarks, ${result.stats.history} history items)`);
+          } else if (result?.error && result.error !== 'Cancelled') {
+            alert(`Export failed: ${result.error}`);
+          }
+        } catch (err) { console.error('Export sync error:', err); }
+      });
+
+      container.querySelector('#btn-sync-import')?.addEventListener('click', async () => {
+        const pw = prompt('Enter the password used to encrypt the sync bundle:');
+        if (!pw) return;
+        try {
+          const result = await window.vigo?.syncImport(pw);
+          if (result?.success) {
+            alert(`Import complete! ${result.imported.bookmarks} new bookmarks, ${result.imported.history} new history items`);
+          } else if (result?.error && result.error !== 'Cancelled') {
+            alert(`Import failed: ${result.error}`);
+          }
+        } catch (err) { console.error('Import sync error:', err); }
+      });
+    } catch (err) { console.error('Settings - Sync error:', err); }
   })();
 
   // Search Engine

@@ -140,6 +140,9 @@ const ProfileImport = require('./features/profile-import');
 const SyncEngine = require('./features/sync-engine');
 const syncEngine = new SyncEngine(syncDir, { bookmarksPath, historyPath, settingsPath });
 
+const ExtensionManager = require('./features/extension-manager');
+let extManager;
+
 function ensureFile(fp, defaultData = '[]') {
   if (!fs.existsSync(fp)) {
     fs.mkdirSync(path.dirname(fp), { recursive: true });
@@ -244,7 +247,7 @@ function updatePrivacyStats(category) {
 // ─── Main Window ─────────────────────────────────────────────────────────────
 let mainWindow;
 
-function createWindow() {
+async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -266,6 +269,9 @@ function createWindow() {
   mainWindow.loadFile('index.html');
   Menu.setApplicationMenu(null);
   setupAdBlocker();
+
+  extManager = new ExtensionManager(userDataPath);
+  await extManager.init();
 
   // ─── Selective User Agent for Streaming Quality ──────────────────────────
   // Only spoof Edge UA for services that genuinely serve better quality to Edge
