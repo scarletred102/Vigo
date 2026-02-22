@@ -33,6 +33,7 @@ const TabManager = (() => {
         createWebview(tab);
         renderTabs();
         setActiveTab(id);
+        if (typeof MemoryManager !== 'undefined') MemoryManager.trackTab(id);
         return tab;
     }
 
@@ -43,6 +44,17 @@ const TabManager = (() => {
         webview.setAttribute('partition', 'persist:vigo');
         webview.setAttribute('allowpopups', '');
         webview.setAttribute('autosize', 'on');
+
+        // ── VIDEO PLAYBACK FIX ──
+        // Enable plugins (required for media codec support)
+        webview.setAttribute('plugins', '');
+        // Set webpreferences for media support
+        webview.setAttribute('webpreferences',
+            'plugins=true, javascript=true'
+        );
+        // NOTE: We don't set useragent here — let Electron use its native
+        // Chromium UA so YouTube/streaming sites negotiate correct codecs.
+        // The session-level Edge UA in main.js handles quality negotiation.
 
         if (tab.url) {
             webview.src = normalizeUrl(tab.url);
@@ -97,7 +109,9 @@ const TabManager = (() => {
         input = input.trim();
         if (/^https?:\/\//i.test(input)) return input;
         if (/^[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}/.test(input)) return 'https://' + input;
-        return `https://www.google.com/search?q=${encodeURIComponent(input)}`;
+        // Use user's chosen search engine or default to Google
+        const searchUrl = window._vigoSearchUrl || 'https://www.google.com/search?q=';
+        return `${searchUrl}${encodeURIComponent(input)}`;
     }
 
     function showLoadingBar(show) {
@@ -141,6 +155,7 @@ const TabManager = (() => {
 
         renderTabs();
         updateNavState();
+        if (typeof MemoryManager !== 'undefined') MemoryManager.touchTab(id);
     }
 
     function closeTab(id) {
@@ -163,6 +178,7 @@ const TabManager = (() => {
             setActiveTab(tabs[newIdx].id);
         }
         renderTabs();
+        if (typeof MemoryManager !== 'undefined') MemoryManager.removeTab(id);
     }
 
     function getTab(id) { return tabs.find(t => t.id === id); }
@@ -293,11 +309,14 @@ const TabManager = (() => {
             ? `<img class="tab-favicon" src="${tab.favicon}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
             : '';
         const letter = (tab.title || 'N')[0].toUpperCase();
+        const memState = (typeof MemoryManager !== 'undefined') ? MemoryManager.getStateIcon(tab.id) : null;
+        const stateIndicator = memState ? `<span class="tab-state-icon" title="Tab is suspended">${memState}</span>` : '';
         return `
       <div class="tab-item ${isActive ? 'active' : ''} ${tab.loading ? 'loading' : ''}" data-id="${tab.id}">
         ${faviconHtml}
         <span class="tab-favicon-placeholder" ${tab.favicon ? 'style="display:none"' : ''}>${letter}</span>
         <span class="tab-title">${escapeHtml(tab.title)}</span>
+        ${stateIndicator}
         <button class="tab-close" title="Close tab">
           <svg width="10" height="10" viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>

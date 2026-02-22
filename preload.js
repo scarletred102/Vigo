@@ -29,7 +29,38 @@ contextBridge.exposeInMainWorld('vigo', {
     getAdblockStatus: () => ipcRenderer.invoke('adblock-status'),
     onAdblockCount: (cb) => ipcRenderer.on('adblock-count', (e, count) => cb(count)),
     resetAdblockCount: () => ipcRenderer.send('adblock-reset-count'),
+    setAdblockCategories: (cats) => ipcRenderer.invoke('adblock-set-categories', cats),
+    addAdblockException: (domain) => ipcRenderer.invoke('adblock-add-exception', domain),
+    removeAdblockException: (domain) => ipcRenderer.invoke('adblock-remove-exception', domain),
+    getAdblockExceptions: () => ipcRenderer.invoke('adblock-get-exceptions'),
 
     // Downloads
-    getDownloadPath: () => ipcRenderer.invoke('download-get-path')
+    getDownloadPath: () => ipcRenderer.invoke('download-get-path'),
+    chooseDownloadDir: () => ipcRenderer.invoke('download-choose-dir'),
+    getDefaultDownloadPath: () => ipcRenderer.invoke('get-default-download-path'),
+
+    // Clear Browsing Data
+    clearBrowsingData: (options) => ipcRenderer.invoke('clear-browsing-data', options),
+
+    // DNS Configuration
+    getDnsConfig: () => ipcRenderer.invoke('dns-get-config'),
+    setDnsConfig: (config) => ipcRenderer.invoke('dns-set-config', config),
+
+    // Permissions
+    getPermissions: () => ipcRenderer.invoke('permissions-get'),
+    setPermissions: (perms) => ipcRenderer.invoke('permissions-set', perms),
+
+    // Widevine DRM Status
+    getWidevineStatus: () => ipcRenderer.invoke('widevine-status'),
+
+    // Privacy Engine
+    getPrivacyConfig: () => ipcRenderer.invoke('privacy-get-config'),
+    setPrivacyConfig: (config) => ipcRenderer.invoke('privacy-set-config', config),
+    getPrivacyStats: () => ipcRenderer.invoke('privacy-get-stats'),
+    resetPrivacyStats: () => ipcRenderer.invoke('privacy-reset-stats'),
+    addPrivacyException: (domain) => ipcRenderer.invoke('privacy-add-exception', domain),
+    removePrivacyException: (domain) => ipcRenderer.invoke('privacy-remove-exception', domain),
+
+    // Memory Stats
+    getMemoryStats: () => ipcRenderer.invoke('memory-get-stats'),
 });

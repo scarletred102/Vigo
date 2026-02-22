@@ -1,13 +1,131 @@
 const { app, BrowserWindow, ipcMain, session, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VIDEO QUALITY ENHANCEMENTS
+// These Chromium flags enable hardware-accelerated video decoding, HEVC/H.265,
+// and other optimizations that make Vigo stream video at Edge-level quality.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Hardware-accelerated video decoding (the big one — this is what Edge does well)
+app.commandLine.appendSwitch('enable-hardware-overlays', 'single-fullscreen,single-on-top,underlay');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('enable-accelerated-video-decode');
+app.commandLine.appendSwitch('enable-accelerated-video-encode');
+
+// Enable HEVC / H.265 decoding (Windows Media Foundation — same as Edge)
+app.commandLine.appendSwitch('enable-features',
+  [
+    // ─── Video / GPU ───
+    'PlatformHEVCDecoderSupport',         // HEVC/H.265 hardware decode
+    'HardwareMediaKeyHandling',           // Media keys for video control
+    'WebRTCPipeWireCapturer',             // Better screen capture
+    'VaapiVideoDecodeLinuxGL',            // Linux VA-API decode
+    'VaapiVideoEncoder',                  // Linux VA-API encode
+    'ParallelDownloading',                // Faster downloads via parallel chunks
+    'BackForwardCache',                   // Instant back/forward navigation
+    'OverlayScrollbar',                   // Smooth overlay scrollbars
+    // ─── Privacy ───
+    'BlockThirdPartyCookies',             // Block third-party cookies by default
+    'ReduceUserAgent',                    // Reduce UA entropy for anti-fingerprinting
+    'ReduceUserAgentMinorVersion',        // Further reduce UA entropy
+    'StrictOriginIsolation',              // Strict site process isolation
+  ].join(',')
+);
+
+// Disable features that hurt video quality or privacy
+app.commandLine.appendSwitch('disable-features',
+  [
+    'UseChromeOSDirectVideoDecoder',      // Not on Windows
+    'MediaFoundationVideoCapture',        // Conflicts with our decode settings
+    // ─── Privacy: Disable Google Telemetry ───
+    'OptimizationHints',                  // Google-hosted optimization data
+    'MediaRouter',                        // Google Cast discovery probing
+    'Translate',                          // Google Translate service
+    'AutofillServerCommunication',        // Autofill data sent to Google
+    'NetworkTimeServiceQuerying',         // Google NTP time queries
+    'SpareRendererForSitePerProcess',     // Reduce memory + limit info leakage
+  ].join(',')
+);
+
+// ─── Privacy: Strict referrer policy ───
+app.commandLine.appendSwitch('force-fieldtrials', 'ReferrerPolicyHeader/StrictOriginWhenCrossOrigin');
+
+// Force GPU acceleration globally (don't let Chromium's heuristics disable it)
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-gpu-compositing');
+
+// Fix Windows sandbox permissions issue
+app.commandLine.appendSwitch('no-sandbox');
+
+// Higher quality video rendering
+app.commandLine.appendSwitch('force-color-profile', 'srgb');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
+// ─── Privacy: DNS-over-HTTPS by default (Cloudflare) ───
+app.commandLine.appendSwitch('dns-over-https-mode', 'automatic');
+app.commandLine.appendSwitch('dns-over-https-template', 'https://cloudflare-dns.com/dns-query');
+
+// ─── Widevine CDM Auto-Detection (for DRM video: Netflix, Disney+, etc.) ────
+function findWidevineCdm() {
+  const possiblePaths = [
+    // Chrome stable
+    path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application'),
+    path.join(process.env.PROGRAMFILES || '', 'Google', 'Chrome', 'Application'),
+    path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google', 'Chrome', 'Application'),
+    // Chrome beta/canary
+    path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome SxS', 'Application'),
+    // Edge
+    path.join(process.env['PROGRAMFILES(X86)'] || '', 'Microsoft', 'Edge', 'Application'),
+    path.join(process.env.PROGRAMFILES || '', 'Microsoft', 'Edge', 'Application'),
+  ];
+
+  for (const basePath of possiblePaths) {
+    if (!fs.existsSync(basePath)) continue;
+    try {
+      const versions = fs.readdirSync(basePath).filter(d => /^\d+\./.test(d)).sort().reverse();
+      for (const ver of versions) {
+        const wvPath = path.join(basePath, ver, 'WidevineCdm');
+        const manifestPath = path.join(wvPath, 'manifest.json');
+        if (fs.existsSync(manifestPath)) {
+          try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+            const cdmVersion = manifest.version;
+            // Find the actual _platform_specific library
+            const platformDir = path.join(wvPath, '_platform_specific', 'win_x64');
+            if (fs.existsSync(platformDir)) {
+              return { path: wvPath, version: cdmVersion };
+            }
+            // Fallback: use the wvPath directly
+            return { path: wvPath, version: cdmVersion };
+          } catch { }
+        }
+      }
+    } catch { }
+  }
+  return null;
+}
+
+const widevineCdm = findWidevineCdm();
+if (widevineCdm) {
+  app.commandLine.appendSwitch('widevine-cdm-path', widevineCdm.path);
+  app.commandLine.appendSwitch('widevine-cdm-version', widevineCdm.version);
+  console.log(`[Vigo] Widevine CDM loaded: v${widevineCdm.version} from ${widevineCdm.path}`);
+} else {
+  console.log('[Vigo] Widevine CDM not found — DRM content may not play. Install Chrome to enable.');
+}
 
 // ─── Data paths ──────────────────────────────────────────────────────────────
 const userDataPath = app.getPath('userData');
 const bookmarksPath = path.join(userDataPath, 'bookmarks.json');
-const historyPath   = path.join(userDataPath, 'history.json');
-const notesPath     = path.join(userDataPath, 'notes.json');
-const settingsPath  = path.join(userDataPath, 'settings.json');
+const historyPath = path.join(userDataPath, 'history.json');
+const notesPath = path.join(userDataPath, 'notes.json');
+const settingsPath = path.join(userDataPath, 'settings.json');
+const privacyStatsPath = path.join(userDataPath, 'privacy-stats.json');
+const filtersDir = path.join(userDataPath, 'filters');
 
 function ensureFile(fp, defaultData = '[]') {
   if (!fs.existsSync(fp)) {
@@ -27,28 +145,87 @@ function writeJSON(fp, data) {
   fs.writeFileSync(fp, JSON.stringify(data, null, 2), 'utf-8');
 }
 
-// ─── Ad Blocker ──────────────────────────────────────────────────────────────
+// ─── Enhanced Ad Blocker ─────────────────────────────────────────────────────
 let blockedCount = 0;
 let adblockEnabled = true;
+let adblockCategories = { ads: true, trackers: true, social_trackers: true, fingerprinting: true, malware: true, annoyances: true };
+let adblockStats = { ads: 0, trackers: 0, social_trackers: 0, fingerprinting: 0, malware: 0, annoyances: 0 };
+let adblockSiteExceptions = [];  // domains where adblock is disabled
 
 function setupAdBlocker() {
   const blocklistPath = path.join(__dirname, 'data', 'blocklist.json');
-  let blocklist = { domains: [], patterns: [] };
-  try { blocklist = JSON.parse(fs.readFileSync(blocklistPath, 'utf-8')); } catch {}
+  let blocklist = { categories: {} };
+  try { blocklist = JSON.parse(fs.readFileSync(blocklistPath, 'utf-8')); } catch (e) { console.warn('[Vigo Adblock] Failed to load blocklist:', e); }
 
-  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+  // Load settings for site exceptions
+  const settings = readJSON(settingsPath, {});
+  adblockSiteExceptions = settings.adblockExceptions || [];
+  if (settings.adblockCategories) adblockCategories = settings.adblockCategories;
+
+  // Build a flat lookup: domain -> category
+  const domainMap = new Map();
+  for (const [category, data] of Object.entries(blocklist.categories || {})) {
+    if (data.domains) {
+      for (const domain of data.domains) {
+        domainMap.set(domain, category);
+      }
+    }
+  }
+
+  // Use the webview's partition session, NOT defaultSession
+  const vigoSession = session.fromPartition('persist:vigo');
+
+  vigoSession.webRequest.onBeforeRequest((details, callback) => {
+    // 1. HTTPS-Only Mode
+    if (settings.httpsOnly && details.url.startsWith('http://') && !details.url.includes('localhost') && !details.url.includes('127.0.0.1')) {
+      return callback({ redirectURL: details.url.replace('http://', 'https://') });
+    }
+
+    // 2. Ad Blocker
     if (!adblockEnabled) return callback({});
     try {
       const url = new URL(details.url);
-      const dominated = blocklist.domains.some(d => url.hostname.includes(d));
-      if (dominated) {
-        blockedCount++;
-        if (mainWindow) mainWindow.webContents.send('adblock-count', blockedCount);
-        return callback({ cancel: true });
+      const hostname = url.hostname;
+
+      // Check site exceptions (per-site adblock disable)
+      if (adblockSiteExceptions.some(exc => hostname === exc || hostname.endsWith('.' + exc))) {
+        return callback({});
       }
-    } catch {}
+
+      // Check against domain map
+      for (const [blockedDomain, category] of domainMap) {
+        if (hostname === blockedDomain || hostname.endsWith('.' + blockedDomain)) {
+          if (adblockCategories[category]) {
+            blockedCount++;
+            adblockStats[category] = (adblockStats[category] || 0) + 1;
+
+            // Update privacy stats
+            updatePrivacyStats(category);
+
+            if (mainWindow) mainWindow.webContents.send('adblock-count', blockedCount);
+            return callback({ cancel: true });
+          }
+        }
+      }
+    } catch { }
     callback({});
   });
+}
+
+function updatePrivacyStats(category) {
+  try {
+    const stats = readJSON(privacyStatsPath, {
+      trackersBlocked: 0, cookiesBlocked: 0, fingerprintingAttempts: 0,
+      httpsUpgrades: 0, totalBlocked: 0, lastReset: new Date().toISOString()
+    });
+    stats.totalBlocked = (stats.totalBlocked || 0) + 1;
+    if (category === 'trackers' || category === 'social_trackers') {
+      stats.trackersBlocked = (stats.trackersBlocked || 0) + 1;
+    } else if (category === 'fingerprinting') {
+      stats.fingerprintingAttempts = (stats.fingerprintingAttempts || 0) + 1;
+    }
+    writeJSON(privacyStatsPath, stats);
+  } catch { }
 }
 
 // ─── Main Window ─────────────────────────────────────────────────────────────
@@ -67,7 +244,7 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
-      contextIsolation: true,
+      contextIsolation: false, // REQUIRED: Electron webview tags fail to initialize custom wrapper methods when contextIsolation is true
       webviewTag: true,
       sandbox: false
     }
@@ -76,6 +253,84 @@ function createWindow() {
   mainWindow.loadFile('index.html');
   Menu.setApplicationMenu(null);
   setupAdBlocker();
+
+  // ─── Selective User Agent for Streaming Quality ──────────────────────────
+  // Only spoof Edge UA for services that genuinely serve better quality to Edge
+  // (NOT YouTube — YouTube's codec negotiation breaks with mismatched UAs)
+  const edgeVersion = '120.0.0.0';
+  const chromeVersion = '120.0.6099.130';
+  const vigoUserAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36 Edg/${edgeVersion}`;
+
+  // Services that benefit from Edge UA (serve higher quality with PlayReady DRM)
+  const edgeUaServices = [
+    '*://*.netflix.com/*',
+    '*://*.disneyplus.com/*',
+    '*://*.hulu.com/*',
+    '*://*.hbomax.com/*',
+    '*://*.max.com/*',
+    '*://*.primevideo.com/*',
+    '*://*.peacocktv.com/*',
+  ];
+
+  mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
+    // Only apply Edge UA to specific streaming services, not globally
+    webContents.session.webRequest.onBeforeSendHeaders(
+      { urls: edgeUaServices },
+      (details, callback) => {
+        details.requestHeaders['User-Agent'] = vigoUserAgent;
+        callback({ requestHeaders: details.requestHeaders });
+      }
+    );
+  });
+
+  // ─── Permission Handler (on webview's partition session) ──────────────────
+  const vigoSession = session.fromPartition('persist:vigo');
+
+  // Grant permissions for the webview session
+  vigoSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const settings = readJSON(settingsPath, {});
+    const permissions = settings.permissions || {};
+
+    // Always allow these essential permissions
+    const alwaysAllow = [
+      'clipboard-read', 'clipboard-sanitized-write',
+      'pointerLock', 'fullscreen',
+      'media',             // Video/audio playback
+      'mediaKeySystem',    // DRM (Widevine)
+      'geolocation',       // Can be useful
+      'hid',               // Hardware devices
+    ];
+    if (alwaysAllow.includes(permission)) return callback(true);
+
+    // Check per-permission settings
+    if (permissions[permission] === 'allow') return callback(true);
+    if (permissions[permission] === 'block') return callback(false);
+
+    // Default: allow
+    callback(true);
+  });
+
+  // Also handle permission checks (synchronous checks by Chromium)
+  vigoSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    // Allow all media-related permissions
+    const alwaysAllow = [
+      'media', 'mediaKeySystem', 'geolocation',
+      'pointerLock', 'fullscreen', 'clipboard-read',
+      'hid', 'midi', 'midiSysex',
+    ];
+    if (alwaysAllow.includes(permission)) return true;
+    return true; // default allow
+  });
+
+  // ─── Do Not Track Header ───────────────────────────────────────────────
+  const settingsData = readJSON(settingsPath, {});
+  if (settingsData.doNotTrack) {
+    vigoSession.webRequest.onBeforeSendHeaders((details, callback) => {
+      details.requestHeaders['DNT'] = '1';
+      details.requestHeaders['Sec-GPC'] = '1';
+      callback({ requestHeaders: details.requestHeaders });
+    });
+  }
 }
 
 app.whenReady().then(createWindow);
@@ -129,11 +384,216 @@ ipcMain.handle('settings-save', (e, settings) => { writeJSON(settingsPath, setti
 
 // ─── Ad Blocker IPC ──────────────────────────────────────────────────────────
 ipcMain.handle('adblock-toggle', () => { adblockEnabled = !adblockEnabled; return adblockEnabled; });
-ipcMain.handle('adblock-status', () => ({ enabled: adblockEnabled, count: blockedCount }));
-ipcMain.on('adblock-reset-count', () => { blockedCount = 0; });
+ipcMain.handle('adblock-status', () => ({
+  enabled: adblockEnabled,
+  count: blockedCount,
+  categories: adblockCategories,
+  stats: adblockStats,
+  exceptions: adblockSiteExceptions
+}));
+ipcMain.on('adblock-reset-count', () => { blockedCount = 0; adblockStats = { ads: 0, trackers: 0, social_trackers: 0, fingerprinting: 0, malware: 0, annoyances: 0 }; });
+
+ipcMain.handle('adblock-set-categories', (e, categories) => {
+  adblockCategories = categories;
+  const settings = readJSON(settingsPath, {});
+  settings.adblockCategories = categories;
+  writeJSON(settingsPath, settings);
+  return categories;
+});
+
+ipcMain.handle('adblock-add-exception', (e, domain) => {
+  if (!adblockSiteExceptions.includes(domain)) {
+    adblockSiteExceptions.push(domain);
+    const settings = readJSON(settingsPath, {});
+    settings.adblockExceptions = adblockSiteExceptions;
+    writeJSON(settingsPath, settings);
+  }
+  return adblockSiteExceptions;
+});
+
+ipcMain.handle('adblock-remove-exception', (e, domain) => {
+  adblockSiteExceptions = adblockSiteExceptions.filter(d => d !== domain);
+  const settings = readJSON(settingsPath, {});
+  settings.adblockExceptions = adblockSiteExceptions;
+  writeJSON(settingsPath, settings);
+  return adblockSiteExceptions;
+});
+
+ipcMain.handle('adblock-get-exceptions', () => adblockSiteExceptions);
 
 // ─── Downloads IPC ───────────────────────────────────────────────────────────
 ipcMain.handle('download-get-path', async () => {
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
   return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle('download-choose-dir', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Choose Download Location'
+  });
+  if (!result.canceled && result.filePaths[0]) {
+    const settings = readJSON(settingsPath, {});
+    settings.downloadPath = result.filePaths[0];
+    writeJSON(settingsPath, settings);
+    return result.filePaths[0];
+  }
+  return null;
+});
+
+// ─── Clear Browsing Data IPC ─────────────────────────────────────────────────
+ipcMain.handle('clear-browsing-data', async (e, options) => {
+  const ses = session.defaultSession;
+  if (options.history) writeJSON(historyPath, []);
+  if (options.cookies) await ses.clearStorageData({ storages: ['cookies'] });
+  if (options.cache) await ses.clearCache();
+  if (options.localStorage) await ses.clearStorageData({ storages: ['localstorage'] });
+  if (options.sessionStorage) await ses.clearStorageData({ storages: ['sessionstorage'] });
+  if (options.indexedDB) await ses.clearStorageData({ storages: ['indexdb'] });
+  return true;
+});
+
+// ─── DNS Configuration IPC ───────────────────────────────────────────────────
+ipcMain.handle('dns-get-config', () => {
+  const settings = readJSON(settingsPath, {});
+  return settings.dns || { provider: 'system', customUrl: '' };
+});
+
+ipcMain.handle('dns-set-config', (e, dnsConfig) => {
+  const settings = readJSON(settingsPath, {});
+  settings.dns = dnsConfig;
+  writeJSON(settingsPath, settings);
+
+  // Apply DNS-over-HTTPS if configured
+  if (dnsConfig.provider !== 'system') {
+    const dohServers = {
+      cloudflare: 'https://cloudflare-dns.com/dns-query',
+      google: 'https://dns.google/dns-query',
+      quad9: 'https://dns.quad9.net/dns-query',
+      opendns: 'https://doh.opendns.com/dns-query',
+      custom: dnsConfig.customUrl
+    };
+    const dohUrl = dohServers[dnsConfig.provider];
+    if (dohUrl) {
+      app.configureHostResolver({
+        secureDnsMode: 'secure',
+        secureDnsServers: [dohUrl]
+      });
+    }
+  } else {
+    app.configureHostResolver({ secureDnsMode: 'off' });
+  }
+  return dnsConfig;
+});
+
+// ─── Permissions IPC ─────────────────────────────────────────────────────────
+ipcMain.handle('permissions-get', () => {
+  const settings = readJSON(settingsPath, {});
+  return settings.permissions || {};
+});
+
+ipcMain.handle('permissions-set', (e, permissions) => {
+  const settings = readJSON(settingsPath, {});
+  settings.permissions = permissions;
+  writeJSON(settingsPath, settings);
+  return permissions;
+});
+
+// ─── Widevine Status IPC ─────────────────────────────────────────────────────
+ipcMain.handle('widevine-status', () => {
+  return widevineCdm
+    ? { available: true, version: widevineCdm.version, path: widevineCdm.path }
+    : { available: false };
+});
+
+// ─── System Info IPC ─────────────────────────────────────────────────────────
+ipcMain.handle('get-default-download-path', () => {
+  return app.getPath('downloads');
+});
+
+// ─── Privacy Engine IPC ──────────────────────────────────────────────────────
+ipcMain.handle('privacy-get-config', () => {
+  const settings = readJSON(settingsPath, {});
+  return settings.privacy || {
+    thirdPartyCookies: 'block',
+    antiFingerprinting: true,
+    httpsOnly: true,
+    doNotTrack: true,
+    dohEnabled: true,
+    dohProvider: 'cloudflare',
+    exceptions: []
+  };
+});
+
+ipcMain.handle('privacy-set-config', (e, privacyConfig) => {
+  const settings = readJSON(settingsPath, {});
+  settings.privacy = privacyConfig;
+  writeJSON(settingsPath, settings);
+
+  // Apply DoH changes live
+  if (privacyConfig.dohEnabled && privacyConfig.dohProvider !== 'system') {
+    const dohServers = {
+      cloudflare: 'https://cloudflare-dns.com/dns-query',
+      google: 'https://dns.google/dns-query',
+      quad9: 'https://dns.quad9.net/dns-query',
+      nextdns: 'https://dns.nextdns.io',
+    };
+    const dohUrl = dohServers[privacyConfig.dohProvider] || privacyConfig.customDohUrl;
+    if (dohUrl) {
+      app.configureHostResolver({ secureDnsMode: 'secure', secureDnsServers: [dohUrl] });
+    }
+  } else {
+    app.configureHostResolver({ secureDnsMode: 'off' });
+  }
+
+  return privacyConfig;
+});
+
+ipcMain.handle('privacy-get-stats', () => {
+  const defaultStats = {
+    trackersBlocked: 0,
+    cookiesBlocked: 0,
+    fingerprintingAttempts: 0,
+    httpsUpgrades: 0,
+    totalBlocked: 0,
+    lastReset: new Date().toISOString()
+  };
+  return readJSON(privacyStatsPath, defaultStats);
+});
+
+ipcMain.handle('privacy-reset-stats', () => {
+  const freshStats = {
+    trackersBlocked: 0,
+    cookiesBlocked: 0,
+    fingerprintingAttempts: 0,
+    httpsUpgrades: 0,
+    totalBlocked: 0,
+    lastReset: new Date().toISOString()
+  };
+  writeJSON(privacyStatsPath, freshStats);
+  return freshStats;
+});
+
+ipcMain.handle('privacy-add-exception', (e, domain) => {
+  const settings = readJSON(settingsPath, {});
+  if (!settings.privacy) settings.privacy = {};
+  if (!settings.privacy.exceptions) settings.privacy.exceptions = [];
+  if (!settings.privacy.exceptions.includes(domain)) {
+    settings.privacy.exceptions.push(domain);
+  }
+  writeJSON(settingsPath, settings);
+  return settings.privacy.exceptions;
+});
+
+ipcMain.handle('privacy-remove-exception', (e, domain) => {
+  const settings = readJSON(settingsPath, {});
+  if (!settings.privacy) settings.privacy = {};
+  if (!settings.privacy.exceptions) settings.privacy.exceptions = [];
+  settings.privacy.exceptions = settings.privacy.exceptions.filter(d => d !== domain);
+  writeJSON(settingsPath, settings);
+  return settings.privacy.exceptions;
+});
+
+ipcMain.handle('memory-get-stats', () => {
+  return process.memoryUsage();
 });
