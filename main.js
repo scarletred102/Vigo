@@ -126,6 +126,19 @@ const notesPath = path.join(userDataPath, 'notes.json');
 const settingsPath = path.join(userDataPath, 'settings.json');
 const privacyStatsPath = path.join(userDataPath, 'privacy-stats.json');
 const filtersDir = path.join(userDataPath, 'filters');
+const vaultPath = path.join(userDataPath, 'vault.json');
+const syncDir = path.join(userDataPath, 'sync');
+
+// ─── Vault Crypto Engine ─────────────────────────────────────────────────────
+const VaultCrypto = require('./features/vault-crypto');
+const vault = new VaultCrypto(vaultPath);
+
+// ─── Profile Import Engine ─────────────────────────────────────────────────
+const ProfileImport = require('./features/profile-import');
+
+// ─── Sync Engine ─────────────────────────────────────────────────────────
+const SyncEngine = require('./features/sync-engine');
+const syncEngine = new SyncEngine(syncDir, { bookmarksPath, historyPath, settingsPath });
 
 function ensureFile(fp, defaultData = '[]') {
   if (!fs.existsSync(fp)) {
@@ -596,4 +609,210 @@ ipcMain.handle('privacy-remove-exception', (e, domain) => {
 
 ipcMain.handle('memory-get-stats', () => {
   return process.memoryUsage();
+});
+
+// ─── Password Vault IPC ──────────────────────────────────────────────────────
+ipcMain.handle('vault-exists', () => vault.exists());
+
+ipcMain.handle('vault-create', (e, masterPassword) => {
+  try { return vault.create(masterPassword); }
+  catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('vault-unlock', (e, masterPassword) => {
+  try { return vault.unlock(masterPassword); }
+  catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('vault-lock', () => vault.lock());
+
+ipcMain.handle('vault-is-unlocked', () => vault.isUnlocked());
+
+ipcMain.handle('vault-get-entries', () => {
+  try { return vault.getEntries(); }
+  catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('vault-add-entry', (e, entry) => {
+  try { return vault.addEntry(entry); }
+  catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('vault-update-entry', (e, { id, updates }) => {
+  try { return vault.updateEntry(id, updates); }
+  catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('vault-delete-entry', (e, id) => {
+  try { return vault.deleteEntry(id); }
+  catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('vault-find-by-domain', (e, domain) => {
+  try { return vault.findByDomain(domain); }
+  catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('vault-change-password', (e, { currentPassword, newPassword }) => {
+  try { return vault.changePassword(currentPassword, newPassword); }
+  catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('vault-generate-password', (e, options) => {
+  return vault.generatePassword(options || {});
+});
+
+// OS Keystore — cache master password via Electron safeStorage
+ipcMain.handle('vault-os-keystore-save', (e, masterPassword) => {
+  try {
+    const { safeStorage } = require('electron');
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { success: false, error: 'OS encryption not available' };
+    }
+    const encrypted = safeStorage.encryptString(masterPassword);
+    const keystorePath = path.join(userDataPath, '.vault-keystore');
+    fs.writeFileSync(keystorePath, encrypted);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('vault-os-keystore-load', () => {
+  try {
+    const { safeStorage } = require('electron');
+    const keystorePath = path.join(userDataPath, '.vault-keystore');
+    if (!fs.existsSync(keystorePath)) return { found: false };
+    if (!safeStorage.isEncryptionAvailable()) return { found: false, error: 'OS encryption not available' };
+    const encrypted = fs.readFileSync(keystorePath);
+    const masterPassword = safeStorage.decryptString(encrypted);
+    return { found: true, masterPassword };
+  } catch (err) {
+    return { found: false, error: err.message };
+  }
+});
+
+ipcMain.handle('vault-os-keystore-clear', () => {
+  try {
+    const keystorePath = path.join(userDataPath, '.vault-keystore');
+    if (fs.existsSync(keystorePath)) fs.unlinkSync(keystorePath);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// ─── Profile Import IPC ──────────────────────────────────────────────────────
+ipcMain.handle('import-detect-browsers', () => {
+  try { return ProfileImport.detectInstalledBrowsers(); }
+  catch (err) { return []; }
+});
+
+ipcMain.handle('import-bookmarks', (e, { browserId, profilePath, type }) => {
+  try {
+    const browsers = ProfileImport.getBrowserPaths();
+    const browser = browsers[browserId];
+
+    if (type === 'firefox') {
+      const result = ProfileImport.importFirefoxBookmarks(profilePath);
+      if (result.success && result.bookmarks) {
+        // Merge into existing bookmarks
+        const existing = readJSON(bookmarksPath, []);
+        const merged = [...existing, ...result.bookmarks];
+        writeJSON(bookmarksPath, merged);
+        result.totalBookmarks = merged.length;
+      }
+      return result;
+    } else {
+      // Chromium-based
+      const result = ProfileImport.importChromiumBookmarks(profilePath, browser?.bookmarksFile || 'Bookmarks');
+      if (result.success && result.bookmarks) {
+        const existing = readJSON(bookmarksPath, []);
+        const merged = [...existing, ...result.bookmarks];
+        writeJSON(bookmarksPath, merged);
+        result.totalBookmarks = merged.length;
+      }
+      return result;
+    }
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('import-from-file', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Import Bookmarks / History',
+      filters: [
+        { name: 'Supported Files', extensions: ['json', 'csv', 'html', 'htm'] },
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'CSV', extensions: ['csv'] },
+        { name: 'HTML', extensions: ['html', 'htm'] },
+      ],
+      properties: ['openFile']
+    });
+
+    if (result.canceled || !result.filePaths[0]) return { success: false, error: 'Cancelled' };
+
+    const imported = ProfileImport.importFromFile(result.filePaths[0]);
+    if (imported.success) {
+      // Merge bookmarks
+      const items = imported.bookmarks || imported.data || [];
+      if (items.length > 0) {
+        const existing = readJSON(bookmarksPath, []);
+        const merged = [...existing, ...items];
+        writeJSON(bookmarksPath, merged);
+        imported.totalBookmarks = merged.length;
+      }
+    }
+    return imported;
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// ─── Sync Engine IPC ─────────────────────────────────────────────────────────
+ipcMain.handle('sync-get-device-info', () => {
+  try { return syncEngine.getDeviceInfo(); }
+  catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('sync-export', async (e, masterPassword) => {
+  try {
+    const bundle = syncEngine.exportBundle(masterPassword);
+
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export Sync Bundle',
+      defaultPath: `vigo-sync-${new Date().toISOString().slice(0, 10)}.vigo`,
+      filters: [{ name: 'Vigo Sync Bundle', extensions: ['vigo'] }]
+    });
+
+    if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' };
+
+    fs.writeFileSync(result.filePath, JSON.stringify(bundle, null, 2), 'utf-8');
+    return { success: true, path: result.filePath, stats: bundle.stats };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('sync-import', async (e, masterPassword) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Import Sync Bundle',
+      filters: [
+        { name: 'Vigo Sync Bundle', extensions: ['vigo'] },
+        { name: 'JSON', extensions: ['json'] }
+      ],
+      properties: ['openFile']
+    });
+
+    if (result.canceled || !result.filePaths[0]) return { success: false, error: 'Cancelled' };
+
+    const bundleData = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf-8'));
+    const imported = syncEngine.importBundle(bundleData, masterPassword);
+    return imported;
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });

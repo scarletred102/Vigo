@@ -242,6 +242,12 @@ async function renderSettings(container) {
       <div id="settings-media-config"></div>
     </div>
 
+    <!-- PASSWORDS & AUTOFILL -->
+    <div class="settings-group">
+      <div class="settings-group-title">🔐 Passwords & Autofill</div>
+      <div id="settings-vault-config"></div>
+    </div>
+
     <!-- DOWNLOADS -->
     <div class="settings-group">
       <div class="settings-group-title">📥 Downloads</div>
@@ -258,6 +264,28 @@ async function renderSettings(container) {
           <div class="settings-desc">Prompt for save location each time</div>
         </div>
         <div class="toggle ${settings.askBeforeDownload ? 'on' : ''}" id="toggle-ask-dl"></div>
+      </div>
+    </div>
+
+    <!-- IMPORT DATA -->
+    <div class="settings-group">
+      <div class="settings-group-title">📦 Import Data</div>
+      <div class="settings-desc" style="margin-bottom:10px">Import bookmarks, history, and passwords from another browser</div>
+      <div id="import-browsers-list" class="import-browsers-list">
+        <div class="settings-desc" style="opacity:0.6">Detecting installed browsers...</div>
+      </div>
+      <div style="margin-top:10px">
+        <button class="btn-secondary" id="btn-import-file" style="width:100%">📁 Import from File (JSON, CSV, HTML)</button>
+      </div>
+    </div>
+
+    <!-- SYNC & BACKUP -->
+    <div class="settings-group">
+      <div class="settings-group-title">🔄 Sync & Backup</div>
+      <div id="sync-device-section"></div>
+      <div class="sync-actions">
+        <button class="vault-btn vault-btn-primary" id="btn-sync-export">📤 Export</button>
+        <button class="vault-btn" id="btn-sync-import">📥 Import</button>
       </div>
     </div>
 
@@ -337,6 +365,105 @@ async function renderSettings(container) {
     const mediaContainer = container.querySelector('#settings-media-config');
     if (mediaContainer) MediaOrchestrator.renderMediaSettings(mediaContainer);
   }
+
+  // Password Vault — render vault settings
+  if (typeof PasswordVault !== 'undefined') {
+    const vaultContainer = container.querySelector('#settings-vault-config');
+    if (vaultContainer) PasswordVault.renderSettings(vaultContainer);
+  }
+
+  // Profile Import — detect browsers and render import options
+  (async () => {
+    const browsersList = container.querySelector('#import-browsers-list');
+    if (!browsersList) return;
+
+    const browsers = await window.vigo?.importDetectBrowsers() || [];
+    if (browsers.length === 0) {
+      browsersList.innerHTML = '<div class="settings-desc" style="opacity:0.6">No importable browsers detected</div>';
+    } else {
+      browsersList.innerHTML = browsers.map(b => `
+        <div class="import-browser-row">
+          <span class="import-browser-icon">${b.icon}</span>
+          <div class="import-browser-info">
+            <div class="import-browser-name">${b.name}</div>
+            <div class="import-browser-profile">${b.profileName}</div>
+          </div>
+          <button class="vault-btn vault-btn-small import-btn" data-id="${b.id}" data-path="${b.profilePath}" data-type="${b.type}"
+            ${b.hasBookmarks ? '' : 'disabled title="No bookmarks found"'}>
+            📥 Import
+          </button>
+        </div>
+      `).join('');
+
+      browsersList.querySelectorAll('.import-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.textContent = '⏳ Importing...';
+          btn.disabled = true;
+          const result = await window.vigo?.importBookmarks({
+            browserId: btn.dataset.id,
+            profilePath: btn.dataset.path,
+            type: btn.dataset.type
+          });
+          if (result?.success) {
+            btn.textContent = `✅ ${result.count} imported`;
+          } else {
+            btn.textContent = '❌ Failed';
+            console.warn('[Import] Error:', result?.error);
+          }
+          setTimeout(() => { btn.textContent = '📥 Import'; btn.disabled = false; }, 3000);
+        });
+      });
+    }
+
+    container.querySelector('#btn-import-file')?.addEventListener('click', async () => {
+      const result = await window.vigo?.importFromFile();
+      if (result?.success) {
+        const count = result.count || 0;
+        alert(`Successfully imported ${count} item(s)!`);
+      } else if (result?.error && result.error !== 'Cancelled') {
+        alert(`Import failed: ${result.error}`);
+      }
+    });
+  })();
+
+  // Sync — render device info and wire export/import buttons
+  (async () => {
+    const deviceSection = container.querySelector('#sync-device-section');
+    if (!deviceSection) return;
+
+    const device = await window.vigo?.syncGetDeviceInfo();
+    if (device && !device.error) {
+      deviceSection.innerHTML = `
+        <div class="sync-device-card">
+          <div class="settings-label">📱 ${device.deviceName || 'This Device'}</div>
+          <div class="sync-device-id">ID: ${device.deviceId}</div>
+          <div class="settings-desc" style="margin-top:4px">Registered: ${new Date(device.createdAt).toLocaleDateString()}</div>
+        </div>
+      `;
+    }
+
+    container.querySelector('#btn-sync-export')?.addEventListener('click', async () => {
+      const pw = prompt('Enter a password to encrypt your sync bundle:');
+      if (!pw) return;
+      const result = await window.vigo?.syncExport(pw);
+      if (result?.success) {
+        alert(`Sync bundle exported! (${result.stats.bookmarks} bookmarks, ${result.stats.history} history items)`);
+      } else if (result?.error && result.error !== 'Cancelled') {
+        alert(`Export failed: ${result.error}`);
+      }
+    });
+
+    container.querySelector('#btn-sync-import')?.addEventListener('click', async () => {
+      const pw = prompt('Enter the password used to encrypt the sync bundle:');
+      if (!pw) return;
+      const result = await window.vigo?.syncImport(pw);
+      if (result?.success) {
+        alert(`Import complete! ${result.imported.bookmarks} new bookmarks, ${result.imported.history} new history items`);
+      } else if (result?.error && result.error !== 'Cancelled') {
+        alert(`Import failed: ${result.error}`);
+      }
+    });
+  })();
 
   // Search Engine
   container.querySelector('#select-search-engine')?.addEventListener('change', async function () {
@@ -462,6 +589,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (typeof PrivacyEngine !== 'undefined') await PrivacyEngine.init();
   if (typeof MemoryManager !== 'undefined') MemoryManager.init();
   if (typeof MediaOrchestrator !== 'undefined') await MediaOrchestrator.init();
+  if (typeof PasswordVault !== 'undefined') await PasswordVault.init();
   if (typeof SecurityManager !== 'undefined') SecurityManager.init();
 
   // Load search engine preference
