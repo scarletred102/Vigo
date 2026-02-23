@@ -1,0 +1,55 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+# Aggregate target for all Vigo components.
+
+import("//vigo/build/config/vigo_buildflags.gni")
+
+group("vigo_components") {
+  deps = []
+
+  if (vigo_enable_adblock) {
+    deps += [ "//vigo/components/adblock" ]
+  }
+
+  if (vigo_enable_privacy_engine) {
+    deps += [ "//vigo/components/privacy_engine" ]
+  }
+
+  if (vigo_enable_media_orchestration) {
+    deps += [ "//vigo/components/media_orchestration" ]
+  }
+
+  if (vigo_enable_sync) {
+    deps += [ "//vigo/components/sync" ]
+  }
+
+  if (vigo_enable_credential_vault) {
+    deps += [ "//vigo/components/credential_vault" ]
+  }
+}
+
+group("unit_tests") {
+  testonly = true
+  deps = []
+
+  if (vigo_enable_adblock) {
+    deps += [ "//vigo/components/adblock:unit_tests" ]
+  }
+
+  if (vigo_enable_privacy_engine) {
+    deps += [ "//vigo/components/privacy_engine:unit_tests" ]
+  }
+
+  if (vigo_enable_media_orchestration) {
+    deps += [ "//vigo/components/media_orchestration:unit_tests" ]
+  }
+
+  if (vigo_enable_sync) {
+    deps += [ "//vigo/components/sync:unit_tests" ]
+  }
+
+  if (vigo_enable_credential_vault) {
+    deps += [ "//vigo/components/credential_vault:unit_tests" ]
+  }
+}

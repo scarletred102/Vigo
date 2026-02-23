@@ -1,0 +1,31 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+import("//vigo/build/config/vigo_buildflags.gni")
+
+source_set("privacy_engine") {
+  sources = [
+    "vigo_privacy_engine.cc",
+    "vigo_privacy_engine.h",
+  ]
+
+  deps = [
+    "//base",
+    "//net",
+    "//url",
+    "//vigo/build/config:vigo_buildflags",
+  ]
+
+  configs += [ "//vigo/build/config:vigo_config" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "vigo_privacy_engine_unittest.cc" ]
+
+  deps = [
+    ":privacy_engine",
+    "//testing/gtest",
+    "//url",
+  ]
+}

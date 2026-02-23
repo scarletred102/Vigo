@@ -1,0 +1,33 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+# GN build targets for vigo-core/build/config/.
+# Provides the generated vigo_buildflags.h header and shared configs.
+
+import("//vigo/build/config/vigo_buildflags.gni")
+
+# Re-export the buildflag_header target so other targets can depend on
+# "//vigo/build/config:vigo_buildflags".
+group("vigo_buildflags") {
+  public_deps = [ ":vigo_buildflags" ]
+}
+
+config("vigo_config") {
+  defines = [ "VIGO_BROWSER" ]
+  include_dirs = [
+    "//vigo",
+    "$root_gen_dir/vigo",
+  ]
+}
+
+config("vigo_strict_warnings") {
+  if (is_clang) {
+    cflags = [
+      "-Werror",
+      "-Wall",
+      "-Wextra",
+      "-Wno-unused-parameter",
+      "-Wthread-safety",
+    ]
+  }
+}

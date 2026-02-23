@@ -1,0 +1,32 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+# Vigo build-flag definitions.
+# This file declares BUILDFLAG(VIGO_*) macros that can be used in C++ source
+# files to conditionally compile Vigo-specific code paths.
+#
+# Usage in C++:
+#   #include "vigo/build/config/vigo_buildflags.h"
+#   #if BUILDFLAG(VIGO_ENABLE_ADBLOCK)
+#     ...
+#   #endif
+
+import("//build/buildflag_header.gni")
+import("//vigo/build/config/vigo_args.gni")
+
+buildflag_header("vigo_buildflags") {
+  header = "vigo_buildflags.h"
+  header_dir = "vigo/build/config"
+
+  flags = [
+    "VIGO_ENABLE_ADBLOCK=$vigo_enable_adblock",
+    "VIGO_ENABLE_PRIVACY_ENGINE=$vigo_enable_privacy_engine",
+    "VIGO_ENABLE_MEDIA_ORCHESTRATION=$vigo_enable_media_orchestration",
+    "VIGO_ENABLE_SYNC=$vigo_enable_sync",
+    "VIGO_ENABLE_CREDENTIAL_VAULT=$vigo_enable_credential_vault",
+    "VIGO_ENABLE_JXL=$vigo_enable_jxl",
+    "VIGO_ENABLE_HEVC=$vigo_enable_hevc",
+    "VIGO_ENABLE_HW_DECODE=$vigo_enable_hw_decode",
+    "VIGO_IS_BETA=$vigo_is_beta",
+  ]
+}

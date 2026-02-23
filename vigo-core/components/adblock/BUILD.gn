@@ -1,0 +1,33 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+import("//vigo/build/config/vigo_buildflags.gni")
+
+source_set("adblock") {
+  sources = [
+    "ffi/vigo_adblock_ffi.h",
+    "vigo_adblock_service.cc",
+    "vigo_adblock_service.h",
+  ]
+
+  deps = [
+    "//base",
+    "//components/keyed_service/core",
+    "//url",
+    "//vigo/build/config:vigo_buildflags",
+    "//vigo/rust/vigo_adblock:vigo_adblock_rs",
+  ]
+
+  configs += [ "//vigo/build/config:vigo_config" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "vigo_adblock_service_unittest.cc" ]
+
+  deps = [
+    ":adblock",
+    "//testing/gtest",
+    "//url",
+  ]
+}

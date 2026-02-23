@@ -1,0 +1,29 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+# libsodium — vendored cryptographic library.
+#
+# libsodium is the ONLY approved crypto library for Vigo's
+# authentication, encryption, signing, and key derivation.
+#
+# Version: 1.0.20 (or latest stable)
+# Source:  https://github.com/jedisct1/libsodium
+# License: ISC (permissive, compatible with proprietary use)
+#
+# TODO(Phase 3.2): Vendor the actual libsodium source tree here and
+# write the full GN build target. For now, this is a placeholder.
+
+static_library("libsodium") {
+  # Placeholder — will be populated when libsodium is vendored.
+  sources = []
+
+  public_configs = [ ":libsodium_config" ]
+}
+
+config("libsodium_config") {
+  include_dirs = [ "include" ]
+
+  defines = [
+    "SODIUM_STATIC",
+  ]
+}

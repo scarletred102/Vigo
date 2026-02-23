@@ -1,0 +1,28 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+import("//vigo/build/config/vigo_buildflags.gni")
+
+source_set("credential_vault") {
+  sources = [
+    "vigo_credential_vault.cc",
+    "vigo_credential_vault.h",
+  ]
+
+  deps = [
+    "//base",
+    "//vigo/build/config:vigo_buildflags",
+  ]
+
+  configs += [ "//vigo/build/config:vigo_config" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "vigo_credential_vault_unittest.cc" ]
+
+  deps = [
+    ":credential_vault",
+    "//testing/gtest",
+  ]
+}

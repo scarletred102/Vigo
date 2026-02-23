@@ -1,0 +1,30 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+# chromium_src overrides — these files shadow upstream Chromium sources.
+# The build system should include this directory in the source tree with
+# higher priority than the upstream Chromium source, so that files here
+# replace their upstream counterparts during compilation.
+#
+# Each file uses the #define/#undef shadow pattern to minimally alter
+# upstream behaviour without forking entire files.
+#
+# See: vigo-core/.github/instructions/vigo-cpp.instructions.md for the
+# full override pattern documentation.
+
+source_set("chromium_src_overrides") {
+  sources = [
+    "chrome/browser/metrics/chrome_metrics_service_client.cc",
+    "chrome/browser/rlz/chrome_rlz_tracker_delegate.cc",
+  ]
+
+  # These sources are compiled in place of the upstream originals.
+  # Dependencies mirror the upstream targets they replace.
+  deps = [
+    "//base",
+    "//chrome/browser",
+    "//components/metrics",
+  ]
+
+  configs += [ "//vigo/build/config:vigo_config" ]
+}

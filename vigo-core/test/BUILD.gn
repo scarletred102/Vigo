@@ -1,0 +1,20 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+# Test support utilities for Vigo-specific tests.
+
+source_set("vigo_test_support") {
+  testonly = true
+
+  sources = [
+    "vigo_test_utils.cc",
+    "vigo_test_utils.h",
+  ]
+
+  deps = [
+    "//base",
+    "//testing/gtest",
+  ]
+
+  configs += [ "//vigo/build/config:vigo_config" ]
+}

@@ -1,0 +1,36 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+import("//vigo/build/config/vigo_buildflags.gni")
+
+source_set("vigo_browser") {
+  sources = [
+    "vigo_browser_main_parts.cc",
+    "vigo_browser_main_parts.h",
+  ]
+
+  deps = [
+    "//base",
+    "//chrome/browser",
+    "//content/public/browser",
+    "//vigo/build/config:vigo_buildflags",
+  ]
+
+  if (vigo_enable_adblock) {
+    deps += [ "//vigo/components/adblock" ]
+  }
+
+  if (vigo_enable_privacy_engine) {
+    deps += [ "//vigo/components/privacy_engine" ]
+  }
+
+  if (vigo_enable_media_orchestration) {
+    deps += [ "//vigo/components/media_orchestration" ]
+  }
+
+  if (vigo_enable_sync) {
+    deps += [ "//vigo/components/sync" ]
+  }
+
+  configs += [ "//vigo/build/config:vigo_config" ]
+}

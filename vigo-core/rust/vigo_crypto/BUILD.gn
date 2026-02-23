@@ -1,0 +1,21 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+import("//build/rust/rust_static_library.gni")
+
+rust_static_library("vigo_crypto_rs") {
+  crate_name = "vigo_crypto"
+  crate_root = "//vigo/rust/vigo_crypto/src/lib.rs"
+
+  sources = [
+    "//vigo/rust/vigo_crypto/src/aead.rs",
+    "//vigo/rust/vigo_crypto/src/kdf.rs",
+    "//vigo/rust/vigo_crypto/src/lib.rs",
+  ]
+
+  deps = [
+    "//vigo/third_party/libsodium",
+  ]
+
+  allow_unsafe = true
+}

@@ -1,0 +1,28 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+import("//vigo/build/config/vigo_buildflags.gni")
+
+source_set("sync") {
+  sources = [
+    "vigo_sync_client.cc",
+    "vigo_sync_client.h",
+  ]
+
+  deps = [
+    "//base",
+    "//vigo/build/config:vigo_buildflags",
+  ]
+
+  configs += [ "//vigo/build/config:vigo_config" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "vigo_sync_client_unittest.cc" ]
+
+  deps = [
+    ":sync",
+    "//testing/gtest",
+  ]
+}

@@ -1,0 +1,66 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+# Vigo default GN arguments.
+# Import this file in the root .gn or args.gn to apply Vigo defaults.
+# These args control which Vigo features are compiled into the build.
+
+declare_args() {
+  # ── Core identity ─────────────────────────────────────────────
+  # Vigo is never Chrome-branded.
+  is_vigo_branded = true
+
+  # ── Feature flags ─────────────────────────────────────────────
+  # Enable the Rust-based adblock engine.
+  vigo_enable_adblock = true
+
+  # Enable the Privacy Engine (anti-fingerprinting, DoH, tracking param strip).
+  vigo_enable_privacy_engine = true
+
+  # Enable the Media Orchestration Layer (ABR, buffer heuristics, DRM policy).
+  vigo_enable_media_orchestration = true
+
+  # Enable the E2E encrypted sync client.
+  vigo_enable_sync = true
+
+  # Enable the credential vault (password / passkey management).
+  vigo_enable_credential_vault = true
+
+  # Enable JPEG XL image format support (Chromium removed in M110; Vigo
+  # re-enables as a differentiator).
+  vigo_enable_jxl = true
+
+  # ── Media ─────────────────────────────────────────────────────
+  # These are enforced; changing them will break the Vigo media promise.
+  # proprietary_codecs and ffmpeg_branding are set via chromium args.gn,
+  # but we record the expected values here for documentation.
+  #   proprietary_codecs = true
+  #   ffmpeg_branding = "Chrome"
+
+  # Enable HEVC via OS platform decoders (D3D11/VTB/VAAPI).
+  vigo_enable_hevc = true
+
+  # Enable hardware-accelerated video decode.
+  vigo_enable_hw_decode = true
+
+  # ── Sync ──────────────────────────────────────────────────────
+  # URL of the self-hosted sync server (empty = not configured).
+  vigo_sync_server_url = ""
+
+  # ── Branding ──────────────────────────────────────────────────
+  # Product name used in window titles, about page, user agent.
+  vigo_product_name = "Vigo"
+
+  # Short name used for directory paths and identifiers.
+  vigo_short_name = "vigo"
+
+  # ── Licensing ─────────────────────────────────────────────────
+  # Build is beta (true) or GA / licensed (false).
+  vigo_is_beta = true
+
+  # ── Security ──────────────────────────────────────────────────
+  # Do NOT inject Google API keys into the build by default.
+  # They must be provided at build time via environment or args override.
+  vigo_safe_browsing_api_key = ""
+  vigo_geolocation_api_key = ""
+}

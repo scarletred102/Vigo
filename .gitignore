@@ -1,0 +1,43 @@
+# Vigo Browser — .gitignore
+
+# ── Build outputs ───────────────────────────────────────────────
+out/
+build/Debug/
+build/Release/
+
+# ── Rust ────────────────────────────────────────────────────────
+vigo-core/rust/target/
+**/*.rs.bk
+
+# ── Node ────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+
+# ── IDE / Editor ────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Chromium source (fetched separately, not part of this repo) ─
+src/
+
+# ── Secrets (never commit) ──────────────────────────────────────
+*.key
+*.pem
+*.p12
+api_keys.gni
+local_args.gn
+
+# ── OS ──────────────────────────────────────────────────────────
+*.obj
+*.o
+*.lib
+*.a
+*.so
+*.dylib
+*.dll
+*.exe

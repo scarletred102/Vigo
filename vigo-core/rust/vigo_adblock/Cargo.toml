@@ -1,0 +1,16 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+[package]
+name = "vigo_adblock"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Rust adblock engine for Vigo Browser — EasyList/EasyPrivacy compatible"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+libc.workspace = true

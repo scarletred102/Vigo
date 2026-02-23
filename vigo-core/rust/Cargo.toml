@@ -1,0 +1,19 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+[workspace]
+resolver = "2"
+members = [
+    "vigo_adblock",
+    "vigo_crypto",
+    "vigo_filter",
+]
+
+[workspace.package]
+edition = "2021"
+license = "LicenseRef-Proprietary"
+authors = ["Vigo Browser <dev@vigo-browser.com>"]
+
+[workspace.dependencies]
+# Shared dependencies across all Vigo Rust crates.
+libc = "0.2"
