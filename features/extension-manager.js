@@ -3,7 +3,7 @@
 // Native Chromium extension support (Manifest V3)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const { session, ipcMain, dialog } = require('electron');
+const { ipcMain, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -31,6 +31,7 @@ class ExtensionManager {
     }
 
     async loadAllExtensions() {
+        const { session } = require('electron');
         const defaultSession = session.defaultSession;
 
         // We also need to load extensions into the persistent vigo partition used by webviews
@@ -89,6 +90,34 @@ class ExtensionManager {
         }
 
         try {
+            // Read manifest to get permissions
+            const manifestData = fs.readFileSync(manifestPath, 'utf8');
+            const manifest = JSON.parse(manifestData);
+            const permissions = manifest.permissions || [];
+            const hostPermissions = manifest.host_permissions || [];
+
+            // Ask for consent if there are permissions
+            if (permissions.length > 0 || hostPermissions.length > 0) {
+                let msg = `The extension "${manifest.name}" requests the following permissions:\n\n`;
+                if (permissions.length > 0) msg += `Capabilities:\n- ${permissions.join('\n- ')}\n\n`;
+                if (hostPermissions.length > 0) msg += `Site Access:\n- ${hostPermissions.join('\n- ')}\n\n`;
+                msg += 'Do you want to install this extension?';
+
+                const { response } = await dialog.showMessageBox(window, {
+                    type: 'question',
+                    buttons: ['Install', 'Cancel'],
+                    defaultId: 0,
+                    cancelId: 1,
+                    title: 'Extension Permissions',
+                    message: msg
+                });
+
+                if (response !== 0) {
+                    return { success: false, error: 'Installation cancelled by user.' };
+                }
+            }
+
+            const { session } = require('electron');
             const defaultSession = session.defaultSession;
             const webviewSession = session.fromPartition('persist:vigo');
 
@@ -112,6 +141,7 @@ class ExtensionManager {
 
     async removeExtension(id) {
         try {
+            const { session } = require('electron');
             const defaultSession = session.defaultSession;
             const webviewSession = session.fromPartition('persist:vigo');
 

@@ -87,6 +87,14 @@ const PrivacyEngine = (() => {
         }
     }
 
+    // ─── Utilities ─────────────────────────────────────────────────────────────
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    }
+
     // ─── Privacy Report Rendering ─────────────────────────────────────────────
     function renderPrivacyReport(container) {
         const statItems = [
@@ -115,6 +123,10 @@ const PrivacyEngine = (() => {
                             <span class="privacy-stat-label">${item.label}</span>
                         </div>
                     `).join('')}
+                </div>
+                <div class="privacy-data-savings" style="text-align:center;padding:12px;background:rgba(110,231,183,0.06);border-radius:var(--radius-sm);margin-top:12px">
+                    <div style="font-size:22px;font-weight:700;color:#6ee7b7">≈${formatBytes(stats.totalBlocked * 1500)}</div>
+                    <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px">Estimated data saved</div>
                 </div>
                 <div class="privacy-last-reset">
                     Last reset: ${new Date(stats.lastReset).toLocaleDateString()}

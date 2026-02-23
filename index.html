@@ -13,7 +13,7 @@
 
 <body>
   <!-- ═══════════════ TITLE BAR ═══════════════ -->
-  <header id="titlebar">
+  <header id="titlebar" role="banner" aria-label="Title bar">
     <div id="titlebar-drag">
       <div id="logo">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -51,7 +51,7 @@
   <!-- ═══════════════ MAIN LAYOUT ═══════════════ -->
   <div id="app">
     <!-- ─── SIDEBAR ─── -->
-    <aside id="sidebar">
+    <aside id="sidebar" role="navigation" aria-label="Tab list and navigation">
       <div id="sidebar-header">
         <button class="sidebar-action" id="btn-new-tab" title="New Tab (Ctrl+T)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -68,7 +68,7 @@
           </svg>
         </button>
       </div>
-      <div id="tab-list" class="custom-scroll"></div>
+      <div id="tab-list" class="custom-scroll" role="tablist" aria-label="Open tabs"></div>
       <div id="sidebar-footer">
         <button class="sidebar-action" id="btn-bookmarks" title="Bookmarks">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -112,7 +112,7 @@
     </aside>
 
     <!-- ─── MAIN CONTENT ─── -->
-    <main id="main-content">
+    <main id="main-content" role="main" aria-label="Browser content">
       <!-- Navigation Bar -->
       <div id="navbar">
         <div id="nav-controls">
@@ -215,7 +215,7 @@
     </main>
 
     <!-- ─── RIGHT PANELS (Bookmarks, History, Notes, Downloads, Settings) ─── -->
-    <aside id="right-panel" class="panel-hidden">
+    <aside id="right-panel" class="panel-hidden" role="complementary" aria-label="Side panel">
       <div id="panel-header">
         <h3 id="panel-title"></h3>
         <button class="panel-close" id="btn-close-panel">

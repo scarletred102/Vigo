@@ -200,6 +200,7 @@ body {
   font-weight: 700;
   font-size: 14px;
   background: var(--accent-gradient);
+  background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: 0.5px;
@@ -393,7 +394,22 @@ body {
 
 .tab-close:hover {
   background: rgba(255, 60, 60, 0.2);
-  color: #ff6b6b;
+  color: var(--error);
+}
+
+/* Drag-and-drop reorder states */
+.tab-item.dragging {
+  opacity: 0.4;
+  border: 1px dashed var(--accent);
+  background: rgba(167, 139, 250, 0.05);
+}
+
+.tab-item[draggable="true"] {
+  cursor: grab;
+}
+
+.tab-item[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 /* Tab group header */
@@ -691,6 +707,7 @@ body {
   font-size: 72px;
   font-weight: 700;
   background: var(--accent-gradient);
+  background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 28px;
@@ -844,6 +861,7 @@ body {
   font-size: 14px;
   font-weight: 600;
   background: var(--accent-gradient);
+  background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -1626,6 +1644,7 @@ body {
   font-size: 36px;
   font-weight: 800;
   background: var(--accent-gradient);
+  background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   line-height: 1.1;
@@ -2496,6 +2515,7 @@ body {
 .vault-slider {
   width: 100%;
   accent-color: var(--accent);
+  appearance: none;
   -webkit-appearance: none;
   height: 4px;
   border-radius: 2px;

@@ -299,6 +299,33 @@ const TabManager = (() => {
         list.querySelectorAll('.tab-item').forEach(el => {
             el.addEventListener('click', () => setActiveTab(el.dataset.id));
             el.addEventListener('contextmenu', (e) => showTabContextMenu(e, el.dataset.id));
+
+            // ─── Drag-and-drop reorder ───
+            el.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', el.dataset.id);
+                el.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            el.addEventListener('dragend', () => el.classList.remove('dragging'));
+            el.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const dragging = list.querySelector('.dragging');
+                if (!dragging || dragging === el) return;
+                const rect = el.getBoundingClientRect();
+                const midY = rect.top + rect.height / 2;
+                if (e.clientY < midY) {
+                    el.parentNode.insertBefore(dragging, el);
+                } else {
+                    el.parentNode.insertBefore(dragging, el.nextSibling);
+                }
+            });
+            el.addEventListener('drop', (e) => {
+                e.preventDefault();
+                // Sync the DOM order back to the tabs array
+                const newOrder = Array.from(list.querySelectorAll('.tab-item')).map(t => t.dataset.id);
+                tabs.sort((a, b) => newOrder.indexOf(a.id) - newOrder.indexOf(b.id));
+            });
         });
         list.querySelectorAll('.tab-close').forEach(el => {
             el.addEventListener('click', (e) => {
@@ -317,12 +344,12 @@ const TabManager = (() => {
         const memState = (typeof MemoryManager !== 'undefined') ? MemoryManager.getStateIcon(tab.id) : null;
         const stateIndicator = memState ? `<span class="tab-state-icon" title="Tab is suspended">${memState}</span>` : '';
         return `
-      <div class="tab-item ${isActive ? 'active' : ''} ${tab.loading ? 'loading' : ''}" data-id="${tab.id}">
+      <div class="tab-item ${isActive ? 'active' : ''} ${tab.loading ? 'loading' : ''}" data-id="${tab.id}" draggable="true" role="tab" aria-selected="${isActive}" aria-label="${escapeHtml(tab.title)}">
         ${faviconHtml}
         <span class="tab-favicon-placeholder" ${tab.favicon ? 'style="display:none"' : ''}>${letter}</span>
         <span class="tab-title">${escapeHtml(tab.title)}</span>
         ${stateIndicator}
-        <button class="tab-close" title="Close tab">
+        <button class="tab-close" title="Close tab" aria-label="Close ${escapeHtml(tab.title)}">
           <svg width="10" height="10" viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>
       </div>`;

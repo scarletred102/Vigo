@@ -140,7 +140,6 @@ const ProfileImport = require('./features/profile-import');
 const SyncEngine = require('./features/sync-engine');
 const syncEngine = new SyncEngine(syncDir, { bookmarksPath, historyPath, settingsPath });
 
-const ExtensionManager = require('./features/extension-manager');
 let extManager;
 
 function ensureFile(fp, defaultData = '[]') {
@@ -266,12 +265,24 @@ async function createWindow() {
     }
   });
 
-  mainWindow.loadFile('index.html');
+  // Load onboarding or main browser
+  const settings = readJSON(settingsPath, {});
+  if (!settings.onboardingComplete) {
+    mainWindow.loadFile('onboarding.html');
+  } else {
+    mainWindow.loadFile('index.html');
+  }
+
   Menu.setApplicationMenu(null);
   setupAdBlocker();
 
+  const ExtensionManager = require('./features/extension-manager');
   extManager = new ExtensionManager(userDataPath);
   await extManager.init();
+
+  ipcMain.on('onboarding-finish', () => {
+    mainWindow.loadFile('index.html');
+  });
 
   // ─── Selective User Agent for Streaming Quality ──────────────────────────
   // Only spoof Edge UA for services that genuinely serve better quality to Edge
@@ -821,4 +832,47 @@ ipcMain.handle('sync-import', async (e, masterPassword) => {
   } catch (err) {
     return { success: false, error: err.message };
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTO-UPDATER (electron-updater)
+// Polls GitHub Releases for new versions, downloads in background, prompts user
+// ═══════════════════════════════════════════════════════════════════════════════
+function setupAutoUpdater() {
+  try {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('update-available', (info) => {
+      console.log('[Updater] Update available:', info.version);
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('[Updater] Update downloaded:', info.version);
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        buttons: ['Restart Now', 'Later'],
+        defaultId: 0,
+        title: 'Vigo Update Available',
+        message: `Version ${info.version} has been downloaded. Restart to install?`
+      }).then(({ response }) => {
+        if (response === 0) autoUpdater.quitAndInstall();
+      });
+    });
+
+    autoUpdater.on('error', (err) => {
+      console.log('[Updater] Auto-update error (expected in dev):', err.message);
+    });
+
+    // Check for updates 5 seconds after launch
+    setTimeout(() => autoUpdater.checkForUpdates().catch(() => { }), 5000);
+  } catch (err) {
+    console.log('[Updater] electron-updater not available:', err.message);
+  }
+}
+
+app.whenReady().then(() => {
+  // Start auto-updater after app is fully ready
+  setupAutoUpdater();
 });
