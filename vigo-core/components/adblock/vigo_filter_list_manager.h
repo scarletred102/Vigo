@@ -4,6 +4,7 @@
 #ifndef VIGO_COMPONENTS_ADBLOCK_VIGO_FILTER_LIST_MANAGER_H_
 #define VIGO_COMPONENTS_ADBLOCK_VIGO_FILTER_LIST_MANAGER_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,12 @@
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
 #include "base/time/time.h"
+#include "base/timer/timer.h"
+
+namespace network {
+class SharedURLLoaderFactory;
+class SimpleURLLoader;
+}  // namespace network
 
 namespace vigo {
 namespace adblock {
@@ -70,6 +77,11 @@ class VigoFilterListManager {
   // Initialise with the user data directory for cache storage.
   void Init(const base::FilePath& user_data_dir);
 
+  // Set the URL loader factory for downloading filter lists.
+  // Must be called before UpdateAllLists() can succeed.
+  void SetURLLoaderFactory(
+      scoped_refptr<network::SharedURLLoaderFactory> factory);
+
   // Returns all registered filter lists.
   const std::vector<FilterListInfo>& GetFilterLists() const;
 
@@ -107,12 +119,26 @@ class VigoFilterListManager {
                         const std::string& content,
                         bool success);
 
+  // Called when SimpleURLLoader finishes downloading a list.
+  void OnDownloadComplete(const std::string& list_id,
+                          const base::FilePath& cache_path,
+                          std::unique_ptr<std::string> response_body);
+
   // Called when the auto-update timer fires.
   void OnAutoUpdateTimer();
 
   base::FilePath cache_dir_;
   std::vector<FilterListInfo> filter_lists_;
   bool auto_update_active_ = false;
+
+  // URL loader factory for downloading filter lists (nullable until set).
+  scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory_;
+
+  // Active SimpleURLLoaders (one per in-flight download).
+  std::vector<std::unique_ptr<network::SimpleURLLoader>> active_loaders_;
+
+  // Auto-update repeating timer.
+  base::RepeatingTimer auto_update_timer_;
 
   // Pending update callback.
   FilterListUpdateCallback pending_update_callback_;

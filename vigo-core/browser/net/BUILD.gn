@@ -20,7 +20,9 @@ source_set("vigo_net") {
       "vigo_adblock_throttle.cc",
       "vigo_adblock_throttle.h",
     ]
-    deps += [ "//vigo/components/adblock" ]
+    deps += [
+      "//vigo/components/adblock",
+    ]
   }
 
   if (vigo_enable_privacy_engine) {

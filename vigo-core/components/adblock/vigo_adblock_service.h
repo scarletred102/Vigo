@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "base/files/file_path.h"
 #include "base/sequence_checker.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "url/gurl.h"
@@ -45,6 +46,20 @@ class VigoAdblockService : public KeyedService {
   // Force an immediate filter list update from upstream sources.
   void UpdateFilterLists();
 
+  // Load filter list rules from a raw text string into the Rust engine.
+  // Typically called after reading a cached filter list file from disk.
+  bool LoadRules(const std::string& rules_text);
+
+  // Takes ownership of the filter list manager. Called by the factory
+  // after construction.
+  void SetFilterListManager(
+      std::unique_ptr<class VigoFilterListManager> manager);
+
+  // Returns the filter list manager (may be nullptr before factory init).
+  VigoFilterListManager* filter_list_manager() const {
+    return filter_list_manager_.get();
+  }
+
   // KeyedService:
   void Shutdown() override;
 
@@ -54,6 +69,9 @@ class VigoAdblockService : public KeyedService {
   void* engine_handle_ = nullptr;
 
   bool is_ready_ = false;
+
+  // Manages filter list downloading, caching, and auto-update.
+  std::unique_ptr<class VigoFilterListManager> filter_list_manager_;
 
   SEQUENCE_CHECKER(sequence_checker_);
 };

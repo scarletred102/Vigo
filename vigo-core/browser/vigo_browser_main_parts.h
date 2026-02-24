@@ -4,9 +4,17 @@
 #ifndef VIGO_BROWSER_VIGO_BROWSER_MAIN_PARTS_H_
 #define VIGO_BROWSER_VIGO_BROWSER_MAIN_PARTS_H_
 
+#include <memory>
+
 #include "chrome/browser/chrome_browser_main.h"
 
 namespace vigo {
+
+namespace privacy {
+class VigoDoHConfig;
+class VigoFingerprintProtection;
+class VigoPrivacyEngine;
+}  // namespace privacy
 
 // VigoBrowserMainParts extends Chrome's browser main parts to inject
 // Vigo-specific initialisation: privacy engine, adblock, media
@@ -26,9 +34,18 @@ class VigoBrowserMainParts : public ChromeBrowserMainParts {
   void PreMainMessageLoopRun() override;
   void PostMainMessageLoopRun() override;
 
+  // Accessors for subsystem instances (non-owning, may be nullptr).
+  privacy::VigoFingerprintProtection* fingerprint_protection() const {
+    return fingerprint_protection_.get();
+  }
+  privacy::VigoDoHConfig* doh_config() const { return doh_config_.get(); }
+  privacy::VigoPrivacyEngine* privacy_engine() const {
+    return privacy_engine_.get();
+  }
+
  private:
-  // Initialise the Rust adblock engine filter lists.
-  void InitAdblockEngine();
+  // Initialise the Rust adblock engine via the keyed service factory.
+  void InitAdblockEngine(Profile* profile);
 
   // Start the privacy engine (DoH, anti-fingerprinting, tracker param strip).
   void InitPrivacyEngine();
@@ -38,6 +55,12 @@ class VigoBrowserMainParts : public ChromeBrowserMainParts {
 
   // Connect to the self-hosted sync server (if configured).
   void InitSyncClient();
+
+  // Owned subsystem instances.
+  std::unique_ptr<privacy::VigoPrivacyEngine> privacy_engine_;
+  std::unique_ptr<privacy::VigoFingerprintProtection>
+      fingerprint_protection_;
+  std::unique_ptr<privacy::VigoDoHConfig> doh_config_;
 };
 
 }  // namespace vigo

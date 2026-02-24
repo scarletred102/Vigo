@@ -5,6 +5,10 @@ import("//vigo/build/config/vigo_buildflags.gni")
 
 source_set("privacy_engine") {
   sources = [
+    "vigo_doh_config.cc",
+    "vigo_doh_config.h",
+    "vigo_fingerprint_protection.cc",
+    "vigo_fingerprint_protection.h",
     "vigo_privacy_engine.cc",
     "vigo_privacy_engine.h",
   ]
@@ -21,7 +25,11 @@ source_set("privacy_engine") {
 
 source_set("unit_tests") {
   testonly = true
-  sources = [ "vigo_privacy_engine_unittest.cc" ]
+  sources = [
+    "vigo_doh_config_unittest.cc",
+    "vigo_fingerprint_protection_unittest.cc",
+    "vigo_privacy_engine_unittest.cc",
+  ]
 
   deps = [
     ":privacy_engine",

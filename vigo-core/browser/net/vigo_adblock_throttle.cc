@@ -11,6 +11,7 @@
 
 #if BUILDFLAG(VIGO_ENABLE_ADBLOCK)
 #include "vigo/components/adblock/vigo_adblock_service.h"
+#include "vigo/components/adblock/vigo_adblock_service_factory.h"
 #endif
 
 namespace vigo {
@@ -65,17 +66,21 @@ bool VigoAdblockThrottle::ShouldBlockRequest(
   if (!browser_context_)
     return false;
 
-  // TODO(Phase 1.3): Retrieve VigoAdblockService from BrowserContext
-  // keyed service factory. For now, use the FFI bridge directly.
-  // auto* service = VigoAdblockServiceFactory::GetForBrowserContext(
-  //     browser_context_);
-  // if (!service || !service->IsReady())
-  //   return false;
-  // return service->ShouldBlock(url, source_url);
+  // Retrieve the per-profile VigoAdblockService via the keyed service
+  // factory. The factory creates and initialises the service (including
+  // the Rust engine + filter lists) on first access.
+  auto* service =
+      adblock::VigoAdblockServiceFactory::GetForBrowserContext(
+          browser_context_);
+  if (service && service->IsReady()) {
+    return service->ShouldBlock(url, source_url);
+  }
 
-  // Stub — blocked domains are hardcoded until factory wiring is done.
-  // This list will be replaced by the Rust engine once the factory exists.
-  static const char* const kHardcodedBlockDomains[] = {
+  // Fallback: if the Rust engine isn't ready yet (first-run before filter
+  // list download completes), block the most egregious ad/tracker domains
+  // with a hardcoded list. This ensures ads are blocked immediately on
+  // first launch.
+  static const char* const kFallbackBlockDomains[] = {
       "doubleclick.net",
       "googlesyndication.com",
       "googleadservices.com",
@@ -89,7 +94,7 @@ bool VigoAdblockThrottle::ShouldBlockRequest(
   };
 
   const std::string host = url.host();
-  for (const char* domain : kHardcodedBlockDomains) {
+  for (const char* domain : kFallbackBlockDomains) {
     if (host == domain || host.ends_with(std::string(".") + domain)) {
       return true;
     }

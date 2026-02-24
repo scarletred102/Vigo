@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright (c) 2025 Vigo Browser. All rights reserved.
+  Proprietary and confidential. Unauthorized copying prohibited.
+-->
+<grit latest_public_release="0" current_release="1"
+      output_all_resource_defines="false">
+  <outputs>
+    <output filename="grit/vigo_webui_resources.h" type="rc_header">
+      <emit emit_type='prepend'></emit>
+    </output>
+    <output filename="vigo_webui_resources.pak" type="data_package" />
+  </outputs>
+  <release seq="1">
+    <includes>
+      <!-- New Tab Page -->
+      <include name="IDR_VIGO_NEW_TAB_PAGE_HTML"
+               file="new_tab_page.html"
+               type="BINDATA" />
+      <include name="IDR_VIGO_NEW_TAB_PAGE_CSS"
+               file="new_tab_page.css"
+               type="BINDATA" />
+      <include name="IDR_VIGO_NEW_TAB_PAGE_JS"
+               file="new_tab_page.js"
+               type="BINDATA" />
+
+      <!-- Settings Page -->
+      <include name="IDR_VIGO_SETTINGS_HTML"
+               file="settings.html"
+               type="BINDATA" />
+      <include name="IDR_VIGO_SETTINGS_CSS"
+               file="settings.css"
+               type="BINDATA" />
+      <include name="IDR_VIGO_SETTINGS_JS"
+               file="settings.js"
+               type="BINDATA" />
+    </includes>
+  </release>
+</grit>

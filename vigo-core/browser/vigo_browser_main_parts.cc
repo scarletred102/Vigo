@@ -8,9 +8,12 @@
 
 #if BUILDFLAG(VIGO_ENABLE_ADBLOCK)
 #include "vigo/components/adblock/vigo_adblock_service.h"
+#include "vigo/components/adblock/vigo_adblock_service_factory.h"
 #endif
 
 #if BUILDFLAG(VIGO_ENABLE_PRIVACY_ENGINE)
+#include "vigo/components/privacy_engine/vigo_doh_config.h"
+#include "vigo/components/privacy_engine/vigo_fingerprint_protection.h"
 #include "vigo/components/privacy_engine/vigo_privacy_engine.h"
 #endif
 
@@ -45,7 +48,7 @@ void VigoBrowserMainParts::PostProfileInit(Profile* profile,
   ChromeBrowserMainParts::PostProfileInit(profile, is_initial_profile);
 
   if (is_initial_profile) {
-    InitAdblockEngine();
+    InitAdblockEngine(profile);
     InitPrivacyEngine();
   }
 }
@@ -64,17 +67,54 @@ void VigoBrowserMainParts::PostMainMessageLoopRun() {
   ChromeBrowserMainParts::PostMainMessageLoopRun();
 }
 
-void VigoBrowserMainParts::InitAdblockEngine() {
+void VigoBrowserMainParts::InitAdblockEngine(Profile* profile) {
 #if BUILDFLAG(VIGO_ENABLE_ADBLOCK)
   VLOG(1) << "VigoBrowserMainParts: Initialising adblock engine";
-  // TODO(Phase 1.3): Wire up Rust adblock engine via FFI.
+
+  // Force-create the adblock service for the initial profile. This
+  // ensures the Rust engine is loaded and filter lists are cached before
+  // the first page load. Subsequent profiles will lazily create their
+  // services via the factory when the first request arrives.
+  auto* service =
+      adblock::VigoAdblockServiceFactory::GetForBrowserContext(profile);
+  if (service && service->IsReady()) {
+    VLOG(1) << "VigoBrowserMainParts: Adblock engine ready for profile";
+  } else {
+    LOG(WARNING) << "VigoBrowserMainParts: Adblock engine not ready yet "
+                 << "(filter lists may still be downloading)";
+  }
 #endif
 }
 
 void VigoBrowserMainParts::InitPrivacyEngine() {
 #if BUILDFLAG(VIGO_ENABLE_PRIVACY_ENGINE)
   VLOG(1) << "VigoBrowserMainParts: Initialising privacy engine";
-  // TODO(Phase 1.4): Initialise DoH, anti-fingerprint, tracking strip.
+
+  // Initialise the privacy engine with default configuration.
+  privacy::PrivacyConfig config;
+  privacy_engine_ = std::make_unique<privacy::VigoPrivacyEngine>();
+  privacy_engine_->Init(config);
+
+  // Initialise fingerprint protection (generates per-session noise seed).
+  fingerprint_protection_ =
+      std::make_unique<privacy::VigoFingerprintProtection>();
+  VLOG(1) << "VigoBrowserMainParts: Fingerprint protection active "
+          << "(session seed generated)";
+
+  // Initialise DoH configuration.
+  doh_config_ = std::make_unique<privacy::VigoDoHConfig>();
+  if (doh_config_->IsEnabled()) {
+    VLOG(1) << "VigoBrowserMainParts: DoH enabled with provider "
+            << doh_config_->GetProviderUrl()
+            << " (mode="
+            << (doh_config_->GetMode() == privacy::VigoDoHConfig::Mode::kSecure
+                    ? "Secure"
+                    : "Automatic")
+            << ")";
+    // TODO(Phase 1.4): Apply DoH config to the network service via
+    // chrome::prefs::kDnsOverHttpsMode and kDnsOverHttpsTemplates.
+    // This requires hooking into PrefService at profile init time.
+  }
 #endif
 }
 

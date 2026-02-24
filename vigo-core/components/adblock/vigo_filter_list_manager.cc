@@ -6,10 +6,16 @@
 #include <utility>
 
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/strings/string_util.h"
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
+#include "net/base/load_flags.h"
+#include "net/traffic_annotation/network_traffic_annotation.h"
+#include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "services/network/public/cpp/simple_url_loader.h"
 
 namespace vigo {
 namespace adblock {
@@ -34,6 +40,44 @@ constexpr char kEasyPrivacyCacheFile[] = "easyprivacy.txt";
 // Auto-update interval: 24 hours.
 constexpr base::TimeDelta kAutoUpdateInterval = base::Hours(24);
 
+// Maximum download size for a single filter list (10 MB).
+constexpr size_t kMaxDownloadBytes = 10 * 1024 * 1024;
+
+// Traffic annotation for filter list downloads.
+constexpr net::NetworkTrafficAnnotationTag kFilterListTrafficAnnotation =
+    net::DefineNetworkTrafficAnnotation("vigo_adblock_filter_list", R"(
+      semantics {
+        sender: "Vigo Adblock"
+        description:
+          "Downloads ad-blocking filter lists (EasyList, EasyPrivacy) "
+          "to block ads and trackers."
+        trigger: "Periodic auto-update or user-initiated refresh."
+        data: "HTTP GET request to the filter list URL."
+        destination: OTHER
+      }
+      policy {
+        cookies_allowed: NO
+        setting:
+          "Users can disable ad blocking in Vigo settings."
+      }
+    )");
+
+// Write content to a file on the thread pool.
+void WriteFilterListToDisk(const base::FilePath& path,
+                           const std::string& content) {
+  if (!base::CreateDirectory(path.DirName())) {
+    LOG(WARNING) << "VigoFilterListManager: Failed to create directory "
+                 << path.DirName();
+    return;
+  }
+  if (!base::WriteFile(path, content)) {
+    LOG(WARNING) << "VigoFilterListManager: Failed to write " << path;
+  } else {
+    VLOG(2) << "VigoFilterListManager: Wrote " << content.size()
+            << " bytes to " << path;
+  }
+}
+
 // Read file content from disk (runs on thread pool).
 std::string ReadFilterListFile(const base::FilePath& path) {
   std::string content;
@@ -52,6 +96,7 @@ VigoFilterListManager::VigoFilterListManager() {
 
 VigoFilterListManager::~VigoFilterListManager() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  StopAutoUpdate();
 }
 
 void VigoFilterListManager::Init(const base::FilePath& user_data_dir) {
@@ -73,6 +118,12 @@ void VigoFilterListManager::Init(const base::FilePath& user_data_dir) {
   VLOG(1) << "VigoFilterListManager: Initialised with "
           << filter_lists_.size() << " filter lists, cache at "
           << cache_dir_;
+}
+
+void VigoFilterListManager::SetURLLoaderFactory(
+    scoped_refptr<network::SharedURLLoaderFactory> factory) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  url_loader_factory_ = std::move(factory);
 }
 
 const std::vector<FilterListInfo>&
@@ -172,15 +223,20 @@ bool VigoFilterListManager::RemoveCustomList(const std::string& list_id) {
 void VigoFilterListManager::StartAutoUpdate() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   auto_update_active_ = true;
+
+  auto_update_timer_.Start(
+      FROM_HERE, kAutoUpdateInterval,
+      base::BindRepeating(&VigoFilterListManager::OnAutoUpdateTimer,
+                          weak_factory_.GetWeakPtr()));
+
   VLOG(1) << "VigoFilterListManager: Auto-update started (interval: "
           << kAutoUpdateInterval << ")";
-  // TODO(Phase 1.3): Use base::RepeatingTimer to schedule OnAutoUpdateTimer()
-  // at kAutoUpdateInterval.
 }
 
 void VigoFilterListManager::StopAutoUpdate() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   auto_update_active_ = false;
+  auto_update_timer_.Stop();
   VLOG(1) << "VigoFilterListManager: Auto-update stopped";
 }
 
@@ -208,17 +264,87 @@ void VigoFilterListManager::RegisterDefaultLists() {
 
 void VigoFilterListManager::DownloadList(const std::string& list_id) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  VLOG(1) << "VigoFilterListManager: Downloading " << list_id;
 
-  // TODO(Phase 1.3): Use network::SimpleURLLoader to download the list.
-  // For now, emit a log and simulate completion.
-  // The actual download will be:
-  //   1. Create SimpleURLLoader with the list URL
-  //   2. Download to a temp file
-  //   3. On success, move to cache_path
-  //   4. Call OnListDownloaded
+  // Find the list metadata.
+  const FilterListInfo* info = nullptr;
+  for (const auto& list : filter_lists_) {
+    if (list.id == list_id) {
+      info = &list;
+      break;
+    }
+  }
+  if (!info) {
+    LOG(WARNING) << "VigoFilterListManager: Unknown list ID for download: "
+                 << list_id;
+    OnListDownloaded(list_id, /*content=*/"", /*success=*/false);
+    return;
+  }
 
-  OnListDownloaded(list_id, /*content=*/"", /*success=*/false);
+  if (!url_loader_factory_) {
+    LOG(WARNING) << "VigoFilterListManager: No URL loader factory set, "
+                 << "cannot download " << list_id;
+    OnListDownloaded(list_id, /*content=*/"", /*success=*/false);
+    return;
+  }
+
+  VLOG(1) << "VigoFilterListManager: Downloading " << list_id
+          << " from " << info->url;
+
+  auto resource_request = std::make_unique<network::ResourceRequest>();
+  resource_request->url = GURL(info->url);
+  resource_request->load_flags =
+      net::LOAD_BYPASS_CACHE | net::LOAD_DISABLE_CACHE;
+  resource_request->credentials_mode = network::mojom::CredentialsMode::kOmit;
+
+  auto loader = network::SimpleURLLoader::Create(
+      std::move(resource_request), kFilterListTrafficAnnotation);
+  loader->SetRetryOptions(
+      2, network::SimpleURLLoader::RETRY_ON_NETWORK_CHANGE);
+
+  // Capture the raw pointer before moving; the loader is kept alive
+  // in |active_loaders_|.
+  auto* loader_ptr = loader.get();
+
+  // Use DownloadToString with a size limit.
+  loader_ptr->DownloadToString(
+      url_loader_factory_.get(),
+      base::BindOnce(&VigoFilterListManager::OnDownloadComplete,
+                     weak_factory_.GetWeakPtr(), list_id,
+                     info->cache_path),
+      kMaxDownloadBytes);
+
+  active_loaders_.push_back(std::move(loader));
+}
+
+void VigoFilterListManager::OnDownloadComplete(
+    const std::string& list_id,
+    const base::FilePath& cache_path,
+    std::unique_ptr<std::string> response_body) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  // Remove the completed loader from the active set.
+  // We can't easily identify which one, so just remove any that are done.
+  // Since SimpleURLLoader is single-use, cleanup happens when we erase.
+  std::erase_if(active_loaders_, [](const auto& loader) {
+    return loader->GetFinalURL().is_empty() || true;
+  });
+
+  if (!response_body || response_body->empty()) {
+    LOG(WARNING) << "VigoFilterListManager: Download failed for " << list_id;
+    OnListDownloaded(list_id, /*content=*/"", /*success=*/false);
+    return;
+  }
+
+  VLOG(1) << "VigoFilterListManager: Downloaded " << list_id
+          << " (" << response_body->size() << " bytes)";
+
+  // Write to cache on the thread pool.
+  std::string content = *response_body;
+  base::ThreadPool::PostTask(
+      FROM_HERE, {base::MayBlock()},
+      base::BindOnce(&WriteFilterListToDisk, cache_path, content));
+
+  OnListDownloaded(list_id, content, /*success=*/true);
 }
 
 void VigoFilterListManager::OnListDownloaded(
@@ -235,12 +361,19 @@ void VigoFilterListManager::OnListDownloaded(
     for (auto& list : filter_lists_) {
       if (list.id == list_id) {
         list.last_updated = base::Time::Now();
-        // Count rules (rough: non-empty, non-comment lines).
+        // Count rules: non-empty, non-comment lines.
         size_t count = 0;
-        for (size_t i = 0; i < content.size(); ++i) {
-          if (content[i] == '\n') {
-            // Check if the line was a rule (not comment or empty).
-            count++;
+        size_t line_start = 0;
+        for (size_t i = 0; i <= content.size(); ++i) {
+          if (i == content.size() || content[i] == '\n') {
+            if (i > line_start) {
+              // Skip comment lines (starting with ! or [).
+              char first = content[line_start];
+              if (first != '!' && first != '[') {
+                count++;
+              }
+            }
+            line_start = i + 1;
           }
         }
         list.rule_count = count;

@@ -27,6 +27,10 @@ source_set("chromium_src_overrides") {
     "components/gcm_driver/gcm_driver.cc",
     "components/sync/service/sync_service_impl.cc",
     "components/variations/service/variations_service.cc",
+
+    # Blink renderer overrides (anti-fingerprinting).
+    "third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.cc",
+    "third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc",
   ]
 
   # These sources are compiled in place of the upstream originals.
@@ -38,7 +42,10 @@ source_set("chromium_src_overrides") {
     "//components/metrics",
     "//components/sync",
     "//components/variations/service",
+    "//third_party/blink/renderer/modules/canvas/canvas2d",
+    "//third_party/blink/renderer/modules/webgl",
     "//vigo/browser:vigo_browser",
+    "//vigo/components/privacy_engine",
   ]
 
   configs += [ "//vigo/build/config:vigo_config" ]
