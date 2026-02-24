@@ -1,0 +1,11 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+import("//vigo/build/config/vigo_buildflags.gni")
+
+# Aggregate target for all Vigo browser UI components.
+group("ui") {
+  deps = [
+    "//vigo/browser/ui/webui",
+  ]
+}

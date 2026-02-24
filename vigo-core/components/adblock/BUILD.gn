@@ -8,6 +8,8 @@ source_set("adblock") {
     "ffi/vigo_adblock_ffi.h",
     "vigo_adblock_service.cc",
     "vigo_adblock_service.h",
+    "vigo_filter_list_manager.cc",
+    "vigo_filter_list_manager.h",
   ]
 
   deps = [
@@ -23,10 +25,14 @@ source_set("adblock") {
 
 source_set("unit_tests") {
   testonly = true
-  sources = [ "vigo_adblock_service_unittest.cc" ]
+  sources = [
+    "vigo_adblock_service_unittest.cc",
+    "vigo_filter_list_manager_unittest.cc",
+  ]
 
   deps = [
     ":adblock",
+    "//base/test:test_support",
     "//testing/gtest",
     "//url",
   ]

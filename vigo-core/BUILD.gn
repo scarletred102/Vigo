@@ -11,6 +11,7 @@ group("vigo") {
   deps = [
     "//vigo/app:vigo_branding",
     "//vigo/browser:vigo_browser",
+    "//vigo/chromium_src:chromium_src_overrides",
     "//vigo/components:vigo_components",
   ]
 }
@@ -18,6 +19,7 @@ group("vigo") {
 group("vigo_tests") {
   testonly = true
   deps = [
+    "//vigo/browser/net:unit_tests",
     "//vigo/components:unit_tests",
     "//vigo/test:vigo_test_support",
   ]

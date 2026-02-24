@@ -7,12 +7,18 @@ source_set("vigo_browser") {
   sources = [
     "vigo_browser_main_parts.cc",
     "vigo_browser_main_parts.h",
+    "vigo_content_browser_client.cc",
+    "vigo_content_browser_client.h",
   ]
 
   deps = [
     "//base",
     "//chrome/browser",
     "//content/public/browser",
+    "//third_party/blink/public/common",
+    "//vigo/app:vigo_branding",
+    "//vigo/browser/net:vigo_net",
+    "//vigo/browser/ui",
     "//vigo/build/config:vigo_buildflags",
   ]
 

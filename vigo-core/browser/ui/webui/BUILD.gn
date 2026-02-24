@@ -1,0 +1,38 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+import("//vigo/build/config/vigo_buildflags.gni")
+
+source_set("webui") {
+  sources = [
+    "vigo_new_tab_page_ui.cc",
+    "vigo_new_tab_page_ui.h",
+    "vigo_settings_ui.cc",
+    "vigo_settings_ui.h",
+    "vigo_web_ui_controller_factory.cc",
+    "vigo_web_ui_controller_factory.h",
+  ]
+
+  deps = [
+    "//base",
+    "//content/public/browser",
+    "//url",
+    "//vigo/app:vigo_branding",
+    "//vigo/build/config:vigo_buildflags",
+  ]
+
+  # WebUI resources (HTML, CSS, JS) are bundled via grit.
+  # TODO(Phase 1.2): Add grit resource dependency:
+  #   deps += [ ":resources" ]
+
+  configs += [ "//vigo/build/config:vigo_config" ]
+}
+
+# TODO(Phase 1.2): Add grit target to pack HTML/CSS/JS into resources.
+# grit("resources") {
+#   source = "resources/vigo_webui_resources.grd"
+#   outputs = [
+#     "grit/vigo_webui_resources.h",
+#     "vigo_webui_resources.pak",
+#   ]
+# }
