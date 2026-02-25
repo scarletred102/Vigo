@@ -131,12 +131,71 @@
   }
 
   function sendSetting(key, value) {
-    // TODO(Phase 1.2): Replace with Mojo binding to VigoSettingsHandler.
-    // For now, log to console and use chrome.send() if available.
     console.log('Setting changed:', key, '=', value);
     if (typeof chrome !== 'undefined' && chrome.send) {
       chrome.send('setSetting', [key, value]);
     }
+  }
+
+  // ─── Load current settings from browser process ──────────────
+
+  function loadCurrentSettings() {
+    if (typeof cr === 'undefined' || !cr.sendWithPromise) return;
+
+    cr.sendWithPromise('getSettings').then(function(settings) {
+      if (!settings) return;
+
+      // Apply boolean toggles.
+      var toggles = [
+        ['doh-toggle', 'privacy.doh_enabled'],
+        ['https-first-toggle', 'privacy.https_first_mode'],
+        ['3p-cookies-toggle', 'privacy.block_third_party_cookies'],
+        ['strip-tracking-toggle', 'privacy.strip_tracking_params'],
+        ['canvas-noise-toggle', 'privacy.canvas_noise'],
+        ['webgl-mask-toggle', 'privacy.webgl_masking'],
+        ['audio-resist-toggle', 'privacy.audio_context_resistance'],
+        ['font-restrict-toggle', 'privacy.font_enumeration_restriction'],
+        ['adblock-toggle', 'adblock.enabled'],
+        ['hw-decode-toggle', 'media.hw_decode'],
+        ['jxl-toggle', 'media.jxl_enabled'],
+        ['search-suggestions-toggle', 'search.suggestions_enabled'],
+        ['sync-bookmarks', 'sync.bookmarks'],
+        ['sync-passwords', 'sync.passwords'],
+        ['sync-history', 'sync.history'],
+        ['sync-settings', 'sync.settings'],
+        ['sync-tabs', 'sync.tabs'],
+      ];
+
+      toggles.forEach(function(pair) {
+        var el = document.getElementById(pair[0]);
+        if (el && settings[pair[1]] !== undefined) {
+          el.checked = settings[pair[1]];
+        }
+      });
+
+      // Apply select menus.
+      var selects = [
+        ['doh-provider', 'privacy.doh_provider_url'],
+        ['abr-mode', 'media.abr_mode'],
+        ['theme-select', 'appearance.theme'],
+        ['search-engine-select', 'search.default_engine'],
+      ];
+
+      selects.forEach(function(pair) {
+        var el = document.getElementById(pair[0]);
+        if (el && settings[pair[1]] !== undefined) {
+          el.value = settings[pair[1]];
+        }
+      });
+
+      // Sync server URL.
+      var syncInput = document.getElementById('sync-server-url');
+      if (syncInput && settings['sync.server_url'] !== undefined) {
+        syncInput.value = settings['sync.server_url'];
+      }
+    }).catch(function(err) {
+      console.warn('Failed to load settings:', err);
+    });
   }
 
   // ─── Initialisation ─────────────────────────────────────────
@@ -146,7 +205,7 @@
     setupSettingHandlers();
 
     // Load current settings from browser process.
-    // TODO(Phase 1.2): Request settings via Mojo and populate UI.
+    loadCurrentSettings();
   }
 
   if (document.readyState === 'loading') {

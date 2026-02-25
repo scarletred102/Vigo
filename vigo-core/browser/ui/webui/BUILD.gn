@@ -16,6 +16,10 @@ source_set("webui") {
   sources = [
     "vigo_new_tab_page_ui.cc",
     "vigo_new_tab_page_ui.h",
+    "vigo_ntp_handler.cc",
+    "vigo_ntp_handler.h",
+    "vigo_settings_handler.cc",
+    "vigo_settings_handler.h",
     "vigo_settings_ui.cc",
     "vigo_settings_ui.h",
     "vigo_web_ui_controller_factory.cc",
@@ -29,7 +33,22 @@ source_set("webui") {
     "//url",
     "//vigo/app:vigo_branding",
     "//vigo/build/config:vigo_buildflags",
+    "//vigo/components/privacy_engine",
   ]
 
+  if (vigo_enable_media_orchestration) {
+    deps += [ "//vigo/components/media_orchestration" ]
+  }
+
   configs += [ "//vigo/build/config:vigo_config" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "vigo_webui_handlers_unittest.cc" ]
+
+  deps = [
+    ":webui",
+    "//testing/gtest",
+  ]
 }

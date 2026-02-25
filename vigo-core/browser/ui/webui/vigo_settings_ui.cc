@@ -6,6 +6,7 @@
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "vigo/app/vigo_branding.h"
+#include "vigo/browser/ui/webui/vigo_settings_handler.h"
 #include "vigo/build/config/vigo_buildflags.h"
 
 namespace vigo {
@@ -48,6 +49,9 @@ void CreateAndAddDataSource(content::WebUI* web_ui) {
 VigoSettingsUI::VigoSettingsUI(content::WebUI* web_ui)
     : content::WebUIController(web_ui) {
   CreateAndAddDataSource(web_ui);
+
+  // Register the settings message handler for all setting read/write.
+  web_ui->AddMessageHandler(std::make_unique<VigoSettingsHandler>());
 }
 
 VigoSettingsUI::~VigoSettingsUI() = default;

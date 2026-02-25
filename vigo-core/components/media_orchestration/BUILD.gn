@@ -5,8 +5,14 @@ import("//vigo/build/config/vigo_buildflags.gni")
 
 source_set("media_orchestration") {
   sources = [
+    "vigo_hw_decode_controller.cc",
+    "vigo_hw_decode_controller.h",
     "vigo_media_orchestration_layer.cc",
     "vigo_media_orchestration_layer.h",
+    "vigo_media_pipeline_integration.cc",
+    "vigo_media_pipeline_integration.h",
+    "vigo_pip_controller.cc",
+    "vigo_pip_controller.h",
   ]
 
   deps = [
@@ -19,7 +25,12 @@ source_set("media_orchestration") {
 
 source_set("unit_tests") {
   testonly = true
-  sources = [ "vigo_media_orchestration_layer_unittest.cc" ]
+  sources = [
+    "vigo_hw_decode_controller_unittest.cc",
+    "vigo_media_orchestration_layer_unittest.cc",
+    "vigo_media_pipeline_integration_unittest.cc",
+    "vigo_pip_controller_unittest.cc",
+  ]
 
   deps = [
     ":media_orchestration",

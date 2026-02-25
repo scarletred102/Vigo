@@ -18,6 +18,7 @@ source_set("chromium_src_overrides") {
     "chrome/browser/chrome_content_browser_client.cc",
     "chrome/browser/enterprise/reporting/chrome_reporting_client.cc",
     "chrome/browser/metrics/chrome_metrics_service_client.cc",
+    "chrome/browser/net/stub_resolver_config_reader.cc",
     "chrome/browser/promos/promo_service.cc",
     "chrome/browser/rlz/chrome_rlz_tracker_delegate.cc",
     "chrome/browser/signin/signin_manager.cc",
@@ -27,6 +28,10 @@ source_set("chromium_src_overrides") {
     "components/gcm_driver/gcm_driver.cc",
     "components/sync/service/sync_service_impl.cc",
     "components/variations/service/variations_service.cc",
+
+    # Media overrides (Phase 2).
+    "media/base/supported_types.cc",
+    "third_party/blink/common/features.cc",
 
     # Blink renderer overrides (anti-fingerprinting).
     "third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.cc",
@@ -38,10 +43,13 @@ source_set("chromium_src_overrides") {
   deps = [
     "//base",
     "//chrome/browser",
+    "//chrome/browser/net",
     "//components/gcm_driver",
     "//components/metrics",
     "//components/sync",
     "//components/variations/service",
+    "//media/base",
+    "//third_party/blink/common",
     "//third_party/blink/renderer/modules/canvas/canvas2d",
     "//third_party/blink/renderer/modules/webgl",
     "//vigo/browser:vigo_browser",

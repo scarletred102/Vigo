@@ -15,7 +15,29 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const CHROMIUM_SRC = path.resolve(ROOT, '..', 'src');
+
+function resolveChromiumSrc() {
+  const override = process.env.VIGO_CHROMIUM_SRC;
+  if (override && override.trim()) {
+    return path.resolve(override.trim());
+  }
+
+  const repoAdjacent = path.resolve(ROOT, '..', 'src');
+  if (fs.existsSync(repoAdjacent)) {
+    return repoAdjacent;
+  }
+
+  // Common Windows checkout location.
+  const windowsDefault = 'C:\\chromium\\src';
+  if (process.platform === 'win32' && fs.existsSync(windowsDefault)) {
+    return windowsDefault;
+  }
+
+  // Fall back to the original assumption if Chromium has not been fetched yet.
+  return repoAdjacent;
+}
+
+const CHROMIUM_SRC = resolveChromiumSrc();
 const VIGO_MOUNT = path.join(CHROMIUM_SRC, 'vigo');
 
 function checkDepotTools() {
@@ -81,6 +103,7 @@ function copyGnArgs() {
 function main() {
   console.log('=== Vigo Browser — Init ===\n');
   checkDepotTools();
+  console.log('Using Chromium source root:', CHROMIUM_SRC);
   fetchChromium();
   mountVigoCore();
   copyGnArgs();

@@ -19,7 +19,9 @@ group("vigo") {
 group("vigo_tests") {
   testonly = true
   deps = [
+    "//vigo/app:unit_tests",
     "//vigo/browser/net:unit_tests",
+    "//vigo/browser/ui/webui:unit_tests",
     "//vigo/components:unit_tests",
     "//vigo/test:vigo_test_support",
   ]

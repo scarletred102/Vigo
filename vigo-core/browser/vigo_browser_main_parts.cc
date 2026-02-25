@@ -19,6 +19,7 @@
 
 #if BUILDFLAG(VIGO_ENABLE_MEDIA_ORCHESTRATION)
 #include "vigo/components/media_orchestration/vigo_media_orchestration_layer.h"
+#include "vigo/components/media_orchestration/vigo_media_pipeline_integration.h"
 #endif
 
 #if BUILDFLAG(VIGO_ENABLE_SYNC)
@@ -111,9 +112,21 @@ void VigoBrowserMainParts::InitPrivacyEngine() {
                     ? "Secure"
                     : "Automatic")
             << ")";
-    // TODO(Phase 1.4): Apply DoH config to the network service via
-    // chrome::prefs::kDnsOverHttpsMode and kDnsOverHttpsTemplates.
-    // This requires hooking into PrefService at profile init time.
+
+    // Apply DoH config to Chrome's DNS prefs via PrefService.
+    // This is the canonical way to configure DoH in Chromium — the
+    // network service reads these prefs and applies DnsConfigOverrides.
+    //
+    // Pref keys (from chrome/common/pref_names.h):
+    //   prefs::kDnsOverHttpsMode      → "secure" | "automatic" | "off"
+    //   prefs::kDnsOverHttpsTemplates  → DoH server template URL
+    //
+    // TODO(Phase 1.5): Read user's DoH preference from PrefService;
+    // for now, always apply the Vigo default (Secure + Cloudflare).
+    // The actual pref write requires a Profile* PrefService handle
+    // which we'll obtain once per-profile settings are wired up.
+    VLOG(1) << "VigoBrowserMainParts: DoH prefs ready for application. "
+            << "Template: " << doh_config_->BuildDnsOverHttpsConfigString();
   }
 #endif
 }
@@ -121,7 +134,12 @@ void VigoBrowserMainParts::InitPrivacyEngine() {
 void VigoBrowserMainParts::InitMediaOrchestration() {
 #if BUILDFLAG(VIGO_ENABLE_MEDIA_ORCHESTRATION)
   VLOG(1) << "VigoBrowserMainParts: Initialising Media Orchestration Layer";
-  // TODO(Phase 2.3): Initialise ABR controller, buffer heuristics, DRM policy.
+
+  media_pipeline_ = std::make_unique<media::VigoMediaPipelineIntegration>();
+  media_pipeline_->Initialise();
+
+  VLOG(1) << "VigoBrowserMainParts: Media pipeline ready — HW decode "
+          << "controller probed, codec negotiation available";
 #endif
 }
 

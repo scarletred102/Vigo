@@ -17,6 +17,9 @@ namespace vigo {
 //   - Dark/light mode support following system preference
 //   - No Google integration, no Google Doodles, no Chrome promo cards
 //
+// Communication: uses WebUIMessageHandler (VigoNtpHandler) to
+// provide privacy stats and speed dial data to the NTP JS.
+//
 // Registered at chrome://newtab and vigo://newtab via
 // VigoWebUIControllerFactory.
 class VigoNewTabPageUI : public content::WebUIController {
@@ -26,9 +29,6 @@ class VigoNewTabPageUI : public content::WebUIController {
 
   VigoNewTabPageUI(const VigoNewTabPageUI&) = delete;
   VigoNewTabPageUI& operator=(const VigoNewTabPageUI&) = delete;
-
-  // WebUIController:
-  // No additional overrides needed; data source is set up in constructor.
 };
 
 }  // namespace vigo

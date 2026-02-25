@@ -7,6 +7,7 @@
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "vigo/app/vigo_branding.h"
+#include "vigo/browser/ui/webui/vigo_ntp_handler.h"
 #include "vigo/build/config/vigo_buildflags.h"
 
 namespace vigo {
@@ -53,6 +54,9 @@ void CreateAndAddDataSource(content::WebUI* web_ui) {
 VigoNewTabPageUI::VigoNewTabPageUI(content::WebUI* web_ui)
     : content::WebUIController(web_ui) {
   CreateAndAddDataSource(web_ui);
+
+  // Register the NTP message handler for privacy stats and speed dials.
+  web_ui->AddMessageHandler(std::make_unique<VigoNtpHandler>());
 }
 
 VigoNewTabPageUI::~VigoNewTabPageUI() = default;

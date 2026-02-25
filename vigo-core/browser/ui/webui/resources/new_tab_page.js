@@ -111,19 +111,37 @@
   // ─── Initialisation ─────────────────────────────────────────
 
   function init() {
-    // Render default speed dials. In production, the browser process
-    // will provide top sites data via Mojo.
-    // TODO(Phase 1.2): Request top sites from browser process.
-    renderSpeedDials(DEFAULT_SPEED_DIALS);
+    // Request speed dials from the browser process.
+    if (typeof chrome !== 'undefined' && chrome.send) {
+      cr.sendWithPromise('getSpeedDials').then(function(dials) {
+        renderSpeedDials(dials && dials.length ? dials : DEFAULT_SPEED_DIALS);
+      }).catch(function() {
+        renderSpeedDials(DEFAULT_SPEED_DIALS);
+      });
+    } else {
+      renderSpeedDials(DEFAULT_SPEED_DIALS);
+    }
 
-    // Load privacy stats from browser process.
-    // TODO(Phase 1.2): Wire up cr.addWebUIListener or Mojo.
-    updatePrivacyStats({
-      adsBlocked: 0,
-      trackersBlocked: 0,
-      httpsUpgrades: 0,
-      timeSavedMs: 0,
-    });
+    // Request privacy stats from the browser process.
+    if (typeof chrome !== 'undefined' && chrome.send) {
+      cr.sendWithPromise('getPrivacyStats').then(function(stats) {
+        updatePrivacyStats(stats || {});
+      }).catch(function() {
+        updatePrivacyStats({});
+      });
+
+      // Listen for live privacy stats updates pushed from the browser.
+      cr.addWebUIListener('privacy-stats-updated', function(stats) {
+        updatePrivacyStats(stats || {});
+      });
+    } else {
+      updatePrivacyStats({
+        adsBlocked: 0,
+        trackersBlocked: 0,
+        httpsUpgrades: 0,
+        timeSavedMs: 0,
+      });
+    }
 
     setupSearch();
   }
