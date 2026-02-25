@@ -29,6 +29,10 @@ declare_args() {
   # Enable the extension platform (MV3 only).
   vigo_enable_extensions = true
 
+  # Enable the performance optimisation subsystem (memory budget, tab
+  # lifecycle, process management, startup lazy-loading, telemetry).
+  vigo_enable_performance = true
+
   # Enable JPEG XL image format support (Chromium removed in M110; Vigo
   # re-enables as a differentiator).
   vigo_enable_jxl = true

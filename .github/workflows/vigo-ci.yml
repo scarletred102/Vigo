@@ -114,6 +114,7 @@ jobs:
             vigo-core/components/privacy_engine \
             vigo-core/components/sync \
             vigo-core/components/credential_vault \
+            vigo-core/components/performance \
             vigo-core/build/config \
             vigo-core/app \
             vigo-core/rust/vigo_adblock \
@@ -135,3 +136,54 @@ jobs:
 
       - name: Verify Rust workspace
         run: test -f vigo-core/rust/Cargo.toml
+
+  # ── Performance Benchmark (Dry Run) ────────────────────────
+  benchmark:
+    name: Performance Benchmark Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate benchmark runner syntax
+        run: python -m py_compile vigo-core/scripts/vigo_benchmark_runner.py
+
+      - name: Verify performance component structure
+        run: |
+          for f in \
+            vigo-core/components/performance/BUILD.gn \
+            vigo-core/components/performance/vigo_memory_budget_controller.h \
+            vigo-core/components/performance/vigo_memory_budget_controller.cc \
+            vigo-core/components/performance/vigo_tab_lifecycle_manager.h \
+            vigo-core/components/performance/vigo_tab_lifecycle_manager.cc \
+            vigo-core/components/performance/vigo_process_manager.h \
+            vigo-core/components/performance/vigo_process_manager.cc \
+            vigo-core/components/performance/vigo_memory_reclaimer.h \
+            vigo-core/components/performance/vigo_memory_reclaimer.cc \
+            vigo-core/components/performance/vigo_startup_controller.h \
+            vigo-core/components/performance/vigo_startup_controller.cc \
+            vigo-core/components/performance/vigo_performance_telemetry.h \
+            vigo-core/components/performance/vigo_performance_telemetry.cc \
+            vigo-core/components/performance/vigo_performance_controller.h \
+            vigo-core/components/performance/vigo_performance_controller.cc; do
+            if [ ! -f "$f" ]; then
+              echo "MISSING: $f"
+              exit 1
+            fi
+          done
+          echo "✓ All performance component files present"
+
+      - name: Verify performance unit tests exist
+        run: |
+          TEST_COUNT=$(find vigo-core/components/performance -name '*_unittest.cc' | wc -l)
+          echo "Found $TEST_COUNT performance unit test files"
+          if [ "$TEST_COUNT" -lt 7 ]; then
+            echo "Expected at least 7 test files, found $TEST_COUNT"
+            exit 1
+          fi
+          echo "✓ Performance test count OK"

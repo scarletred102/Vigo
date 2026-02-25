@@ -26,6 +26,10 @@
 #include "vigo/components/sync/vigo_sync_client.h"
 #endif
 
+#if BUILDFLAG(VIGO_ENABLE_PERFORMANCE)
+#include "vigo/components/performance/vigo_performance_controller.h"
+#endif
+
 namespace vigo {
 
 VigoBrowserMainParts::VigoBrowserMainParts(
@@ -59,12 +63,22 @@ void VigoBrowserMainParts::PreMainMessageLoopRun() {
 
   InitMediaOrchestration();
   InitSyncClient();
+  InitPerformanceController();
 
   VLOG(1) << "VigoBrowserMainParts: All Vigo subsystems initialised";
 }
 
 void VigoBrowserMainParts::PostMainMessageLoopRun() {
   VLOG(1) << "VigoBrowserMainParts: Shutting down Vigo subsystems";
+
+#if BUILDFLAG(VIGO_ENABLE_PERFORMANCE)
+  if (performance_controller_) {
+    performance_controller_->Shutdown();
+    performance_controller_.reset();
+    VLOG(1) << "VigoBrowserMainParts: Performance controller shut down";
+  }
+#endif
+
   ChromeBrowserMainParts::PostMainMessageLoopRun();
 }
 
@@ -147,6 +161,21 @@ void VigoBrowserMainParts::InitSyncClient() {
 #if BUILDFLAG(VIGO_ENABLE_SYNC)
   VLOG(1) << "VigoBrowserMainParts: Initialising sync client";
   // TODO(Phase 3.3): Connect to self-hosted sync server if configured.
+#endif
+}
+
+void VigoBrowserMainParts::InitPerformanceController() {
+#if BUILDFLAG(VIGO_ENABLE_PERFORMANCE)
+  VLOG(1) << "VigoBrowserMainParts: Initialising performance controller";
+
+  performance_controller_ =
+      std::make_unique<performance::VigoPerformanceController>();
+  performance_controller_->Initialise();
+  performance_controller_->Start();
+
+  VLOG(1) << "VigoBrowserMainParts: Performance controller started — "
+          << "memory budget, tab lifecycle, process manager, reclaimer, "
+          << "startup controller all wired and active";
 #endif
 }
 

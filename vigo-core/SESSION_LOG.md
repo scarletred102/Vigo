@@ -1116,8 +1116,166 @@ Passphrase → Argon2id(64MB/3iter/4par) → K_root
 | **6 — Beta & GA** | ⬜ Not started | |
 
 ### Next Session: Phase 4 — Performance Optimisation
-- [ ] Memory budget enforcement (10 tabs ≤ 400 MB)
-- [ ] Tab discarding/freezing for background tabs
-- [ ] Startup lazy-loading
-- [ ] CI benchmark harness
-- [ ] Process model tuning
+- [x] Memory budget enforcement (10 tabs ≤ 400 MB)
+- [x] Tab discarding/freezing for background tabs
+- [x] Startup lazy-loading
+- [x] CI benchmark harness
+- [x] Process model tuning
+
+---
+
+## Session 6 — 2026-02-25
+
+### Phase: **Phase 4 — Performance Optimisation**
+
+### Status: **Phase 4 COMPLETE** ✅
+
+### What Was Done
+
+Implemented the full Performance Optimisation subsystem from the Performance Architecture Document (PAD v1.0). Six core C++ components, a CI benchmark runner, all unit tests, BUILD.gn integration, and browser wiring.
+
+#### Architecture Overview
+
+```
+VigoPerformanceController (orchestrator)
+├── VigoMemoryBudgetController — global memory budget enforcement
+│   ├──→ observers: TabLifecycleManager, MemoryReclaimer, Telemetry
+├── VigoTabLifecycleManager — tab state machine (6 states)
+│   ├──→ observer: Telemetry
+├── VigoProcessManager — process tracking & resource sampling
+│   ├──→ observer: Telemetry
+├── VigoMemoryReclaimer — graduated reclamation (light → critical)
+├── VigoStartupController — phased lazy-loading startup
+└── VigoPerformanceTelemetry — local-only (opt-in) metric collection
+```
+
+#### New Files Created (21 files)
+
+**Performance Components (`components/performance/`)**
+
+**`vigo_memory_budget_controller.h/cc`** — Global memory budget enforcement
+- `DeviceTier` auto-detection: Low-end (≤4 GB), Mid-range (4–8 GB), High-end (>8 GB)
+- Budget targets: 300/400/600 MB for 10 tabs, +30 MB per extra tab
+- `MemoryPressureLevel`: kNone, kModerate (70%), kCritical (90%)
+- `MemoryBudgetSnapshot` struct, observer pattern, 5s sample timer, hysteresis (3 consecutive samples to lower)
+- 10 unit tests
+
+**`vigo_tab_lifecycle_manager.h/cc`** — Tab state machine
+- 6 states: Active → Background → Idle → Suspended → Frozen → Discarded
+- Protection logic: tabs with audio, downloads, WebRTC, or media capture cannot be suspended/frozen
+- Pinned tabs have higher priority (later discard)
+- Discard priority sorted by last-active time
+- Observer pattern for state change notifications
+- 12 unit tests
+
+**`vigo_process_manager.h/cc`** — Process tracking and resource sampling
+- Tracks: Browser, Renderer, GPU, Utility, Extension, Plugin process types
+- Per-process: PID, working set, private bytes, CPU%, GPU memory, open handles, associated tab IDs
+- Virtual `SampleProcess()` for test injection
+- Background priority scheduling hints (platform-specific)
+- 8 unit tests
+
+**`vigo_memory_reclaimer.h/cc`** — Graduated memory reclamation
+- 4 levels: Light (image cache), Moderate (+font/script cache), Aggressive (+V8 GC + working set trim), Critical (+GPU texture purge)
+- Platform-specific working set trimming (Windows `EmptyWorkingSet`, POSIX no-op)
+- V8 GC memory pressure hints
+- 10s cooldown between reclaim passes
+- 9 unit tests
+
+**`vigo_startup_controller.h/cc`** — Phased lazy-loading startup
+- 6 phases: NotStarted → CriticalPath → UIReady → DeferredNetworking → BackgroundServices → FullyReady
+- Warm start detection (< 1s previous session restore)
+- Timer-based deferred phase advancement
+- Completion callbacks per phase
+- 8 unit tests
+
+**`vigo_performance_telemetry.h/cc`** — Local-only telemetry signal bus
+- `PerfSample` struct: RSS, budget utilisation, process counts, tab states, CPU, pressure level, resume latency
+- `PerfSessionStats`: peak RSS, avg utilisation, suspension/freeze/discard counts, avg/p95 resume latency, cold start time, TTFP
+- Rolling buffer (360 samples default = 1hr at 10s intervals)
+- JSON export for CI benchmarking
+- PRIVACY: All data local-only, no network upload, opt-in only
+- Observer implementations for all three producer interfaces
+- 12 unit tests
+
+**`vigo_performance_controller.h/cc`** — Central orchestrator
+- Creates and owns all 6 subsystems
+- Wires observer graph (budget→lifecycle, budget→reclaimer, budget→telemetry, process→telemetry, lifecycle→telemetry)
+- `Initialise()` → `Start()` → `Shutdown()` lifecycle
+- `OnFirstPaint()` delegation to startup controller
+- 11 unit tests
+
+**`BUILD.gn`** — Performance component build target
+- `source_set("performance")` with 14 source files
+- `source_set("unit_tests")` with 7 test files
+- Deps: `//base`, `//vigo/build/config:vigo_buildflags`
+
+**CI Benchmark Runner (`scripts/vigo_benchmark_runner.py`)**
+- 4 benchmark types: tab_growth, media_stress, long_duration, startup
+- KPI threshold checks against PAD requirements
+- JSON results output for CI artifact collection
+- Exit code 1 on regression
+
+#### GN Build Args & Flags
+
+- `vigo_args.gni` — Added `vigo_enable_performance = true`
+- `vigo_buildflags.gni` — Added `VIGO_ENABLE_PERFORMANCE` buildflag
+
+#### BUILD.gn Integration
+
+- `components/BUILD.gn` — Added `//vigo/components/performance` to `vigo_components` group and `unit_tests` group (guarded by `vigo_enable_performance`)
+- `browser/BUILD.gn` — Added `//vigo/components/performance` dep (guarded by `vigo_enable_performance`)
+
+#### Browser Wiring
+
+- `browser/vigo_browser_main_parts.h` — Added `performance::VigoPerformanceController` forward decl, `performance_controller()` accessor, `InitPerformanceController()` method, `performance_controller_` member
+- `browser/vigo_browser_main_parts.cc` — Added `#include` under `BUILDFLAG(VIGO_ENABLE_PERFORMANCE)`, `InitPerformanceController()` creates + initialises + starts the controller in `PreMainMessageLoopRun()`, explicit `Shutdown()` in `PostMainMessageLoopRun()`
+
+#### CI Workflow Update
+
+- `.github/workflows/vigo-ci.yml` — Added `benchmark` job: Python syntax validation, performance file structure verification, test file count verification, `components/performance` added to structure check
+
+### KPI Targets (from PAD v1.0)
+
+| Metric | Target | Enforcement |
+|--------|--------|-------------|
+| Cold start | ≤ 2.5s | StartupController phased loading |
+| Warm start | ≤ 0.5s | StartupController warm detection |
+| 10 idle tabs RSS | ≤ 400 MB (mid-range) | MemoryBudgetController |
+| Tab resume latency | ≤ 350ms | TabLifecycleManager suspend/restore |
+| ABR oscillation | ≤ 3 switches/10 min | (Phase 2 MOL, not Phase 4) |
+
+### Test Summary (Cumulative)
+
+- **Rust**: 59 tests pass ✅ (47 crypto + 11 adblock + 1 filter)
+- **C++ tests defined**: ~240+ (170 previous + 70 new in Phase 4)
+  - Performance: 70 tests across 7 test files
+    - `vigo_memory_budget_controller_unittest.cc` — 10 tests
+    - `vigo_tab_lifecycle_manager_unittest.cc` — 12 tests
+    - `vigo_process_manager_unittest.cc` — 8 tests
+    - `vigo_memory_reclaimer_unittest.cc` — 9 tests
+    - `vigo_startup_controller_unittest.cc` — 8 tests
+    - `vigo_performance_telemetry_unittest.cc` — 12 tests
+    - `vigo_performance_controller_unittest.cc` — 11 tests
+
+### Phase Status (After Session 6)
+
+| Phase | Status | Gate |
+|-------|--------|------|
+| **0 — Foundation** | ✅ Done | Scaffold + build system |
+| **1 — Browser Shell** | ✅ Done | 10/10 tasks |
+| **2 — Media Engine** | ✅ Done | All codecs + HW decode + PiP + ABR |
+| **3 — Credential Vault & Sync** | ✅ Done | Crypto + sync engine + CRDT + extensions |
+| **4 — Performance** | ✅ **COMPLETE** | Memory budget + tab lifecycle + process mgmt + startup + CI benchmark |
+| **5 — Security & Installer** | ⬜ Not started | Next phase |
+| **6 — Beta & GA** | ⬜ Not started | |
+
+### Next Session: Phase 5 — Security & Installer
+- [ ] Supply chain hardening (dep pinning, SBOM generation)
+- [ ] Auto-update framework (Omaha/Sparkle or custom)
+- [ ] Security audit preparation (threat model, hardening checklist)
+- [ ] Windows installer (WiX MSI/EXE)
+- [ ] macOS installer (.dmg/.pkg)
+- [ ] Linux packages (.deb/.rpm)
+- [ ] Code signing (Windows Authenticode, macOS notarisation)
+- [ ] Beta release build pipeline

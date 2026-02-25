@@ -38,5 +38,9 @@ source_set("vigo_browser") {
     deps += [ "//vigo/components/sync" ]
   }
 
+  if (vigo_enable_performance) {
+    deps += [ "//vigo/components/performance" ]
+  }
+
   configs += [ "//vigo/build/config:vigo_config" ]
 }

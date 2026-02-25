@@ -14,6 +14,10 @@ namespace media {
 class VigoMediaPipelineIntegration;
 }  // namespace media
 
+namespace performance {
+class VigoPerformanceController;
+}  // namespace performance
+
 namespace privacy {
 class VigoDoHConfig;
 class VigoFingerprintProtection;
@@ -51,6 +55,10 @@ class VigoBrowserMainParts : public ChromeBrowserMainParts {
     return media_pipeline_.get();
   }
 
+  performance::VigoPerformanceController* performance_controller() const {
+    return performance_controller_.get();
+  }
+
  private:
   // Initialise the Rust adblock engine via the keyed service factory.
   void InitAdblockEngine(Profile* profile);
@@ -64,12 +72,17 @@ class VigoBrowserMainParts : public ChromeBrowserMainParts {
   // Connect to the self-hosted sync server (if configured).
   void InitSyncClient();
 
+  // Start the performance optimisation controller.
+  void InitPerformanceController();
+
   // Owned subsystem instances.
   std::unique_ptr<privacy::VigoPrivacyEngine> privacy_engine_;
   std::unique_ptr<privacy::VigoFingerprintProtection>
       fingerprint_protection_;
   std::unique_ptr<privacy::VigoDoHConfig> doh_config_;
   std::unique_ptr<media::VigoMediaPipelineIntegration> media_pipeline_;
+  std::unique_ptr<performance::VigoPerformanceController>
+      performance_controller_;
 };
 
 }  // namespace vigo
