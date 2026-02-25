@@ -24,6 +24,7 @@ buildflag_header("vigo_buildflags") {
     "VIGO_ENABLE_MEDIA_ORCHESTRATION=$vigo_enable_media_orchestration",
     "VIGO_ENABLE_SYNC=$vigo_enable_sync",
     "VIGO_ENABLE_CREDENTIAL_VAULT=$vigo_enable_credential_vault",
+    "VIGO_ENABLE_EXTENSIONS=$vigo_enable_extensions",
     "VIGO_ENABLE_JXL=$vigo_enable_jxl",
     "VIGO_ENABLE_HEVC=$vigo_enable_hevc",
     "VIGO_ENABLE_HW_DECODE=$vigo_enable_hw_decode",

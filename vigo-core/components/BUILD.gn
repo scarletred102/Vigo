@@ -27,6 +27,10 @@ group("vigo_components") {
   if (vigo_enable_credential_vault) {
     deps += [ "//vigo/components/credential_vault" ]
   }
+
+  if (vigo_enable_extensions) {
+    deps += [ "//vigo/components/extensions" ]
+  }
 }
 
 group("unit_tests") {
@@ -51,5 +55,9 @@ group("unit_tests") {
 
   if (vigo_enable_credential_vault) {
     deps += [ "//vigo/components/credential_vault:unit_tests" ]
+  }
+
+  if (vigo_enable_extensions) {
+    deps += [ "//vigo/components/extensions:unit_tests" ]
   }
 }

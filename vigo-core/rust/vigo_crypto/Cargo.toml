@@ -7,12 +7,18 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Cryptographic primitives for Vigo Browser — libsodium wrapper"
+description = "Cryptographic primitives for Vigo Browser — single source of all crypto ops"
 
 [lib]
 crate-type = ["staticlib"]
 
 [dependencies]
 libc.workspace = true
-# libsodium-sys will be linked via the vendored third_party/libsodium.
-# TODO(Phase 3.2): Add libsodium-sys dependency or manual FFI bindings.
+chacha20poly1305.workspace = true
+argon2.workspace = true
+hkdf.workspace = true
+sha2.workspace = true
+x25519-dalek.workspace = true
+ed25519-dalek.workspace = true
+rand.workspace = true
+zeroize.workspace = true

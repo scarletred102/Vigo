@@ -26,6 +26,9 @@ declare_args() {
   # Enable the credential vault (password / passkey management).
   vigo_enable_credential_vault = true
 
+  # Enable the extension platform (MV3 only).
+  vigo_enable_extensions = true
+
   # Enable JPEG XL image format support (Chromium removed in M110; Vigo
   # re-enables as a differentiator).
   vigo_enable_jxl = true

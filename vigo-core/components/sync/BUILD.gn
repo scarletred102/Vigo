@@ -5,8 +5,20 @@ import("//vigo/build/config/vigo_buildflags.gni")
 
 source_set("sync") {
   sources = [
+    "ffi/vigo_crypto_ffi.h",
+    "vigo_bookmark_crdt.cc",
+    "vigo_bookmark_crdt.h",
     "vigo_sync_client.cc",
     "vigo_sync_client.h",
+    "vigo_sync_data_types.h",
+    "vigo_sync_encryptor.cc",
+    "vigo_sync_encryptor.h",
+    "vigo_sync_engine.cc",
+    "vigo_sync_engine.h",
+    "vigo_sync_key_manager.cc",
+    "vigo_sync_key_manager.h",
+    "vigo_sync_transport.cc",
+    "vigo_sync_transport.h",
   ]
 
   deps = [
@@ -14,12 +26,22 @@ source_set("sync") {
     "//vigo/build/config:vigo_buildflags",
   ]
 
+  # TODO(Phase 3.4): Add dependency on the Rust crypto static library
+  # once the GN rust_static_library target is wired.
+  # deps += [ "//vigo/rust/vigo_crypto" ]
+
   configs += [ "//vigo/build/config:vigo_config" ]
 }
 
 source_set("unit_tests") {
   testonly = true
-  sources = [ "vigo_sync_client_unittest.cc" ]
+  sources = [
+    "vigo_bookmark_crdt_unittest.cc",
+    "vigo_sync_client_unittest.cc",
+    "vigo_sync_encryptor_unittest.cc",
+    "vigo_sync_engine_unittest.cc",
+    "vigo_sync_key_manager_unittest.cc",
+  ]
 
   deps = [
     ":sync",

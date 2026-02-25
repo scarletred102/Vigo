@@ -3,31 +3,26 @@
 
 import("//vigo/build/config/vigo_buildflags.gni")
 
-source_set("credential_vault") {
+source_set("extensions") {
   sources = [
-    "vigo_credential_vault.cc",
-    "vigo_credential_vault.h",
+    "vigo_extension_manager.cc",
+    "vigo_extension_manager.h",
   ]
 
   deps = [
     "//base",
     "//vigo/build/config:vigo_buildflags",
-    "//vigo/components/sync",
   ]
-
-  # TODO(Phase 3.4): Add dependency on the Rust crypto static library
-  # once the GN rust_static_library target is wired.
-  # deps += [ "//vigo/rust/vigo_crypto" ]
 
   configs += [ "//vigo/build/config:vigo_config" ]
 }
 
 source_set("unit_tests") {
   testonly = true
-  sources = [ "vigo_credential_vault_unittest.cc" ]
+  sources = [ "vigo_extension_manager_unittest.cc" ]
 
   deps = [
-    ":credential_vault",
+    ":extensions",
     "//testing/gtest",
   ]
 }

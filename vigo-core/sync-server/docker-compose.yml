@@ -1,0 +1,22 @@
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+version: "3.9"
+
+services:
+  vigo-sync:
+    build: .
+    container_name: vigo-sync-server
+    ports:
+      - "8443:8443"
+    volumes:
+      - vigo-sync-data:/app/data
+    environment:
+      - VIGO_SYNC_PORT=8443
+      - VIGO_SYNC_DB_PATH=/app/data/vigo_sync.db
+      - VIGO_SYNC_LOG_LEVEL=info
+    restart: unless-stopped
+
+volumes:
+  vigo-sync-data:
+    driver: local

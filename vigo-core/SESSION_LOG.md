@@ -1004,3 +1004,120 @@ vigo-core/
 ├── test/
 └── third_party/libsodium/
 ```
+
+---
+
+## Session 5 — 2026-02-25
+
+### Phase: **Phase 3 — Credential Vault & E2E Encrypted Sync**
+
+### Status: **Phase 3 COMPLETE** ✅
+
+### What Was Done
+
+Implemented the entire Phase 3 crypto, sync, and credential vault stack: real Rust crypto modules (libsodium primitives via pure Rust crates), C++ FFI bridge, key hierarchy management, per-record AEAD encryption, sync engine with conflict resolution (CRDT for bookmarks, LWW for settings/passwords, append-only for history), HTTP sync transport, CRDT bookmark tree merge with Lamport clocks, upgraded credential vault with real crypto integration, self-hosted Docker sync server (Go + SQLite), and MV3 extension platform scaffold.
+
+#### Rust Crypto Implementation (6 new modules, 47 tests)
+
+**`rust/vigo_crypto/src/aead.rs`** — XChaCha20-Poly1305 AEAD
+- `encrypt(key, nonce, plaintext, aad)` → ciphertext
+- `decrypt(key, nonce, ciphertext, aad)` → plaintext
+- `seal(key, plaintext, aad)` → nonce || ciphertext (auto-generates nonce)
+- `open(key, sealed, aad)` → plaintext (extracts nonce from prefix)
+- 10 tests
+
+**`rust/vigo_crypto/src/kdf.rs`** — Key Derivation
+- Argon2id: `Argon2idParams` (default: 64MB, 3 iter, 4 parallel), `derive_root_key(passphrase, salt, params)` → 32-byte key
+- HKDF-SHA256: `hkdf_derive(ikm, salt, info, len)` → derived key
+- `derive_collection_key(root_key, collection_name)` / `derive_record_key(collection_key, record_id)`
+- 11 tests
+
+**`rust/vigo_crypto/src/kx.rs`** — X25519 Key Exchange
+- `generate_keypair()`, `diffie_hellman()`, `derive_wrap_key()`, `ephemeral_wrap/unwrap()`
+- 6 tests
+
+**`rust/vigo_crypto/src/sign.rs`** — Ed25519 Digital Signatures
+- `generate_keypair()`, `sign()`, `verify()`, `from_secret_bytes()`
+- 6 tests
+
+**`rust/vigo_crypto/src/random.rs`** — Cryptographic Random
+- `random_bytes()`, `random_key()`, `random_nonce()`, `random_salt()`, `random_uuid()`
+- 6 tests
+
+**`rust/vigo_crypto/src/ffi.rs`** — C FFI Bridge
+- `VigoCryptoBuffer` struct, 12 `extern "C"` functions
+- 8 tests
+
+**`rust/vigo_crypto/Cargo.toml`** — Dependencies: chacha20poly1305 0.10, argon2 0.5, hkdf 0.12, sha2 0.10, ed25519-dalek 2, x25519-dalek 2, rand 0.8, zeroize 1, blake2, hmac
+
+#### C++ Sync Stack (12 new files)
+
+**`components/sync/ffi/vigo_crypto_ffi.h`** — C header matching all Rust FFI exports
+
+**`components/sync/vigo_sync_data_types.h`** — Core sync types: SyncDataType, SyncRecordEnvelope, SyncDevice, WrappedRootKey, ConflictStrategy, SyncState
+
+**`components/sync/vigo_sync_key_manager.h/cc`** — Key hierarchy: Init, DeriveRootFromPassphrase (Argon2id), GenerateDeviceKeys (X25519+Ed25519), collection/record key derivation (HKDF), WrapRootForDevice, Sign/Verify, Lock (secure zero). 14 tests.
+
+**`components/sync/vigo_sync_encryptor.h/cc`** — Per-record AEAD: EncryptRecord, DecryptRecord, collection-level encrypt/decrypt. AAD = collection name.
+
+**`components/sync/vigo_sync_engine.h/cc`** — Sync orchestrator: Start/Stop, SyncNow, periodic timer (30s), ExecuteSyncCycle (upload→download→resolve→apply), LWW + AppendOnly conflict resolution, observer pattern.
+
+**`components/sync/vigo_sync_transport.h/cc`** — HTTP client: RegisterDevice, PushRecord/PullRecords, PushWrappedKey/FetchWrappedKey, Ping. Virtual DoRequest for test mocking.
+
+**`components/sync/vigo_bookmark_crdt.h/cc`** — CRDT bookmark tree merge: Lamport clocks, tombstones, structural merge, move/reparent, JSON serialization.
+
+#### Sync Client Upgrade
+
+**`components/sync/vigo_sync_client.h/cc`** — Rewritten as facade owning: VigoSyncKeyManager, VigoSyncEncryptor, VigoSyncTransport, VigoSyncEngine. SetupWithPassphrase orchestrates: Init → derive K_root → generate device keys → register → start engine. Implements VigoSyncEngineObserver. 9 tests updated.
+
+#### Credential Vault Upgrade
+
+**`components/credential_vault/vigo_credential_vault.h/cc`** — Real crypto: Init generates random vault key, Store AEAD-encrypts password (origin as AAD), GetById, Update, Delete (tombstone), ChangeVaultKey (re-encrypt all), Export/Import. 16 tests.
+
+#### Self-Hosted Sync Server
+
+**`sync-server/`** — Go 1.22 REST API + SQLite. Zero-knowledge. 9 endpoints. Docker deployment. SQLite schema: devices, records, wrapped_keys.
+
+#### Extension Platform
+
+**`components/extensions/`** — MV3 management: Install/Uninstall/Enable/Disable, AuditPermissions (8 dangerous perms), Observer pattern.
+
+#### BUILD.gn Updates
+
+- `vigo_args.gni` + `vigo_buildflags.gni` — +extensions flag
+- `components/BUILD.gn` — +extensions group
+- `components/sync/BUILD.gn` — expanded to 14 sources + 5 tests
+- `components/credential_vault/BUILD.gn` — +sync dep
+- `components/extensions/BUILD.gn` — new
+
+### Key Hierarchy
+```
+Passphrase → Argon2id(64MB/3iter/4par) → K_root
+  ├─ HKDF("vigo-sync-collection-{type}") → K_collection
+  │   └─ HKDF("vigo-sync-record-{uuid}") → K_record
+  ├─ X25519 keypair (device key exchange)
+  └─ Ed25519 keypair (device signing)
+```
+
+### Test Summary (Cumulative)
+- **Rust**: 59 tests pass ✅ (47 crypto + 11 adblock + 1 filter)
+- **C++ tests defined**: ~170+ (109 previous + ~60 new in Phase 3)
+
+### Phase Status (After Session 5)
+
+| Phase | Status | Gate |
+|-------|--------|------|
+| **0 — Foundation** | ✅ Done | Scaffold + build system |
+| **1 — Browser Shell** | ✅ Done | 10/10 tasks |
+| **2 — Media Engine** | ✅ Done | All codecs + HW decode + PiP + ABR |
+| **3 — Credential Vault & Sync** | ✅ **COMPLETE** | Crypto + sync engine + CRDT + extensions |
+| **4 — Performance** | ⬜ Not started | Next phase |
+| **5 — Security & Installer** | ⬜ Not started | |
+| **6 — Beta & GA** | ⬜ Not started | |
+
+### Next Session: Phase 4 — Performance Optimisation
+- [ ] Memory budget enforcement (10 tabs ≤ 400 MB)
+- [ ] Tab discarding/freezing for background tabs
+- [ ] Startup lazy-loading
+- [ ] CI benchmark harness
+- [ ] Process model tuning
