@@ -1279,3 +1279,171 @@ VigoPerformanceController (orchestrator)
 - [ ] Linux packages (.deb/.rpm)
 - [ ] Code signing (Windows Authenticode, macOS notarisation)
 - [ ] Beta release build pipeline
+
+---
+
+## Session 7 — 2025-06-06
+
+### Phase: **Phase 5 — Security & Installer**
+
+### Status: **Phase 5 COMPLETE** ✅
+
+### What Was Done
+
+Implemented the entire Phase 5: Security & Installer subsystem. This includes SBOM generation, auto-update framework, security hardening/audit, code signing verification, CVE monitoring, license key system, platform installers (Windows/macOS/Linux), and a cross-platform release build pipeline.
+
+#### Files Created (30+ files)
+
+**Security Components (`components/security/`)**
+
+1. `BUILD.gn` — Build targets for all security source sets and unit tests
+2. `vigo_sbom_generator.h/cc` — SPDX 2.3 Software Bill of Materials generator
+   - `SbomDependency` struct with name, version, license, supplier, hash, package_url
+   - JSON output format with `GenerateJson()`
+   - Helpers: `AddRustCrate()`, `AddThirdPartyLib()`, `AddChromiumComponent()`
+   - Hash validation with `ValidateHashes()`
+3. `vigo_sbom_generator_unittest.cc` — 10 unit tests
+4. `vigo_update_client.h/cc` — Auto-update framework with Ed25519 signature verification
+   - `UpdateChannel` enum (Stable, Beta, Canary, Dev)
+   - `UpdateManifest` struct (version, URL, hash, signature, size, release_notes)
+   - `UpdateState` enum (7 states: Idle → Checking → Available → Downloading → Verifying → Ready → Error)
+   - `UpdateObserver` pattern for UI notifications
+   - Periodic check with configurable interval (default 4 hours)
+   - `CheckForUpdates()`, `DownloadUpdate()`, `VerifyAndApply()`, `Rollback()`
+5. `vigo_update_client_unittest.cc` — 12 unit tests
+6. `vigo_security_hardening.h/cc` — Threat model + security audit framework
+   - `ThreatCategory` enum (10 categories: network, injection, XSS, etc.)
+   - `ThreatEntry` struct with risk scoring and mitigations
+   - `SecurityAuditItem` with Pass/Fail/Warning/NotChecked status
+   - Platform-specific verification: ASLR, DEP, CFI, sandbox, code signing
+   - `AuditReport` with `GenerateReport()` summary
+7. `vigo_security_hardening_unittest.cc` — 14 unit tests
+8. `vigo_code_signing.h/cc` — Cross-platform code signing verification
+   - `SigningPlatform` enum (Windows, macOS, Linux)
+   - `SignatureInfo` struct (valid, signer, issuer, timestamp, hash_algorithm)
+   - Platform dispatch: `VerifyWindowsAuthenticode()`, `VerifyMacOSCodeSign()`, `VerifyLinuxGpgSignature()`
+   - `SigningRequirements` with `MeetsRequirements()`, `IsTimestamped()`, `IsSha256OrStronger()`
+9. `vigo_code_signing_unittest.cc` — 8 unit tests
+10. `vigo_cve_monitor.h/cc` — CVE advisory monitoring with 72-hour SLA alerting
+    - Polls advisory feed (configurable interval, default 6 hours)
+    - Tracks components: Chromium, ffmpeg, dav1d, libsodium
+    - JSON feed parsing with severity classification
+    - `CriticalCveCallback` fires when critical unpatched CVEs detected
+    - `MarkPatched()` to track remediation
+11. `vigo_cve_monitor_unittest.cc` — 12 unit tests
+12. `vigo_license_key.h/cc` — One-time purchase license system
+    - Key format: `VIGO-XXXXX-XXXXX-XXXXX-XXXXX`
+    - `LicenseTier` enum: Beta, Purchased, Expired
+    - Ed25519 signature verification (stub, wired to Rust crypto in Phase 6)
+    - Hardware fingerprint binding (SHA-256 of machine identifiers)
+    - Online activation with license server (stub)
+    - Beta expiry: 2026-01-01, gentle conversion prompt after
+    - Feature gating: core browsing always free, premium features require purchase
+13. `vigo_license_key_unittest.cc` — 14 unit tests
+
+**Windows Installer (`installer/win/`)**
+
+14. `vigo.wxs` — Complete WiX 3.x/4.x XML installer definition
+    - Product/Package with proper GUIDs
+    - Directory structure: ProgramFiles → Vigo Browser → Vigo
+    - 6 components: MainExecutable, VigoData, VigoLibraries, ShortcutDesktop, ShortcutStartMenu, RegistryEntries
+    - Feature tree, custom actions (kill running process)
+    - WixUI_InstallDir wizard, Add/Remove Programs registration
+    - MajorUpgrade element for clean upgrades
+15. `build_installer.ps1` — PowerShell build script
+    - WiX compilation, code signing (Authenticode), SHA-256 checksum generation
+    - Parameterised: BuildDir, SignCert, SignPassword, SkipSigning
+
+**macOS Installer (`installer/mac/`)**
+
+16. `Info.plist` — Full app bundle metadata
+    - Bundle identity, versioning (auto-updated by script)
+    - URL schemes (http, https, vigo://), document types (HTML, XHTML, PDF)
+    - Privacy usage descriptions (camera, microphone, location)
+    - Sparkle auto-update configuration
+    - Universal binary support (arm64 + x86_64), min macOS 12.0
+17. `entitlements.plist` — Hardened runtime entitlements for main app
+    - JIT (V8), unsigned executable memory (ffmpeg), DYLD env vars
+    - Camera, microphone, USB, Bluetooth, location, networking, file access
+18. `entitlements-helper.plist` — Minimal entitlements for helper processes
+    - JIT, unsigned memory, library validation disabled (Widevine CDM)
+19. `create_installer.sh` — Full macOS installer build script (6 steps)
+    - Step 1: Create .app bundle (Chromium framework layout)
+    - Step 2: Code sign (inside-out: helpers → framework → main app)
+    - Step 3: Build .pkg (pkgbuild + productbuild with welcome/license)
+    - Step 4: Create .dmg (create-dmg with drag-to-Applications)
+    - Step 5: Notarize with Apple (notarytool + stapler)
+    - Step 6: Generate SHA-256 checksums
+
+**Linux Installer (`installer/linux/`)**
+
+20. `vigo-browser.desktop` — XDG desktop entry (MIME types, actions)
+21. `vigo-browser-wrapper.sh` — Launcher script (LD_LIBRARY_PATH, Wayland, VAAPI, GPU flags)
+22. `debian/control` — Debian package metadata (28 dependencies)
+23. `debian/changelog` — Debian changelog
+24. `debian/copyright` — Proprietary license declaration
+25. `debian/rules` — Makefile for dpkg-buildpackage (pre-built binary)
+26. `debian/compat` — Debhelper compat level (10)
+27. `debian/postinst` — Post-install: icon cache, desktop DB, alternatives
+28. `debian/prerm` — Pre-removal: remove alternatives
+29. `debian/postrm` — Post-removal: update caches
+30. `rpm/vigo-browser.spec` — RPM spec file (Fedora/RHEL)
+31. `build_packages.sh` — Build script for .deb + .rpm (dpkg-deb, rpmbuild, GPG signing)
+
+**Release Build Pipeline (`scripts/`)**
+
+32. `build_release.py` — Cross-platform release orchestrator
+    - 6-step pipeline: version bump → GN gen + build → test → package → update manifest → summary
+    - Channel support: stable, beta, canary, dev
+    - Platform auto-detection (win/mac/linux)
+    - Code signing dispatch (Authenticode/codesign/GPG)
+    - Update manifest JSON generation (sha256, size, URL)
+    - Artifact upload hints
+
+#### Build System Updates
+
+- `vigo_args.gni` — Added `vigo_enable_security = true`
+- `vigo_buildflags.gni` — Added `VIGO_ENABLE_SECURITY` buildflag
+- `components/BUILD.gn` — Added `//vigo/components/security` to `vigo_components` group and `unit_tests` group (guarded by `vigo_enable_security`)
+- `browser/BUILD.gn` — Added `//vigo/components/security` dep (guarded by `vigo_enable_security`)
+
+#### Browser Wiring
+
+- `browser/vigo_browser_main_parts.h` — Added forward decls for `security::VigoCveMonitor`, `security::VigoLicenseKey`, `security::VigoSecurityHardening`, `security::VigoUpdateClient`; added accessors `cve_monitor()`, `license_key()`, `update_client()`; added `InitSecuritySubsystem()` method and 4 member ownership pointers
+- `browser/vigo_browser_main_parts.cc` — Added `#include`s under `BUILDFLAG(VIGO_ENABLE_SECURITY)`, `InitSecuritySubsystem()` creates + initialises hardening audit, license key, CVE monitor, and update client in `PreMainMessageLoopRun()`; explicit shutdown in `PostMainMessageLoopRun()`
+
+### Test Summary (Cumulative)
+
+- **Rust**: 59 tests pass ✅ (47 crypto + 11 adblock + 1 filter)
+- **C++ tests defined**: ~310+ (240 previous + 70 new in Phase 5)
+  - Security: 70 tests across 6 test files
+    - `vigo_sbom_generator_unittest.cc` — 10 tests
+    - `vigo_update_client_unittest.cc` — 12 tests
+    - `vigo_security_hardening_unittest.cc` — 14 tests
+    - `vigo_code_signing_unittest.cc` — 8 tests
+    - `vigo_cve_monitor_unittest.cc` — 12 tests
+    - `vigo_license_key_unittest.cc` — 14 tests
+
+### Phase Status (After Session 7)
+
+| Phase | Status | Gate |
+|-------|--------|------|
+| **0 — Foundation** | ✅ Done | Scaffold + build system |
+| **1 — Browser Shell** | ✅ Done | 10/10 tasks |
+| **2 — Media Engine** | ✅ Done | All codecs + HW decode + PiP + ABR |
+| **3 — Credential Vault & Sync** | ✅ Done | Crypto + sync engine + CRDT + extensions |
+| **4 — Performance** | ✅ Done | Memory budget + tab lifecycle + process mgmt + startup + CI benchmark |
+| **5 — Security & Installer** | ✅ **COMPLETE** | SBOM + auto-update + hardening + signing + CVE monitor + license + installers (Win/Mac/Linux) + release pipeline |
+| **6 — Beta & GA** | ⬜ Not started | Next phase |
+
+### Next Session: Phase 6 — Beta Launch & GA Transition
+- [ ] Beta watermark / banner UI in browser chrome
+- [ ] Opt-in telemetry (anonymised, aggregated)
+- [ ] Custom crash reporting (Crashpad integration)
+- [ ] In-browser feedback channel (report form → server)
+- [ ] License key activation UI (settings page)
+- [ ] Ed25519 license signature implementation (connect to Rust crypto)
+- [ ] License server API scaffold (Go + SQLite)
+- [ ] Beta program landing page assets
+- [ ] Final integration testing
+- [ ] Vigo 1.0 release candidate preparation

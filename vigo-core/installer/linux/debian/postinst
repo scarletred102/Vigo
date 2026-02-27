@@ -1,0 +1,38 @@
+#!/bin/bash
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+#
+# Post-installation script for Vigo Browser Debian package.
+# Registers MIME types and updates icon cache.
+
+set -e
+
+# Update icon cache
+if command -v gtk-update-icon-cache &>/dev/null; then
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+fi
+
+# Update desktop database
+if command -v update-desktop-database &>/dev/null; then
+    update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
+
+# Update MIME database
+if command -v update-mime-database &>/dev/null; then
+    update-mime-database /usr/share/mime 2>/dev/null || true
+fi
+
+# Register as alternative browser (priority 100, below chromium/firefox defaults)
+if command -v update-alternatives &>/dev/null; then
+    update-alternatives --install /usr/bin/x-www-browser x-www-browser \
+        /usr/bin/vigo-browser 100
+    update-alternatives --install /usr/bin/gnome-www-browser gnome-www-browser \
+        /usr/bin/vigo-browser 100
+fi
+
+# Set up AppArmor profile if available
+if [ -d /etc/apparmor.d ] && [ -f /etc/apparmor.d/vigo-browser ]; then
+    apparmor_parser -r /etc/apparmor.d/vigo-browser 2>/dev/null || true
+fi
+
+exit 0

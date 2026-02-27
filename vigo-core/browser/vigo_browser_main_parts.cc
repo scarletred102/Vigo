@@ -30,6 +30,13 @@
 #include "vigo/components/performance/vigo_performance_controller.h"
 #endif
 
+#if BUILDFLAG(VIGO_ENABLE_SECURITY)
+#include "vigo/components/security/vigo_cve_monitor.h"
+#include "vigo/components/security/vigo_license_key.h"
+#include "vigo/components/security/vigo_security_hardening.h"
+#include "vigo/components/security/vigo_update_client.h"
+#endif
+
 namespace vigo {
 
 VigoBrowserMainParts::VigoBrowserMainParts(
@@ -64,12 +71,24 @@ void VigoBrowserMainParts::PreMainMessageLoopRun() {
   InitMediaOrchestration();
   InitSyncClient();
   InitPerformanceController();
+  InitSecuritySubsystem();
 
   VLOG(1) << "VigoBrowserMainParts: All Vigo subsystems initialised";
 }
 
 void VigoBrowserMainParts::PostMainMessageLoopRun() {
   VLOG(1) << "VigoBrowserMainParts: Shutting down Vigo subsystems";
+
+#if BUILDFLAG(VIGO_ENABLE_SECURITY)
+  if (cve_monitor_) {
+    cve_monitor_->Shutdown();
+    cve_monitor_.reset();
+    VLOG(1) << "VigoBrowserMainParts: CVE monitor shut down";
+  }
+  update_client_.reset();
+  license_key_.reset();
+  security_hardening_.reset();
+#endif
 
 #if BUILDFLAG(VIGO_ENABLE_PERFORMANCE)
   if (performance_controller_) {
@@ -176,6 +195,40 @@ void VigoBrowserMainParts::InitPerformanceController() {
   VLOG(1) << "VigoBrowserMainParts: Performance controller started — "
           << "memory budget, tab lifecycle, process manager, reclaimer, "
           << "startup controller all wired and active";
+#endif
+}
+
+void VigoBrowserMainParts::InitSecuritySubsystem() {
+#if BUILDFLAG(VIGO_ENABLE_SECURITY)
+  VLOG(1) << "VigoBrowserMainParts: Initialising security subsystem";
+
+  // 1. Security hardening: verify platform protections (ASLR, DEP, sandbox).
+  security_hardening_ =
+      std::make_unique<security::VigoSecurityHardening>();
+  auto audit_report = security_hardening_->RunSecurityAudit();
+  VLOG(1) << "VigoBrowserMainParts: Security audit — "
+          << audit_report.passed_count << " passed, "
+          << audit_report.failed_count << " failed, "
+          << audit_report.warning_count << " warnings";
+
+  // 2. License key: initialise with default beta license.
+  license_key_ = std::make_unique<security::VigoLicenseKey>();
+  if (license_key_->IsBeta()) {
+    VLOG(1) << "VigoBrowserMainParts: Running in BETA mode — all features "
+            << "enabled until beta end date";
+  }
+
+  // 3. CVE monitor: track upstream vulnerabilities.
+  cve_monitor_ = std::make_unique<security::VigoCveMonitor>();
+  cve_monitor_->Initialise();
+
+  // 4. Update client: check for available updates.
+  update_client_ = std::make_unique<security::VigoUpdateClient>();
+  update_client_->StartPeriodicChecks();
+
+  VLOG(1) << "VigoBrowserMainParts: Security subsystem initialised — "
+          << "hardening verified, license active, CVE monitor polling, "
+          << "update client ready";
 #endif
 }
 

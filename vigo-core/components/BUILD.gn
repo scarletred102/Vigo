@@ -35,6 +35,10 @@ group("vigo_components") {
   if (vigo_enable_performance) {
     deps += [ "//vigo/components/performance" ]
   }
+
+  if (vigo_enable_security) {
+    deps += [ "//vigo/components/security" ]
+  }
 }
 
 group("unit_tests") {
@@ -67,5 +71,9 @@ group("unit_tests") {
 
   if (vigo_enable_performance) {
     deps += [ "//vigo/components/performance:unit_tests" ]
+  }
+
+  if (vigo_enable_security) {
+    deps += [ "//vigo/components/security:unit_tests" ]
   }
 }

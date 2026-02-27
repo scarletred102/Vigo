@@ -33,6 +33,10 @@ declare_args() {
   # lifecycle, process management, startup lazy-loading, telemetry).
   vigo_enable_performance = true
 
+  # Enable the security subsystem (SBOM, auto-update, code signing,
+  # CVE monitor, license key, security hardening).
+  vigo_enable_security = true
+
   # Enable JPEG XL image format support (Chromium removed in M110; Vigo
   # re-enables as a differentiator).
   vigo_enable_jxl = true

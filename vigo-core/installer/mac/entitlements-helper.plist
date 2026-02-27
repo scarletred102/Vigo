@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Copyright (c) 2025 Vigo Browser. All rights reserved.
+  Proprietary and confidential. Unauthorized copying prohibited.
+
+  Minimal entitlements for Vigo helper processes (renderer, GPU, utility).
+  Each helper runs sandboxed with the minimum privileges needed.
+-->
+<plist version="1.0">
+<dict>
+    <!-- Hardened Runtime -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+
+    <!-- JIT for V8 in renderer processes -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Unsigned memory for codec loading in GPU process -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Disable library validation for Widevine CDM in utility -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Networking (utility process for network service) -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>

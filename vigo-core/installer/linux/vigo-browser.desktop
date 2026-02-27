@@ -1,0 +1,30 @@
+[Desktop Entry]
+# Copyright (c) 2025 Vigo Browser. All rights reserved.
+# Proprietary and confidential. Unauthorized copying prohibited.
+
+Version=1.1
+Type=Application
+
+Name=Vigo Browser
+GenericName=Web Browser
+Comment=Privacy-first, streaming-optimized web browser
+Keywords=Internet;WWW;Browser;Web;Privacy;Streaming;
+
+Exec=vigo-browser %U
+Terminal=false
+Icon=vigo-browser
+StartupNotify=true
+StartupWMClass=vigo-browser
+
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/rss+xml;application/rdf+xml;application/pdf;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/vigo;
+
+Actions=NewWindow;NewIncognitoWindow;
+
+[Desktop Action NewWindow]
+Name=New Window
+Exec=vigo-browser --new-window
+
+[Desktop Action NewIncognitoWindow]
+Name=New Private Window
+Exec=vigo-browser --incognito

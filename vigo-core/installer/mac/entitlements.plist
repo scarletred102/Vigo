@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Copyright (c) 2025 Vigo Browser. All rights reserved.
+  Proprietary and confidential. Unauthorized copying prohibited.
+
+  Entitlements for Vigo Browser Hardened Runtime.
+  Minimal set required for Chromium-based browser operation.
+-->
+<plist version="1.0">
+<dict>
+    <!-- Hardened Runtime: required for notarization -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+
+    <!-- Allow JIT compilation (V8 JavaScript engine) -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Allow unsigned executable memory (V8, ffmpeg codec loading) -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Allow DYLD environment variables (for plugin loading) -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+
+    <!-- Disable library validation (load Widevine CDM, third-party libs) -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Camera access (WebRTC) -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+
+    <!-- Microphone access (WebRTC) -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- USB (WebUSB API) -->
+    <key>com.apple.security.device.usb</key>
+    <true/>
+
+    <!-- Bluetooth (Web Bluetooth API) -->
+    <key>com.apple.security.device.bluetooth</key>
+    <true/>
+
+    <!-- Location services -->
+    <key>com.apple.security.personal-information.location</key>
+    <true/>
+
+    <!-- Networking -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <!-- File access: user-selected files -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- File access: downloads folder -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+
+    <!-- GPU / Metal rendering -->
+    <key>com.apple.security.cs.disable-executable-page-protection</key>
+    <false/>
+</dict>
+</plist>

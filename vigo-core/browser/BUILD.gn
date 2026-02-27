@@ -42,5 +42,9 @@ source_set("vigo_browser") {
     deps += [ "//vigo/components/performance" ]
   }
 
+  if (vigo_enable_security) {
+    deps += [ "//vigo/components/security" ]
+  }
+
   configs += [ "//vigo/build/config:vigo_config" ]
 }

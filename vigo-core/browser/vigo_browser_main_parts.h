@@ -18,6 +18,13 @@ namespace performance {
 class VigoPerformanceController;
 }  // namespace performance
 
+namespace security {
+class VigoCveMonitor;
+class VigoLicenseKey;
+class VigoSecurityHardening;
+class VigoUpdateClient;
+}  // namespace security
+
 namespace privacy {
 class VigoDoHConfig;
 class VigoFingerprintProtection;
@@ -59,6 +66,16 @@ class VigoBrowserMainParts : public ChromeBrowserMainParts {
     return performance_controller_.get();
   }
 
+  security::VigoCveMonitor* cve_monitor() const {
+    return cve_monitor_.get();
+  }
+  security::VigoLicenseKey* license_key() const {
+    return license_key_.get();
+  }
+  security::VigoUpdateClient* update_client() const {
+    return update_client_.get();
+  }
+
  private:
   // Initialise the Rust adblock engine via the keyed service factory.
   void InitAdblockEngine(Profile* profile);
@@ -75,6 +92,10 @@ class VigoBrowserMainParts : public ChromeBrowserMainParts {
   // Start the performance optimisation controller.
   void InitPerformanceController();
 
+  // Initialise the security subsystem (CVE monitor, license key, update
+  // client, hardening verification).
+  void InitSecuritySubsystem();
+
   // Owned subsystem instances.
   std::unique_ptr<privacy::VigoPrivacyEngine> privacy_engine_;
   std::unique_ptr<privacy::VigoFingerprintProtection>
@@ -83,6 +104,12 @@ class VigoBrowserMainParts : public ChromeBrowserMainParts {
   std::unique_ptr<media::VigoMediaPipelineIntegration> media_pipeline_;
   std::unique_ptr<performance::VigoPerformanceController>
       performance_controller_;
+
+  // Security subsystem.
+  std::unique_ptr<security::VigoCveMonitor> cve_monitor_;
+  std::unique_ptr<security::VigoLicenseKey> license_key_;
+  std::unique_ptr<security::VigoUpdateClient> update_client_;
+  std::unique_ptr<security::VigoSecurityHardening> security_hardening_;
 };
 
 }  // namespace vigo

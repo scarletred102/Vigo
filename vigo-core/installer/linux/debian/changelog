@@ -1,0 +1,12 @@
+vigo-browser (0.1.0-1) unstable; urgency=medium
+
+  * Initial release.
+  * Phase 5: Security & Installer build.
+  * Built-in ad/tracker blocking with Rust engine.
+  * Universal media playback (HEVC, AV1, VP9, AAC, FLAC, Opus).
+  * Hardware-accelerated video decode (VAAPI).
+  * End-to-end encrypted sync.
+  * Credential vault.
+  * Privacy engine with anti-fingerprinting.
+
+ -- Vigo Browser Team <team@vigobrowser.com>  Mon, 01 Jan 2025 00:00:00 +0000
