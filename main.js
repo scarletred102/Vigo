@@ -1,4 +1,13 @@
-const { app, BrowserWindow, ipcMain, session, dialog, Menu } = require('electron');
+// If require('electron') returns a string, we might be running via node cli.js.
+// We'll extract objects carefully avoiding destructuring undefined.
+const electronPkg = require('electron');
+const app = electronPkg.app;
+const BrowserWindow = electronPkg.BrowserWindow;
+const ipcMain = electronPkg.ipcMain;
+const session = electronPkg.session;
+const dialog = electronPkg.dialog;
+const Menu = electronPkg.Menu;
+
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -265,13 +274,8 @@ async function createWindow() {
     }
   });
 
-  // Load onboarding or main browser
-  const settings = readJSON(settingsPath, {});
-  if (!settings.onboardingComplete) {
-    mainWindow.loadFile('onboarding.html');
-  } else {
-    mainWindow.loadFile('index.html');
-  }
+  // Always load the main browser
+  mainWindow.loadFile('index.html');
 
   Menu.setApplicationMenu(null);
   setupAdBlocker();
@@ -280,8 +284,22 @@ async function createWindow() {
   extManager = new ExtensionManager(userDataPath);
   await extManager.init();
 
-  ipcMain.on('onboarding-finish', () => {
-    mainWindow.loadFile('index.html');
+  ipcMain.on('window-minimize', () => {
+    if (mainWindow) mainWindow.minimize();
+  });
+
+  ipcMain.on('window-maximize', () => {
+    if (mainWindow) {
+      if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+      } else {
+        mainWindow.maximize();
+      }
+    }
+  });
+
+  ipcMain.on('window-close', () => {
+    if (mainWindow) mainWindow.close();
   });
 
   // ─── Selective User Agent for Streaming Quality ──────────────────────────

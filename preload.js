@@ -96,7 +96,4 @@ contextBridge.exposeInMainWorld('vigo', {
     getExtensions: () => ipcRenderer.invoke('extensions-list'),
     installExtension: () => ipcRenderer.invoke('extensions-install-unpacked'),
     removeExtension: (id) => ipcRenderer.invoke('extensions-remove', id),
-
-    // Onboarding
-    finishOnboarding: () => ipcRenderer.send('onboarding-finish')
 });

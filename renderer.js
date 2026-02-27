@@ -115,6 +115,7 @@ async function renderSettings(container) {
   const currentEngine = settings.searchEngine || 'google';
   const currentZoom = settings.pageZoom || 100;
   const currentFontSize = settings.fontSize || 'medium';
+  const currentTabLayout = settings.tabLayout || 'horizontal';
   const dlPath = settings.downloadPath || defaultDlPath;
 
   container.innerHTML = `
@@ -146,6 +147,16 @@ async function renderSettings(container) {
           <div class="settings-desc">Default zoom level: <strong id="zoom-value">${currentZoom}%</strong></div>
         </div>
         <input type="range" class="settings-range" id="range-zoom" min="50" max="200" step="5" value="${currentZoom}">
+      </div>
+      <div class="settings-item">
+        <div>
+          <div class="settings-label">Tab Layout</div>
+          <div class="settings-desc">Switch between horizontal (top) and vertical (side) tabs</div>
+        </div>
+        <select class="settings-select" id="select-tab-layout">
+          <option value="horizontal" ${currentTabLayout === 'horizontal' ? 'selected' : ''}>Horizontal</option>
+          <option value="vertical" ${currentTabLayout === 'vertical' ? 'selected' : ''}>Vertical</option>
+        </select>
       </div>
     </div>
 
@@ -576,6 +587,13 @@ async function renderSettings(container) {
     applyZoom(settings.pageZoom);
   });
 
+  // Tab Layout
+  container.querySelector('#select-tab-layout')?.addEventListener('change', async function () {
+    settings.tabLayout = this.value;
+    await window.vigo?.saveSettings(settings);
+    applyTabLayout(this.value);
+  });
+
   // Memory Saver
   container.querySelector('#toggle-memory-saver')?.addEventListener('click', async function () {
     this.classList.toggle('on');
@@ -654,6 +672,16 @@ function applyZoom(percent) {
   });
 }
 
+function applyTabLayout(layout) {
+  if (layout === 'vertical') {
+    document.body.classList.add('vertical-tabs');
+  } else {
+    document.body.classList.remove('vertical-tabs');
+  }
+  // Re-render tabs to adapt to new layout
+  if (typeof TabManager !== 'undefined') TabManager.renderTabs();
+}
+
 function escapeHtmlSafe(str) {
   const div = document.createElement('div');
   div.textContent = str || '';
@@ -691,6 +719,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Apply saved zoom
     if (settings.pageZoom) applyZoom(settings.pageZoom);
+
+    // Apply saved tab layout
+    if (settings.tabLayout) applyTabLayout(settings.tabLayout);
   }
 
   // Create initial tab
@@ -705,6 +736,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Sidebar actions
   document.getElementById('btn-new-tab').addEventListener('click', () => TabManager.createTab());
+  document.getElementById('vertical-new-tab-btn')?.addEventListener('click', () => TabManager.createTab());
   document.getElementById('btn-search-tabs').addEventListener('click', () => CommandPalette.open());
 
   // Navigation

@@ -26,9 +26,22 @@
             </linearGradient>
           </defs>
         </svg>
-        <span class="logo-text">Vigo</span>
       </div>
     </div>
+
+    <!-- Horizontal Tab Strip -->
+    <div id="tab-strip" role="tablist" aria-label="Open tabs">
+      <div id="tab-list" class="custom-scroll" role="presentation"></div>
+      <button class="nav-btn" id="btn-new-tab" title="New Tab (Ctrl+T)"
+        style="-webkit-app-region: no-drag; margin-left: 4px; border-radius: 50%;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+      </button>
+    </div>
+
     <div id="window-controls">
       <button class="win-btn" id="btn-minimize" title="Minimize">
         <svg width="12" height="12" viewBox="0 0 12 12">
@@ -53,13 +66,6 @@
     <!-- ─── SIDEBAR ─── -->
     <aside id="sidebar" role="navigation" aria-label="Tab list and navigation">
       <div id="sidebar-header">
-        <button class="sidebar-action" id="btn-new-tab" title="New Tab (Ctrl+T)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
         <button class="sidebar-action" id="btn-search-tabs" title="Search Tabs">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round">
@@ -68,7 +74,16 @@
           </svg>
         </button>
       </div>
-      <div id="tab-list" class="custom-scroll" role="tablist" aria-label="Open tabs"></div>
+      <div id="vertical-tab-list" class="custom-scroll" role="presentation"></div>
+      <button id="vertical-new-tab-btn" title="New Tab (Ctrl+T)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        New Tab
+      </button>
+      <div id="sidebar-spacer" style="flex:1"></div>
       <div id="sidebar-footer">
         <button class="sidebar-action" id="btn-bookmarks" title="Bookmarks">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"

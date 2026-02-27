@@ -265,6 +265,7 @@ const TabManager = (() => {
 
     function renderTabs() {
         const list = document.getElementById('tab-list');
+        const verticalList = document.getElementById('vertical-tab-list');
         // Group tabs by group
         const grouped = {};
         const ungrouped = [];
@@ -293,44 +294,61 @@ const TabManager = (() => {
 
         // Render ungrouped tabs
         ungrouped.forEach(tab => { html += renderTabItem(tab); });
-        list.innerHTML = html;
 
-        // Bind events
-        list.querySelectorAll('.tab-item').forEach(el => {
-            el.addEventListener('click', () => setActiveTab(el.dataset.id));
-            el.addEventListener('contextmenu', (e) => showTabContextMenu(e, el.dataset.id));
+        // Populate both horizontal and vertical tab lists
+        if (list) list.innerHTML = html;
+        if (verticalList) verticalList.innerHTML = html;
 
-            // ─── Drag-and-drop reorder ───
-            el.addEventListener('dragstart', (e) => {
-                e.dataTransfer.setData('text/plain', el.dataset.id);
-                el.classList.add('dragging');
-                e.dataTransfer.effectAllowed = 'move';
+        // Bind events for both lists
+        const allLists = [list, verticalList].filter(Boolean);
+        allLists.forEach(container => {
+            const isVertical = container.id === 'vertical-tab-list';
+
+            container.querySelectorAll('.tab-item').forEach(el => {
+                el.addEventListener('click', () => setActiveTab(el.dataset.id));
+                el.addEventListener('contextmenu', (e) => showTabContextMenu(e, el.dataset.id));
+
+                // ─── Drag-and-drop reorder ───
+                el.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', el.dataset.id);
+                    el.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                el.addEventListener('dragend', () => el.classList.remove('dragging'));
+                el.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    const dragging = container.querySelector('.dragging');
+                    if (!dragging || dragging === el) return;
+                    const rect = el.getBoundingClientRect();
+                    if (isVertical) {
+                        const midY = rect.top + rect.height / 2;
+                        if (e.clientY < midY) {
+                            el.parentNode.insertBefore(dragging, el);
+                        } else {
+                            el.parentNode.insertBefore(dragging, el.nextSibling);
+                        }
+                    } else {
+                        const midX = rect.left + rect.width / 2;
+                        if (e.clientX < midX) {
+                            el.parentNode.insertBefore(dragging, el);
+                        } else {
+                            el.parentNode.insertBefore(dragging, el.nextSibling);
+                        }
+                    }
+                });
+                el.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    const newOrder = Array.from(container.querySelectorAll('.tab-item')).map(t => t.dataset.id);
+                    tabs.sort((a, b) => newOrder.indexOf(a.id) - newOrder.indexOf(b.id));
+                    renderTabs();
+                });
             });
-            el.addEventListener('dragend', () => el.classList.remove('dragging'));
-            el.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                const dragging = list.querySelector('.dragging');
-                if (!dragging || dragging === el) return;
-                const rect = el.getBoundingClientRect();
-                const midY = rect.top + rect.height / 2;
-                if (e.clientY < midY) {
-                    el.parentNode.insertBefore(dragging, el);
-                } else {
-                    el.parentNode.insertBefore(dragging, el.nextSibling);
-                }
-            });
-            el.addEventListener('drop', (e) => {
-                e.preventDefault();
-                // Sync the DOM order back to the tabs array
-                const newOrder = Array.from(list.querySelectorAll('.tab-item')).map(t => t.dataset.id);
-                tabs.sort((a, b) => newOrder.indexOf(a.id) - newOrder.indexOf(b.id));
-            });
-        });
-        list.querySelectorAll('.tab-close').forEach(el => {
-            el.addEventListener('click', (e) => {
-                e.stopPropagation();
-                closeTab(el.closest('.tab-item').dataset.id);
+            container.querySelectorAll('.tab-close').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    closeTab(el.closest('.tab-item').dataset.id);
+                });
             });
         });
     }
