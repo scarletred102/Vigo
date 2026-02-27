@@ -24,6 +24,9 @@ ffmpeg_branding = "Chrome"
 is_debug = true
 is_component_build = true  # Faster incremental builds during dev
 
+# ── Vigo: Wire targets into Chromium build graph ────────────────
+root_extra_deps = [ "//vigo:vigo" ]
+
 # ── Vigo Feature Flags ──────────────────────────────────────────
 # These are picked up by vigo-core/build/config/vigo_args.gni
 # and generate BUILDFLAG(VIGO_*) macros.

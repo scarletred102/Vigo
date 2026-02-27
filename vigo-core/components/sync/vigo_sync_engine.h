@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
 #include "base/timer/timer.h"
@@ -182,9 +183,9 @@ class VigoSyncEngine {
   void OnSyncTimer();
 
   // Not owned.
-  VigoSyncKeyManager* key_manager_;
-  VigoSyncEncryptor* encryptor_;
-  VigoSyncTransport* transport_;
+  raw_ptr<VigoSyncKeyManager> key_manager_;
+  raw_ptr<VigoSyncEncryptor> encryptor_;
+  raw_ptr<VigoSyncTransport> transport_;
 
   SyncState state_ = SyncState::kDisconnected;
   SyncCycleResult last_result_;

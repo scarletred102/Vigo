@@ -33,8 +33,11 @@ source_set("webui") {
     "//url",
     "//vigo/app:vigo_branding",
     "//vigo/build/config:vigo_buildflags",
-    "//vigo/components/privacy_engine",
   ]
+
+  if (vigo_enable_privacy_engine) {
+    deps += [ "//vigo/components/privacy_engine" ]
+  }
 
   if (vigo_enable_media_orchestration) {
     deps += [ "//vigo/components/media_orchestration" ]

@@ -18,7 +18,7 @@
 
 #define VIGO_WEBGL_MASKING_ACTIVE 1
 
-#include "src/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc"  // NOLINT
+#include "third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc"  // NOLINT
 
 // The masking is applied via VigoFingerprintProtection::GetMaskedWebGLVendor()
 // and GetMaskedWebGLRenderer(). These are called from the renderer process

@@ -26,9 +26,8 @@ source_set("sync") {
     "//vigo/build/config:vigo_buildflags",
   ]
 
-  # TODO(Phase 3.4): Add dependency on the Rust crypto static library
-  # once the GN rust_static_library target is wired.
-  # deps += [ "//vigo/rust/vigo_crypto" ]
+  # Rust crypto FFI bridge for encryption/signing operations.
+  deps += [ "//vigo/rust/vigo_crypto:vigo_crypto_rs" ]
 
   configs += [ "//vigo/build/config:vigo_config" ]
 }

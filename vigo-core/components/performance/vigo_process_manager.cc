@@ -8,6 +8,7 @@
 #include "base/logging.h"
 #include "base/process/process.h"
 #include "base/process/process_metrics.h"
+#include "build/build_config.h"
 
 #if BUILDFLAG(IS_WIN)
 #include <windows.h>

@@ -13,9 +13,10 @@ rust_static_library("vigo_crypto_rs") {
     "//vigo/rust/vigo_crypto/src/lib.rs",
   ]
 
-  deps = [
-    "//vigo/third_party/libsodium",
-  ]
+  # Pure Rust crypto — no native deps needed.
+  # All crypto primitives come from RustCrypto crates (chacha20poly1305,
+  # argon2, ed25519-dalek, x25519-dalek) managed via Cargo.toml.
+  deps = []
 
   allow_unsafe = true
 }

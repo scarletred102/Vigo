@@ -6,6 +6,8 @@
 
 #include <string>
 
+#include "build/build_config.h"
+
 namespace vigo {
 namespace branding {
 
@@ -38,11 +40,11 @@ inline constexpr char kCopyright[] =
 // Windows: %LOCALAPPDATA%\Vigo\User Data
 // macOS:   ~/Library/Application Support/Vigo
 // Linux:   ~/.config/vigo
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 inline constexpr wchar_t kUserDataDirName[] = L"Vigo\\User Data";
-#elif defined(OS_MAC)
+#elif BUILDFLAG(IS_MAC)
 inline constexpr char kUserDataDirName[] = "Vigo";
-#elif defined(OS_LINUX)
+#elif BUILDFLAG(IS_LINUX)
 inline constexpr char kUserDataDirName[] = "vigo";
 #endif
 

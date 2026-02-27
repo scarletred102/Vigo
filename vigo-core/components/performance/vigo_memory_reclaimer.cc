@@ -7,10 +7,12 @@
 
 #include "base/logging.h"
 #include "base/process/process.h"
+#include "build/build_config.h"
 
 #if BUILDFLAG(IS_WIN)
-#include <psapi.h>
 #include <windows.h>
+
+#include <psapi.h>
 #elif BUILDFLAG(IS_POSIX)
 #include <malloc.h>
 #include <sys/mman.h>

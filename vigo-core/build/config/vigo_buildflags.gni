@@ -1,9 +1,13 @@
 # Copyright (c) 2025 Vigo Browser. All rights reserved.
 # Proprietary and confidential. Unauthorized copying prohibited.
 
-# Vigo build-flag definitions.
-# This file declares BUILDFLAG(VIGO_*) macros that can be used in C++ source
-# files to conditionally compile Vigo-specific code paths.
+# Vigo build-flag variable definitions.
+#
+# This file re-exports the vigo_args so that any BUILD.gn that imports
+# this .gni has access to the vigo_enable_* GN variables for if()
+# conditions.  The actual buildflag_header() target that generates the
+# C++ header lives in //vigo/build/config/BUILD.gn — depend on
+# "//vigo/build/config:vigo_buildflags" to consume it.
 #
 # Usage in C++:
 #   #include "vigo/build/config/vigo_buildflags.h"
@@ -11,25 +15,4 @@
 #     ...
 #   #endif
 
-import("//build/buildflag_header.gni")
 import("//vigo/build/config/vigo_args.gni")
-
-buildflag_header("vigo_buildflags") {
-  header = "vigo_buildflags.h"
-  header_dir = "vigo/build/config"
-
-  flags = [
-    "VIGO_ENABLE_ADBLOCK=$vigo_enable_adblock",
-    "VIGO_ENABLE_PRIVACY_ENGINE=$vigo_enable_privacy_engine",
-    "VIGO_ENABLE_MEDIA_ORCHESTRATION=$vigo_enable_media_orchestration",
-    "VIGO_ENABLE_SYNC=$vigo_enable_sync",
-    "VIGO_ENABLE_CREDENTIAL_VAULT=$vigo_enable_credential_vault",
-    "VIGO_ENABLE_EXTENSIONS=$vigo_enable_extensions",
-    "VIGO_ENABLE_PERFORMANCE=$vigo_enable_performance",
-    "VIGO_ENABLE_SECURITY=$vigo_enable_security",
-    "VIGO_ENABLE_JXL=$vigo_enable_jxl",
-    "VIGO_ENABLE_HEVC=$vigo_enable_hevc",
-    "VIGO_ENABLE_HW_DECODE=$vigo_enable_hw_decode",
-    "VIGO_IS_BETA=$vigo_is_beta",
-  ]
-}

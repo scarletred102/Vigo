@@ -36,7 +36,7 @@ class VigoPrivacyEngine;
 // orchestration, and sync client startup.
 class VigoBrowserMainParts : public ChromeBrowserMainParts {
  public:
-  VigoBrowserMainParts(const content::MainFunctionParams& parameters,
+  VigoBrowserMainParts(bool is_integration_test,
                        StartupData* startup_data);
   ~VigoBrowserMainParts() override;
 
@@ -46,7 +46,7 @@ class VigoBrowserMainParts : public ChromeBrowserMainParts {
   // ChromeBrowserMainParts overrides:
   int PreCreateThreads() override;
   void PostProfileInit(Profile* profile, bool is_initial_profile) override;
-  void PreMainMessageLoopRun() override;
+  int PreMainMessageLoopRun() override;
   void PostMainMessageLoopRun() override;
 
   // Accessors for subsystem instances (non-owning, may be nullptr).

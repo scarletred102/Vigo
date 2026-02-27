@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/sequence_checker.h"
 #include "vigo/components/sync/vigo_sync_data_types.h"
 #include "vigo/components/sync/vigo_sync_key_manager.h"
@@ -59,7 +60,7 @@ class VigoSyncEncryptor {
       const std::vector<uint8_t>& ciphertext) const;
 
  private:
-  const VigoSyncKeyManager* key_manager_;  // Not owned.
+  raw_ptr<const VigoSyncKeyManager> key_manager_;  // Not owned.
 
   SEQUENCE_CHECKER(sequence_checker_);
 };

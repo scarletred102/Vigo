@@ -15,9 +15,8 @@ source_set("credential_vault") {
     "//vigo/components/sync",
   ]
 
-  # TODO(Phase 3.4): Add dependency on the Rust crypto static library
-  # once the GN rust_static_library target is wired.
-  # deps += [ "//vigo/rust/vigo_crypto" ]
+  # Rust crypto FFI bridge for vault encryption.
+  deps += [ "//vigo/rust/vigo_crypto:vigo_crypto_rs" ]
 
   configs += [ "//vigo/build/config:vigo_config" ]
 }

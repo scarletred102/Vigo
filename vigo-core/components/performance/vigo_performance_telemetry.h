@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/sequence_checker.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
@@ -169,9 +170,9 @@ class VigoPerformanceTelemetry
   bool is_running_ = false;
 
   // Data sources (not owned).
-  VigoMemoryBudgetController* budget_controller_ = nullptr;
-  VigoProcessManager* process_manager_ = nullptr;
-  VigoTabLifecycleManager* tab_lifecycle_manager_ = nullptr;
+  raw_ptr<VigoMemoryBudgetController> budget_controller_ = nullptr;
+  raw_ptr<VigoProcessManager> process_manager_ = nullptr;
+  raw_ptr<VigoTabLifecycleManager> tab_lifecycle_manager_ = nullptr;
 
   // Rolling sample buffer.
   std::vector<PerfSample> samples_;

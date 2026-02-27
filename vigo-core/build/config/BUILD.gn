@@ -4,12 +4,30 @@
 # GN build targets for vigo-core/build/config/.
 # Provides the generated vigo_buildflags.h header and shared configs.
 
-import("//vigo/build/config/vigo_buildflags.gni")
+import("//build/buildflag_header.gni")
+import("//vigo/build/config/vigo_args.gni")
 
-# Re-export the buildflag_header target so other targets can depend on
-# "//vigo/build/config:vigo_buildflags".
-group("vigo_buildflags") {
-  public_deps = [ ":vigo_buildflags" ]
+# Generates vigo/build/config/vigo_buildflags.h with BUILDFLAG(VIGO_*)
+# macros.  Other targets depend on "//vigo/build/config:vigo_buildflags"
+# to consume this header.
+buildflag_header("vigo_buildflags") {
+  header = "vigo_buildflags.h"
+  header_dir = "vigo/build/config"
+
+  flags = [
+    "VIGO_ENABLE_ADBLOCK=$vigo_enable_adblock",
+    "VIGO_ENABLE_PRIVACY_ENGINE=$vigo_enable_privacy_engine",
+    "VIGO_ENABLE_MEDIA_ORCHESTRATION=$vigo_enable_media_orchestration",
+    "VIGO_ENABLE_SYNC=$vigo_enable_sync",
+    "VIGO_ENABLE_CREDENTIAL_VAULT=$vigo_enable_credential_vault",
+    "VIGO_ENABLE_EXTENSIONS=$vigo_enable_extensions",
+    "VIGO_ENABLE_PERFORMANCE=$vigo_enable_performance",
+    "VIGO_ENABLE_SECURITY=$vigo_enable_security",
+    "VIGO_ENABLE_JXL=$vigo_enable_jxl",
+    "VIGO_ENABLE_HEVC=$vigo_enable_hevc",
+    "VIGO_ENABLE_HW_DECODE=$vigo_enable_hw_decode",
+    "VIGO_IS_BETA=$vigo_is_beta",
+  ]
 }
 
 config("vigo_config") {

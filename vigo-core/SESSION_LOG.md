@@ -1216,6 +1216,74 @@ VigoPerformanceController (orchestrator)
 - JSON results output for CI artifact collection
 - Exit code 1 on regression
 
+---
+
+## Session 8 — 2026-02-26
+
+### Phase: **Phase 6 — First Compilation Against Chromium M147**
+
+### Status: **IN PROGRESS — Base deps building** 🔄
+
+### What Was Done
+
+First real compilation attempt of all Vigo code against Chromium M147 (147.0.7703.0).
+
+#### Environment Setup
+- **VS 2022 BuildTools** v17.14.25 installed by user
+- Fixed VS detection: `vs2022_install` env var set to `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`
+- Fixed `dbghelp.dll` missing from SDK Debuggers (copied from System32)
+- `gclient sync` completed (229/229 projects, 113/113 hooks)
+- `gn gen out/Debug` succeeded: 29,699 targets from 4,455 files (includes Vigo)
+- Used `root_extra_deps = [ "//vigo:vigo" ]` to wire Vigo into Chromium build graph
+- 35 Vigo targets visible in build graph
+
+#### GN Build File Fixes (7 issues)
+- Removed dead `vigo_config.gni` file (duplicate definitions)
+- Removed `libsodium` dep from `vigo_crypto_rs` (crypto is pure Rust)
+- Uncommented + fixed crypto dep in sync and credential_vault BUILD.gn
+- Wrapped `privacy_engine` dep in conditional in webui BUILD.gn
+- Commented out `chromium_src_overrides` from root BUILD.gn (duplicate symbol risk)
+
+#### Comprehensive C++ Compilation Fixes (25+ files)
+**API Migration to M147:**
+- `VigoBrowserMainParts`: Constructor `(bool is_integration_test, StartupData*)`, `PreMainMessageLoopRun()` returns `int`
+- `VigoContentBrowserClient`: `blink::URLLoaderThrottle`, `content::FrameTreeNodeId`
+- Fixed `RunSecurityAudit()` → `RunAllChecks()`, `passed_count`→`passed`, `failed_count`→`failed`
+- Fixed `StartPeriodicChecks()` → `Start()`, `Initialise()` → `Initialize()` for media pipeline
+- Fixed `GetUserAgent()` → `GetUserAgentSuffix()` in settings handler
+- Fixed hardcoded Chromium version string to use `version_info::GetVersionNumber()`
+
+**Include Fixes:**
+- `base/callback.h` → `base/functional/callback.h`
+- `GURL::EmptyGURL()` → `GURL()`
+- Added `build/build_config.h` to 5 files using `BUILDFLAG(IS_*)`
+- Added `base/memory/raw_ptr.h` and converted 8 raw pointer members to `raw_ptr<T>`
+- Added `content/public/browser/frame_tree_node_id.h` include
+- Added `content/public/common/result_codes.h` include
+- Added `base/version_info/version_info.h` include
+- Added `grit/vigo_webui_resources.h` to settings and NTP UI files
+- Fixed Windows header order (`windows.h` before `psapi.h`) in 2 files
+
+**Chromium_src Shadow Overrides:**
+- Fixed `src/` prefix in 2 blink override includes
+- Moved 3 stale override files to correct M147 paths (PromoService, ReportingClient, SigninManager)
+- Updated BUILD.gn with corrected paths
+
+**Other Fixes:**
+- Replaced `std::regex` with `re2::RE2` in `vigo_license_key.cc` (Chromium bans std::regex)
+- Added `//third_party/re2` dep to security BUILD.gn
+- Fixed `defined(OS_WIN)` → `BUILDFLAG(IS_WIN)` in `vigo_branding.h`
+
+### Build Status
+- `ninja -C out/Debug vigo:vigo -j 8` building, ~1400/39986 deps compiled
+- Building Chromium dependency libraries (net/, dawn/, base/) before Vigo sources
+- Full build expected to take several hours on this machine
+
+### Remaining Work
+- Monitor build completion and fix any remaining compilation errors iteratively
+- Wire `chromium_src_overrides` once patching infrastructure is ready
+- Run unit tests after successful compilation
+
 #### GN Build Args & Flags
 
 - `vigo_args.gni` — Added `vigo_enable_performance = true`

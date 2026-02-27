@@ -2,7 +2,7 @@
 description: "Generate a detailed week-by-week task breakdown for a specific Vigo implementation phase. Use when planning sprints, starting a new phase, or breaking down phase work into daily/weekly tasks. Requires a phase number as input."
 name: "Vigo Phase Planner"
 argument-hint: "Phase number to plan (0–6), e.g. '0', '1', '2 media engine'"
-tools: ["read", "search", "todo"]
+tools: [vscode, execute, read, agent, edit, search, web, 'github/*', 'ai-research-assistant/*', 'io.github.tavily-ai/tavily-mcp/*', 'linkup/*', 'ref/*', 'sequentialthinking/*', 'vibe-check/*', browser, 'pylance-mcp-server/*', vscode.mermaid-chat-features/renderMermaidDiagram, github.vscode-pull-request-github/issue_fetch, github.vscode-pull-request-github/labels_fetch, github.vscode-pull-request-github/notification_fetch, github.vscode-pull-request-github/doSearch, github.vscode-pull-request-github/activePullRequest, github.vscode-pull-request-github/pullRequestStatusChecks, github.vscode-pull-request-github/openPullRequest, ms-azuretools.vscode-containers/containerToolsConfig, ms-python.python/getPythonEnvironmentInfo, ms-python.python/getPythonExecutableCommand, ms-python.python/installPythonPackage, ms-python.python/configurePythonEnvironment, ms-vscode.vscode-websearchforcopilot/websearch, todo]
 ---
 
 You are planning the implementation of **Vigo Browser** — a proprietary, solo-developed, desktop-only Chromium fork. Use the implementation blueprint in [plan-vigoImplementationBlueprint.prompt.md](./plan-vigoImplementationBlueprint.prompt.md) as your authoritative source.

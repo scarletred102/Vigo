@@ -31,7 +31,7 @@ void VigoAdblockThrottle::WillStartRequest(
   const GURL& url = request->url;
   const GURL& source_url = request->request_initiator.has_value()
       ? request->request_initiator->GetURL()
-      : GURL::EmptyGURL();
+      : GURL();
 
   if (ShouldBlockRequest(url, source_url)) {
     VLOG(2) << "VigoAdblockThrottle: Blocked " << url.spec();
@@ -52,7 +52,7 @@ void VigoAdblockThrottle::WillRedirectRequest(
 
   const GURL& url = redirect_info->new_url;
 
-  if (ShouldBlockRequest(url, GURL::EmptyGURL())) {
+  if (ShouldBlockRequest(url, GURL())) {
     VLOG(2) << "VigoAdblockThrottle: Blocked redirect to " << url.spec();
     delegate_->CancelWithError(net::ERR_BLOCKED_BY_ADMINISTRATOR,
                                "Vigo Adblock");

@@ -4,7 +4,14 @@
 #ifndef VIGO_BROWSER_VIGO_CONTENT_BROWSER_CLIENT_H_
 #define VIGO_BROWSER_VIGO_CONTENT_BROWSER_CLIENT_H_
 
+#include <optional>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "chrome/browser/chrome_content_browser_client.h"
+#include "content/public/browser/frame_tree_node_id.h"
+#include "third_party/blink/public/common/loader/url_loader_throttle.h"
 
 namespace vigo {
 
@@ -33,13 +40,13 @@ class VigoContentBrowserClient : public ChromeContentBrowserClient {
       bool is_integration_test) override;
 
   // Appends Vigo-specific URL request throttles (adblock, privacy).
-  std::vector<std::unique_ptr<content::URLLoaderThrottle>>
+  std::vector<std::unique_ptr<blink::URLLoaderThrottle>>
   CreateURLLoaderThrottles(
       const network::ResourceRequest& request,
       content::BrowserContext* browser_context,
       const base::RepeatingCallback<content::WebContents*()>& wc_getter,
       content::NavigationUIData* navigation_ui_data,
-      int frame_tree_node_id,
+      content::FrameTreeNodeId frame_tree_node_id,
       std::optional<int64_t> navigation_id) override;
 
   // Override to strip Google service URLs from allowed endpoints.

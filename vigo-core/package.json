@@ -22,8 +22,8 @@
     "node": ">=18.0.0"
   },
   "chromium": {
-    "version": "132.0.6834.0",
-    "channel": "stable",
+    "version": "147.0.7703.0",
+    "channel": "dev",
     "note": "Pin to specific Chromium version. Update via 'npm run update_chromium'."
   },
   "vigo": {

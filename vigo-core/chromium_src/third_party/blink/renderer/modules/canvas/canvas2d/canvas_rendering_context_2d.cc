@@ -12,7 +12,7 @@
 // chromium_src shadow override pattern.
 
 // Include the original implementation first.
-#include "src/third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.cc"  // NOLINT
+#include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.cc"  // NOLINT
 
 // The above include brings in the upstream implementation. Below, we hook
 // into the ImageData readback path. The actual noise injection happens in

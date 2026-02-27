@@ -5,6 +5,7 @@
 
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
+#include "grit/vigo_webui_resources.h"
 #include "vigo/app/vigo_branding.h"
 #include "vigo/browser/ui/webui/vigo_settings_handler.h"
 #include "vigo/build/config/vigo_buildflags.h"

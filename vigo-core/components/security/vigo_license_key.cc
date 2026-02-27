@@ -3,12 +3,12 @@
 
 #include "vigo/components/security/vigo_license_key.h"
 
-#include <regex>
-
 #include "base/logging.h"
 #include "base/strings/string_util.h"
 #include "base/time/time.h"
+#include "build/build_config.h"
 #include "crypto/sha2.h"
+#include "third_party/re2/src/re2/re2.h"
 
 #if BUILDFLAG(IS_WIN)
 #include <windows.h>
@@ -58,9 +58,9 @@ VigoLicenseKey::~VigoLicenseKey() {
 // static
 bool VigoLicenseKey::IsValidFormat(const std::string& key) {
   // VIGO-XXXXX-XXXXX-XXXXX-XXXXX
-  static const std::regex kPattern(
+  static const re2::RE2 kPattern(
       R"(^VIGO-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}$)");
-  return std::regex_match(key, kPattern);
+  return re2::RE2::FullMatch(key, kPattern);
 }
 
 // static

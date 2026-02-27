@@ -4,6 +4,7 @@
 #include "vigo/browser/vigo_browser_main_parts.h"
 
 #include "base/logging.h"
+#include "content/public/common/result_codes.h"
 #include "vigo/build/config/vigo_buildflags.h"
 
 #if BUILDFLAG(VIGO_ENABLE_ADBLOCK)
@@ -40,9 +41,9 @@
 namespace vigo {
 
 VigoBrowserMainParts::VigoBrowserMainParts(
-    const content::MainFunctionParams& parameters,
+    bool is_integration_test,
     StartupData* startup_data)
-    : ChromeBrowserMainParts(parameters, startup_data) {}
+    : ChromeBrowserMainParts(is_integration_test, startup_data) {}
 
 VigoBrowserMainParts::~VigoBrowserMainParts() = default;
 
@@ -65,8 +66,10 @@ void VigoBrowserMainParts::PostProfileInit(Profile* profile,
   }
 }
 
-void VigoBrowserMainParts::PreMainMessageLoopRun() {
-  ChromeBrowserMainParts::PreMainMessageLoopRun();
+int VigoBrowserMainParts::PreMainMessageLoopRun() {
+  int result = ChromeBrowserMainParts::PreMainMessageLoopRun();
+  if (result != content::RESULT_CODE_NORMAL_EXIT)
+    return result;
 
   InitMediaOrchestration();
   InitSyncClient();
@@ -74,6 +77,7 @@ void VigoBrowserMainParts::PreMainMessageLoopRun() {
   InitSecuritySubsystem();
 
   VLOG(1) << "VigoBrowserMainParts: All Vigo subsystems initialised";
+  return content::RESULT_CODE_NORMAL_EXIT;
 }
 
 void VigoBrowserMainParts::PostMainMessageLoopRun() {
@@ -169,7 +173,7 @@ void VigoBrowserMainParts::InitMediaOrchestration() {
   VLOG(1) << "VigoBrowserMainParts: Initialising Media Orchestration Layer";
 
   media_pipeline_ = std::make_unique<media::VigoMediaPipelineIntegration>();
-  media_pipeline_->Initialise();
+  media_pipeline_->Initialize();
 
   VLOG(1) << "VigoBrowserMainParts: Media pipeline ready — HW decode "
           << "controller probed, codec negotiation available";
@@ -205,11 +209,10 @@ void VigoBrowserMainParts::InitSecuritySubsystem() {
   // 1. Security hardening: verify platform protections (ASLR, DEP, sandbox).
   security_hardening_ =
       std::make_unique<security::VigoSecurityHardening>();
-  auto audit_report = security_hardening_->RunSecurityAudit();
+  auto audit_report = security_hardening_->RunAllChecks();
   VLOG(1) << "VigoBrowserMainParts: Security audit — "
-          << audit_report.passed_count << " passed, "
-          << audit_report.failed_count << " failed, "
-          << audit_report.warning_count << " warnings";
+          << audit_report.passed << " passed, "
+          << audit_report.failed << " failed";
 
   // 2. License key: initialise with default beta license.
   license_key_ = std::make_unique<security::VigoLicenseKey>();
@@ -224,7 +227,7 @@ void VigoBrowserMainParts::InitSecuritySubsystem() {
 
   // 4. Update client: check for available updates.
   update_client_ = std::make_unique<security::VigoUpdateClient>();
-  update_client_->StartPeriodicChecks();
+  update_client_->Start();
 
   VLOG(1) << "VigoBrowserMainParts: Security subsystem initialised — "
           << "hardening verified, license active, CVE monitor polling, "

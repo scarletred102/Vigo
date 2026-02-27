@@ -24,6 +24,7 @@ source_set("security") {
     "//crypto",
     "//net",
     "//services/network/public/cpp",
+    "//third_party/re2",
     "//url",
     "//vigo/app:vigo_branding",
     "//vigo/build/config:vigo_buildflags",

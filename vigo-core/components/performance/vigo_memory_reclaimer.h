@@ -6,6 +6,7 @@
 
 #include <cstddef>
 
+#include "base/memory/raw_ptr.h"
 #include "base/sequence_checker.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
@@ -95,7 +96,7 @@ class VigoMemoryReclaimer : public MemoryBudgetObserver {
   bool CanReclaim() const;
 
   Config config_;
-  VigoProcessManager* process_manager_ = nullptr;  // Not owned.
+  raw_ptr<VigoProcessManager> process_manager_ = nullptr;  // Not owned.
   base::TimeTicks last_reclaim_time_;
   size_t total_bytes_reclaimed_ = 0;
   int total_reclaim_passes_ = 0;

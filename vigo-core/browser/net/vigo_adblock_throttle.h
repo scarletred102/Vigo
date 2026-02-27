@@ -4,6 +4,7 @@
 #ifndef VIGO_BROWSER_NET_VIGO_ADBLOCK_THROTTLE_H_
 #define VIGO_BROWSER_NET_VIGO_ADBLOCK_THROTTLE_H_
 
+#include "base/memory/raw_ptr.h"
 #include "content/public/browser/browser_context.h"
 #include "third_party/blink/public/common/loader/url_loader_throttle.h"
 

@@ -8,10 +8,12 @@
 #include "base/logging.h"
 #include "base/process/process_metrics.h"
 #include "base/system/sys_info.h"
+#include "build/build_config.h"
 
 #if BUILDFLAG(IS_WIN)
-#include <psapi.h>
 #include <windows.h>
+
+#include <psapi.h>
 #endif  // BUILDFLAG(IS_WIN)
 
 namespace vigo {

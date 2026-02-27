@@ -11,9 +11,12 @@ group("vigo") {
   deps = [
     "//vigo/app:vigo_branding",
     "//vigo/browser:vigo_browser",
-    "//vigo/chromium_src:chromium_src_overrides",
     "//vigo/components:vigo_components",
   ]
+
+  # chromium_src overrides require patch-based source exclusion to avoid
+  # duplicate symbols with upstream targets.  Enable once patching is set up.
+  # deps += [ "//vigo/chromium_src:chromium_src_overrides" ]
 }
 
 group("vigo_tests") {

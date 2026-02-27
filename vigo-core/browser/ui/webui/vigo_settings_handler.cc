@@ -6,6 +6,7 @@
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/values.h"
+#include "base/version_info/version_info.h"
 #include "vigo/app/vigo_branding.h"
 #include "vigo/build/config/vigo_buildflags.h"
 
@@ -131,8 +132,9 @@ void VigoSettingsHandler::HandleGetAboutInfo(
   info.Set("productName", vigo::branding::kProductName);
   info.Set("version", vigo::branding::kVersionString);
   info.Set("isBeta", BUILDFLAG(VIGO_IS_BETA));
-  info.Set("chromiumVersion", "132.0.6834.0");
-  info.Set("userAgent", vigo::branding::GetUserAgent());
+  info.Set("chromiumVersion",
+           std::string(version_info::GetVersionNumber()));
+  info.Set("userAgent", vigo::branding::GetUserAgentSuffix());
 
   ResolveJavascriptCallback(base::Value(callback_id), std::move(info));
 }

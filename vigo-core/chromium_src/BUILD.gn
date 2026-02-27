@@ -16,12 +16,12 @@ source_set("chromium_src_overrides") {
   sources = [
     # Browser-level overrides.
     "chrome/browser/chrome_content_browser_client.cc",
-    "chrome/browser/enterprise/reporting/chrome_reporting_client.cc",
+    "chrome/browser/enterprise/reporting/reporting_delegate_factory_desktop.cc",
     "chrome/browser/metrics/chrome_metrics_service_client.cc",
     "chrome/browser/net/stub_resolver_config_reader.cc",
-    "chrome/browser/promos/promo_service.cc",
+    "chrome/browser/new_tab_page/promos/promo_service.cc",
     "chrome/browser/rlz/chrome_rlz_tracker_delegate.cc",
-    "chrome/browser/signin/signin_manager.cc",
+    "chrome/browser/signin/identity_manager_factory.cc",
     "chrome/browser/translate/chrome_translate_client.cc",
 
     # Component-level overrides.
