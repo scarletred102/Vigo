@@ -1,5 +1,5 @@
-// Copyright (c) Vigo Team. All rights reserved.
-// SPDX-License-Identifier: Proprietary
+// Copyright (c) Vigo Contributors
+// SPDX-License-Identifier: MPL-2.0
 
 //! GPU context: wgpu instance, device, queue, and surface management.
 

@@ -202,3 +202,14 @@ Per `PLAN.md` / `TASKS.md`:
 | P1.2.7 Zig test binary | Rust main.rs exercises platform end-to-end |
 | P1.3.4 Stats allocator | Nice-to-have, not blocking |
 | `criterion` benchmarks | Not in workspace deps — using `std::time::Instant` timing tests instead |
+
+---
+
+## License
+
+**MPL-2.0** (Mozilla Public License 2.0) — same family as Firefox/Servo. Changed from Proprietary in this session.
+
+- `LICENSE` file: Full MPL-2.0 text
+- `Cargo.toml` workspace: `license = "MPL-2.0"`
+- All 104 source files: `SPDX-License-Identifier: MPL-2.0`, `Copyright (c) Vigo Contributors`
+- Style guides updated (`docs/RUST_STYLE.md`, `docs/ZIG_STYLE.md`)

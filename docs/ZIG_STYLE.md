@@ -5,8 +5,8 @@
 Every `.zig` file must start with:
 
 ```zig
-// Copyright (c) Vigo Team. All rights reserved.
-// SPDX-License-Identifier: Proprietary
+// Copyright (c) Vigo Contributors
+// SPDX-License-Identifier: MPL-2.0
 ```
 
 ## Exported Functions

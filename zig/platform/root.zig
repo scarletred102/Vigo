@@ -1,5 +1,5 @@
-// Copyright (c) Vigo Team. All rights reserved.
-// SPDX-License-Identifier: Proprietary
+// Copyright (c) Vigo Contributors
+// SPDX-License-Identifier: MPL-2.0
 //
 // vex_platform — Native windowing, event loop, DPI, raw handles.
 // Exports C ABI for Rust FFI consumption.

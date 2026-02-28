@@ -22,7 +22,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "Proprietary"
+license = "MPL-2.0"
 authors = ["Vigo Team"]
 rust-version = "1.75"
 
