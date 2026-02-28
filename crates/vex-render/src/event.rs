@@ -27,6 +27,7 @@ pub enum MouseButton {
 }
 
 impl MouseButton {
+    #[cfg(target_os = "windows")]
     pub(crate) fn from_raw(v: u8) -> Self {
         match v {
             0 => Self::Left,

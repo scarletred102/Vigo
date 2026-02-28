@@ -8,6 +8,7 @@
 use vex_net::{HttpClient, Request};
 
 #[tokio::test]
+#[ignore = "requires network access"]
 async fn fetch_https_html() {
     let client = HttpClient::new().expect("client should init");
     let request = Request::get("https://httpbin.org/html").expect("URL should parse");
@@ -20,6 +21,7 @@ async fn fetch_https_html() {
 }
 
 #[tokio::test]
+#[ignore = "requires network access"]
 async fn fetch_follows_redirect() {
     let client = HttpClient::new().expect("client should init");
     // httpbin /redirect/1 → single 302 redirect → /get
@@ -31,6 +33,7 @@ async fn fetch_follows_redirect() {
 }
 
 #[tokio::test]
+#[ignore = "requires network access"]
 async fn fetch_404_returns_status() {
     let client = HttpClient::new().expect("client should init");
     let request =
@@ -43,6 +46,7 @@ async fn fetch_404_returns_status() {
 }
 
 #[tokio::test]
+#[ignore = "requires network access"]
 async fn fetch_gzip_decompression() {
     let client = HttpClient::new().expect("client should init");
     let request = Request::get("https://httpbin.org/gzip").expect("URL should parse");

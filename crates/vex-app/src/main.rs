@@ -3,10 +3,13 @@
 
 //! Vigo Browser — powered by the Vex engine.
 
-use vex_core::{engine_name, engine_version};
+#[cfg(target_os = "windows")]
 use vex_render::{Event, GpuContext, Window};
 
+#[cfg(target_os = "windows")]
 fn main() {
+    use vex_core::{engine_name, engine_version};
+
     tracing_subscriber::fmt()
         .with_env_filter("info")
         .init();
@@ -51,4 +54,9 @@ fn main() {
 
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn main() {
+    eprintln!("Vigo Browser: Windows platform not detected. Other platform backends are not yet implemented.");
 }
