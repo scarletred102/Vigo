@@ -9,10 +9,6 @@ use crate::computed::ComputedStyle;
 /// Properties that CSS defines as inherited (color, font-*, text-align, etc.)
 /// copy from parent when not explicitly set on the child.
 pub fn apply_inheritance(child: &mut ComputedStyle, parent: &ComputedStyle) {
-    // Color
-    if child.color == ComputedStyle::default().color && child.color != parent.color {
-        // Only inherit if the child has the default value
-    }
     // For simplicity, always copy inherited properties if the child hasn't set them.
     // We use a "set flags" approach: properties that were explicitly set are marked.
     // For now, we unconditionally copy if the child still has the default.
