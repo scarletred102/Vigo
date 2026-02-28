@@ -191,11 +191,11 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P2.1.1 | **TLS configuration** — Create `crates/vex-net/src/tls.rs`. Build a `rustls::ClientConfig` with: Mozilla root certificates (via `webpki-roots` crate), TLS 1.3 only (disable 1.2 by default, allow as fallback behind feature flag), ALPN protocols `["h2", "http/1.1"]`. Wrap in `Arc<ClientConfig>` for sharing. Write 2 tests: config creation succeeds, ALPN protocols set correctly. | `tls.rs` + tests | ⬜ |
-| P2.1.2 | **HTTP client struct** — Create `crates/vex-net/src/client.rs`. Define `HttpClient` struct holding: `hyper_util::client::legacy::Client` with `hyper_rustls::HttpsConnector`, connection pool config (max idle: 100, idle timeout: 90s), default headers (User-Agent: "Vigo/0.1 Vex"). Constructor: `HttpClient::new() -> VexResult<Self>`. | `client.rs` | ⬜ |
-| P2.1.3 | **Request/Response types** — Create `crates/vex-net/src/types.rs`. Define `Request { url: VexUrl, method: Method, headers: HeaderMap, body: Option<Vec<u8>> }` and `Response { status: u16, headers: HeaderMap, body: Vec<u8>, url: VexUrl, was_cached: bool }`. Enum `Method { Get, Post, Put, Delete, Head, Options }`. | `types.rs` | ⬜ |
-| P2.1.4 | **Fetch method** — In `client.rs`, implement `async fn fetch(&self, request: Request) -> VexResult<Response>`. Build a `hyper::Request` from vex `Request`, execute via the client, read the full body into `Vec<u8>`, wrap in vex `Response`. Handle connection errors, timeouts (default: 30s), and status codes. | `fetch` method | ⬜ |
-| P2.1.5 | **Integration test: fetch example.com** — Create `crates/vex-net/tests/fetch_test.rs`. Test `HttpClient::new().fetch(Request::get("https://example.com"))` returns status 200 and body contains `<html`. Requires network — mark with `#[ignore]` for CI but run locally. | Integration test | ⬜ |
+| P2.1.1 | **TLS configuration** — Create `crates/vex-net/src/tls.rs`. Build a `rustls::ClientConfig` with: Mozilla root certificates (via `webpki-roots` crate), TLS 1.3 only (disable 1.2 by default, allow as fallback behind feature flag), ALPN protocols `["h2", "http/1.1"]`. Wrap in `Arc<ClientConfig>` for sharing. Write 2 tests: config creation succeeds, ALPN protocols set correctly. | `tls.rs` + tests | ✅ |
+| P2.1.2 | **HTTP client struct** — Create `crates/vex-net/src/client.rs`. Define `HttpClient` struct holding: `hyper_util::client::legacy::Client` with `hyper_rustls::HttpsConnector`, connection pool config (max idle: 100, idle timeout: 90s), default headers (User-Agent: "Vigo/0.1 Vex"). Constructor: `HttpClient::new() -> VexResult<Self>`. | `client.rs` | ✅ |
+| P2.1.3 | **Request/Response types** — Create `crates/vex-net/src/types.rs`. Define `Request { url: VexUrl, method: Method, headers: HeaderMap, body: Option<Vec<u8>> }` and `Response { status: u16, headers: HeaderMap, body: Vec<u8>, url: VexUrl, was_cached: bool }`. Enum `Method { Get, Post, Put, Delete, Head, Options }`. | `types.rs` | ✅ |
+| P2.1.4 | **Fetch method** — In `client.rs`, implement `async fn fetch(&self, request: Request) -> VexResult<Response>`. Build a `hyper::Request` from vex `Request`, execute via the client, read the full body into `Vec<u8>`, wrap in vex `Response`. Handle connection errors, timeouts (default: 30s), and status codes. | `fetch` method | ✅ |
+| P2.1.5 | **Integration test: fetch example.com** — Create `crates/vex-net/tests/fetch_test.rs`. Test `HttpClient::new().fetch(Request::get("https://example.com"))` returns status 200 and body contains `<html`. Requires network — mark with `#[ignore]` for CI but run locally. | Integration test | ✅ |
 
 ---
 
@@ -203,8 +203,8 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P2.2.1 | **DNS resolver** — Create `crates/vex-net/src/dns.rs`. Wrap `trust-dns-resolver::TokioAsyncResolver`. Constructor creates resolver with system config. Method: `async fn resolve(&self, host: &str) -> VexResult<Vec<IpAddr>>`. | `dns.rs` | ⬜ |
-| P2.2.2 | **DoH support** — Extend `dns.rs`. Add `DnsMode` enum: `System`, `DoH { server_url: String }`. When `DoH` mode is selected, configure `trust-dns-resolver` with HTTPS upstream (e.g., `https://1.1.1.1/dns-query` for Cloudflare). Write test: resolve `example.com` via DoH → returns IP addresses. | DoH mode | ⬜ |
+| P2.2.1 | **DNS resolver** — Create `crates/vex-net/src/dns.rs`. Wrap `trust-dns-resolver::TokioAsyncResolver`. Constructor creates resolver with system config. Method: `async fn resolve(&self, host: &str) -> VexResult<Vec<IpAddr>>`. | `dns.rs` | ✅ |
+| P2.2.2 | **DoH support** — Extend `dns.rs`. Add `DnsMode` enum: `System`, `DoH { server_url: String }`. When `DoH` mode is selected, configure `trust-dns-resolver` with HTTPS upstream (e.g., `https://1.1.1.1/dns-query` for Cloudflare). Write test: resolve `example.com` via DoH → returns IP addresses. | DoH mode | ✅ |
 | P2.2.3 | **Wire DNS into HTTP client** — Modify `HttpClient` to accept a `DnsMode` config. When DoH is enabled, create a custom `tower::Service` that resolves via DoH before connecting. | DNS integration | ⬜ |
 
 ---
@@ -213,10 +213,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P2.3.1 | **Decompression** — Create `crates/vex-net/src/decompress.rs`. Detect `Content-Encoding` header. Support: `gzip` (via `flate2`), `br` (via `brotli`), `zstd` (via `zstd`), `identity` (passthrough). Function: `decompress(encoding: &str, bytes: &[u8]) -> VexResult<Vec<u8>>`. Write 3 tests with pre-compressed payloads. | `decompress.rs` + tests | ⬜ |
-| P2.3.2 | **Redirect following** — In `client.rs`, implement redirect following in `fetch()`. Follow 3xx responses up to 10 redirects. Handle 301, 302, 303, 307, 308. On 303, change method to GET. Track redirect chain. Write 2 tests using a test HTTP server (or mock). | Redirect handling | ⬜ |
-| P2.3.3 | **Cookie jar** — Create `crates/vex-net/src/cookies.rs`. Implement `CookieJar` struct: `insert(url, set_cookie_header) -> ()`, `get_cookies(url) -> String` (returns `Cookie` header value). Respect: `Domain`, `Path`, `Secure`, `HttpOnly`, `SameSite`, `Expires`/`Max-Age`. Thread-safe (`Arc<RwLock<...>>`). Write 10 tests: basic set/get, domain matching, path matching, secure flag, expiration, SameSite. | `cookies.rs` + tests | ⬜ |
-| P2.3.4 | **Wire cookies into client** — Modify `fetch()` to: before request, call `cookie_jar.get_cookies(url)` and add `Cookie` header; after response, call `cookie_jar.insert(url, set_cookie_header)` for each `Set-Cookie` header. | Cookie integration | ⬜ |
+| P2.3.1 | **Decompression** — Create `crates/vex-net/src/decompress.rs`. Detect `Content-Encoding` header. Support: `gzip` (via `flate2`), `br` (via `brotli`), `zstd` (via `zstd`), `identity` (passthrough). Function: `decompress(encoding: &str, bytes: &[u8]) -> VexResult<Vec<u8>>`. Write 3 tests with pre-compressed payloads. | `decompress.rs` + tests | ✅ |
+| P2.3.2 | **Redirect following** — In `client.rs`, implement redirect following in `fetch()`. Follow 3xx responses up to 10 redirects. Handle 301, 302, 303, 307, 308. On 303, change method to GET. Track redirect chain. Write 2 tests using a test HTTP server (or mock). | Redirect handling | ✅ |
+| P2.3.3 | **Cookie jar** — Create `crates/vex-net/src/cookies.rs`. Implement `CookieJar` struct: `insert(url, set_cookie_header) -> ()`, `get_cookies(url) -> String` (returns `Cookie` header value). Respect: `Domain`, `Path`, `Secure`, `HttpOnly`, `SameSite`, `Expires`/`Max-Age`. Thread-safe (`Arc<RwLock<...>>`). Write 10 tests: basic set/get, domain matching, path matching, secure flag, expiration, SameSite. | `cookies.rs` + tests | ✅ |
+| P2.3.4 | **Wire cookies into client** — Modify `fetch()` to: before request, call `cookie_jar.get_cookies(url)` and add `Cookie` header; after response, call `cookie_jar.insert(url, set_cookie_header)` for each `Set-Cookie` header. | Cookie integration | ✅ |
 
 ---
 
@@ -234,10 +234,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P2.5.1 | **Tracking parameter stripper** — Create `crates/vex-privacy/src/tracking.rs`. Define list of 30+ tracking parameters: `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `fbclid`, `gclid`, `msclkid`, `twclid`, `dclid`, `mc_cid`, `mc_eid`, `_ga`, `_gl`, etc. Function: `strip_tracking_params(url: &mut VexUrl)` — removes matching query parameters. Write 8 tests: each param type, multiple params, non-tracking params preserved. | `tracking.rs` + tests | ⬜ |
-| P2.5.2 | **Domain blocklist** — Create `crates/vex-privacy/src/adblock.rs`. Implement `AdblockEngine` struct holding a `HashSet<String>` of blocked domains. Method: `is_blocked(url: &VexUrl) -> bool` — checks host against blocklist, including subdomain matching (if `ads.example.com` is blocked, so is `foo.ads.example.com`). Load from a text file (one domain per line). Write 6 tests: exact match, subdomain, non-match, empty host. | `adblock.rs` + tests | ⬜ |
-| P2.5.3 | **HTTPS-only mode** — Create `crates/vex-privacy/src/https.rs`. Function: `enforce_https(url: &mut VexUrl) -> bool` — upgrades `http://` to `https://`. Returns false if already HTTPS. Exempts: localhost, 127.0.0.1, .local, .onion. Write 5 tests. | `https.rs` + tests | ⬜ |
-| P2.5.4 | **Header sanitization** — Create `crates/vex-privacy/src/headers.rs`. Function: `sanitize_headers(headers: &mut HeaderMap)` — removes headers: `X-Client-Data`, `Sec-Browsing-Topics`, `Attribution-Reporting-*`. Enforces strict referrer: if cross-origin, reduce to origin-only. Write 4 tests. | `headers.rs` + tests | ⬜ |
+| P2.5.1 | **Tracking parameter stripper** — Create `crates/vex-privacy/src/tracking.rs`. Define list of 30+ tracking parameters: `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `fbclid`, `gclid`, `msclkid`, `twclid`, `dclid`, `mc_cid`, `mc_eid`, `_ga`, `_gl`, etc. Function: `strip_tracking_params(url: &mut VexUrl)` — removes matching query parameters. Write 8 tests: each param type, multiple params, non-tracking params preserved. | `tracking.rs` + tests | ✅ |
+| P2.5.2 | **Domain blocklist** — Create `crates/vex-privacy/src/adblock.rs`. Implement `AdblockEngine` struct holding a `HashSet<String>` of blocked domains. Method: `is_blocked(url: &VexUrl) -> bool` — checks host against blocklist, including subdomain matching (if `ads.example.com` is blocked, so is `foo.ads.example.com`). Load from a text file (one domain per line). Write 6 tests: exact match, subdomain, non-match, empty host. | `adblock.rs` + tests | ✅ |
+| P2.5.3 | **HTTPS-only mode** — Create `crates/vex-privacy/src/https.rs`. Function: `enforce_https(url: &mut VexUrl) -> bool` — upgrades `http://` to `https://`. Returns false if already HTTPS. Exempts: localhost, 127.0.0.1, .local, .onion. Write 5 tests. | `https.rs` + tests | ✅ |
+| P2.5.4 | **Header sanitization** — Create `crates/vex-privacy/src/headers.rs`. Function: `sanitize_headers(headers: &mut HeaderMap)` — removes headers: `X-Client-Data`, `Sec-Browsing-Topics`, `Attribution-Reporting-*`. Enforces strict referrer: if cross-origin, reduce to origin-only. Write 4 tests. | `headers.rs` + tests | ✅ |
 | P2.5.5 | **Privacy middleware** — Create `crates/vex-privacy/src/middleware.rs`. A `PrivacyLayer` struct that wraps all the above. Method: `process_request(&self, request: &mut Request)` — calls strip_tracking_params, enforce_https, sanitize_headers, check adblock (return error if blocked). Expose in `lib.rs`. | `middleware.rs` | ⬜ |
 | P2.5.6 | **Wire privacy into vex-net** — Modify `HttpClient::fetch()` to accept an optional `&PrivacyLayer` and call `process_request()` before sending. | Privacy in fetch | ⬜ |
 
@@ -247,7 +247,7 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P2.6.1 | Run `cargo test -p vex-net -p vex-privacy` — all unit tests pass. | Green unit tests | ⬜ |
+| P2.6.1 | Run `cargo test -p vex-net -p vex-privacy` — all unit tests pass. | Green unit tests | ✅ |
 | P2.6.2 | Integration test: fetch 10 different HTTPS sites, verify all return 200 and HTML body. | Integration test | ⬜ |
 | P2.6.3 | Integration test: fetch a URL with `?utm_source=test&q=hello` → verify `utm_source` stripped, `q` preserved. | Privacy test | ⬜ |
 | P2.6.4 | Benchmark: time 100 sequential fetches of `https://example.com` (cached). Target: <500ms total. | Benchmark | ⬜ |

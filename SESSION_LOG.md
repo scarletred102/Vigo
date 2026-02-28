@@ -6,12 +6,13 @@
 
 ## Current State (2026-02-28)
 
-**Phase 0 ✅ — Phase 1 ✅ — Phase 2 next**
+**Phase 0 ✅ — Phase 1 ✅ — Phase 2 ✅ — Phase 3 next**
 
-The browser opens a 1280×720 window with a GPU-rendered dark background (wgpu/Vulkan). Events work. Everything compiles and links cleanly.
+The browser opens a 1280×720 window with a GPU-rendered dark background (wgpu/Vulkan). Events work. The network stack can fetch any HTTPS page with TLS 1.3, follow redirects, decompress gzip/brotli/zstd, and manage cookies. Privacy filters strip tracking params, block ad domains, enforce HTTPS, and sanitize headers.
 
 ```
 cargo run -p vex-app
+cargo test -p vex-core -p vex-net -p vex-privacy  # 83 tests
 ```
 
 This opens the window. Close it normally to exit.
@@ -27,7 +28,9 @@ This opens the window. Close it normally to exit.
 | `vex-core` | **31 tests ✅** | Error types, geometry (Point/Size/Rect/Insets), Color (hex/css/named), VexId (arena index + allocator), VexUrl (wrapper around `url::Url`) |
 | `vex-render` | **Compiles ✅** | Zig FFI bridge (`platform_ffi.rs`), safe Window wrapper (`platform.rs`), Event enum (`event.rs`), wgpu GPU context (`gpu.rs`) |
 | `vex-app` | **Runs ✅** | Entry point binary. Creates window, inits GPU, runs event loop, clears to dark background |
-| Everything else | Stubs | `vex-dom`, `vex-html`, `vex-css`, `vex-layout`, `vex-js`, `vex-net`, `vex-media`, `vex-storage`, `vex-security`, `vex-privacy`, `vex-crypto`, `vex-sync`, `vex-browser` |
+| `vex-net` | **27 tests ✅** | HTTP/1.1+2 client (hyper+rustls), TLS 1.3, DNS/DoH (hickory), gzip/br/zstd decompression, cookie jar, redirect following (301-308), types (Request/Response/Method) |
+| `vex-privacy` | **25 tests ✅** | Tracking param stripper (50+ params), domain adblock engine, HTTPS-only mode, header sanitization, cross-origin referrer reduction |
+| Everything else | Stubs | `vex-dom`, `vex-html`, `vex-css`, `vex-layout`, `vex-js`, `vex-media`, `vex-storage`, `vex-security`, `vex-crypto`, `vex-sync`, `vex-browser` |
 
 ### Zig Modules (5, under `zig/`)
 
@@ -42,14 +45,14 @@ This opens the window. Close it normally to exit.
 ### Test Commands
 
 ```bash
-# Rust tests (31 passing)
-cargo test -p vex-core
+# All Rust tests (83 passing: 31 core + 23 net unit + 4 net integration + 25 privacy)
+cargo test -p vex-core -p vex-net -p vex-privacy
 
 # Zig tests (11 passing)
 cd zig && zig build test
 
 # Clippy (0 warnings)
-cargo clippy -p vex-core -p vex-render -p vex-app -- -Dwarnings
+cargo clippy -p vex-core -p vex-net -p vex-privacy -p vex-render -p vex-app -- -Dwarnings
 ```
 
 ---
