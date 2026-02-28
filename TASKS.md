@@ -422,8 +422,8 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P5.1.1 | **LayoutBox struct** — Create `crates/vex-layout/src/box_model.rs`. Define `LayoutBox { node_id: VexId, box_type: BoxType, dimensions: Dimensions, children: Vec<LayoutBox> }`. `BoxType { Block, Inline, InlineBlock, Flex, Anonymous }`. `Dimensions { content: Rect, padding: Insets, border: Insets, margin: Insets }`. Methods: `padding_box() -> Rect`, `border_box() -> Rect`, `margin_box() -> Rect` (each expands outward). Write 3 tests. | `box_model.rs` + tests | ⬜ |
-| P5.1.2 | **Tree builder** — Create `crates/vex-layout/src/tree_builder.rs`. Function: `build_layout_tree(document: &Document, styles: &HashMap<VexId, ComputedStyle>) -> LayoutBox`. Walk the DOM tree. For each element: skip `display: none`. Map `display: block` → `BoxType::Block`, `display: inline` → `BoxType::Inline`, `display: flex` → `BoxType::Flex`, etc. For text nodes, create anonymous inline boxes. If a block box has mixed block+inline children, wrap the inline runs in anonymous block boxes (per CSS spec). Write 5 tests: pure block, pure inline, mixed, display:none skipped, nested. | `tree_builder.rs` + tests | ⬜ |
+| P5.1.1 | **LayoutBox struct** — Create `crates/vex-layout/src/box_model.rs`. Define `LayoutBox { node_id: VexId, box_type: BoxType, dimensions: Dimensions, children: Vec<LayoutBox> }`. `BoxType { Block, Inline, InlineBlock, Flex, Anonymous }`. `Dimensions { content: Rect, padding: Insets, border: Insets, margin: Insets }`. Methods: `padding_box() -> Rect`, `border_box() -> Rect`, `margin_box() -> Rect` (each expands outward). Write 3 tests. | `box_model.rs` + tests | ✅ |
+| P5.1.2 | **Tree builder** — Create `crates/vex-layout/src/tree_builder.rs`. Function: `build_layout_tree(document: &Document, styles: &HashMap<VexId, ComputedStyle>) -> LayoutBox`. Walk the DOM tree. For each element: skip `display: none`. Map `display: block` → `BoxType::Block`, `display: inline` → `BoxType::Inline`, `display: flex` → `BoxType::Flex`, etc. For text nodes, create anonymous inline boxes. If a block box has mixed block+inline children, wrap the inline runs in anonymous block boxes (per CSS spec). Write 5 tests: pure block, pure inline, mixed, display:none skipped, nested. | `tree_builder.rs` + tests | ✅ |
 
 ---
 
@@ -431,10 +431,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P5.2.1 | **Width calculation** — Create `crates/vex-layout/src/block.rs`. Function: `calculate_block_width(box: &mut LayoutBox, containing_width: f32, style: &ComputedStyle)`. Algorithm: if `width` is specified, use it. Else, `width = containing_width - margin_left - margin_right - padding_left - padding_right - border_left - border_right`. Handle `auto` margins (for centering). Handle `box-sizing: border-box`. Write 5 tests: fixed width, auto width, auto margins (centering), border-box. | Width calculation + tests | ⬜ |
-| P5.2.2 | **Height calculation** — In `block.rs`, function: `calculate_block_height(box: &mut LayoutBox, style: &ComputedStyle)`. If `height` is specified, use it. Else, height = sum of children's margin boxes. Handle `min-height`/`max-height`. | Height calculation | ⬜ |
-| P5.2.3 | **Position children** — In `block.rs`, function: `layout_block(box: &mut LayoutBox, containing: Rect, styles)`. Position children vertically: each child starts at `y = previous_child.margin_box().bottom`. Apply margin collapsing between adjacent block siblings (larger margin wins, not additive). Write 4 tests: stacking, margin collapsing, nested blocks. | Block positioning + tests | ⬜ |
-| P5.2.4 | **Overflow** — Handle `overflow: hidden` by setting a clip rect on the LayoutBox. `overflow: scroll` adds scrollable area (track content height vs box height). `overflow: visible` has no clip. Store `clip_rect: Option<Rect>` and `scroll_offset: Point` on LayoutBox. | Overflow handling | ⬜ |
+| P5.2.1 | **Width calculation** — Create `crates/vex-layout/src/block.rs`. Function: `calculate_block_width(box: &mut LayoutBox, containing_width: f32, style: &ComputedStyle)`. Algorithm: if `width` is specified, use it. Else, `width = containing_width - margin_left - margin_right - padding_left - padding_right - border_left - border_right`. Handle `auto` margins (for centering). Handle `box-sizing: border-box`. Write 5 tests: fixed width, auto width, auto margins (centering), border-box. | Width calculation + tests | ✅ |
+| P5.2.2 | **Height calculation** — In `block.rs`, function: `calculate_block_height(box: &mut LayoutBox, style: &ComputedStyle)`. If `height` is specified, use it. Else, height = sum of children's margin boxes. Handle `min-height`/`max-height`. | Height calculation | ✅ |
+| P5.2.3 | **Position children** — In `block.rs`, function: `layout_block(box: &mut LayoutBox, containing: Rect, styles)`. Position children vertically: each child starts at `y = previous_child.margin_box().bottom`. Apply margin collapsing between adjacent block siblings (larger margin wins, not additive). Write 4 tests: stacking, margin collapsing, nested blocks. | Block positioning + tests | ✅ |
+| P5.2.4 | **Overflow** — Handle `overflow: hidden` by setting a clip rect on the LayoutBox. `overflow: scroll` adds scrollable area (track content height vs box height). `overflow: visible` has no clip. Store `clip_rect: Option<Rect>` and `scroll_offset: Point` on LayoutBox. | Overflow handling | ✅ |
 
 ---
 
@@ -442,9 +442,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P5.3.1 | **Font system init** — Create `crates/vex-layout/src/text.rs`. Initialize `cosmic_text::FontSystem` (loads system fonts). Create `SwashCache` for glyph rasterization. Wrap in a shared `TextEngine` struct. Method: `measure_text(text: &str, font_family: &[String], font_size: f32, max_width: f32) -> TextLayout` where `TextLayout { lines: Vec<TextLine>, total_height: f32 }`, `TextLine { glyphs: Vec<GlyphInfo>, width: f32, baseline: f32 }`. | `text.rs` | ⬜ |
-| P5.3.2 | **Line breaking** — In `text.rs`, implement word-wrap line breaking. Use `cosmic_text::Buffer` to shape text with a set width. Extract line breaks. Handle `word-break: break-word` and `overflow-wrap: break-word`. Write 3 tests: normal wrapping, single long word, multiple lines. | Line breaking | ⬜ |
-| P5.3.3 | **Inline box layout** — Create `crates/vex-layout/src/inline.rs`. Function: `layout_inline(box: &mut LayoutBox, containing_width: f32, text_engine: &TextEngine, styles)`. For inline elements: flow left-to-right, wrap to next line when exceeding `containing_width`. For text nodes: call `measure_text`, position each line. For inline-block: layout as block, then place inline. Handle `text-align` at the line level (left/center/right/justify). Write 4 tests. | `inline.rs` + tests | ⬜ |
+| P5.3.1 | **Font system init** — Create `crates/vex-layout/src/text.rs`. Initialize `cosmic_text::FontSystem` (loads system fonts). Create `SwashCache` for glyph rasterization. Wrap in a shared `TextEngine` struct. Method: `measure_text(text: &str, font_family: &[String], font_size: f32, max_width: f32) -> TextLayout` where `TextLayout { lines: Vec<TextLine>, total_height: f32 }`, `TextLine { glyphs: Vec<GlyphInfo>, width: f32, baseline: f32 }`. | `text.rs` | ✅ |
+| P5.3.2 | **Line breaking** — In `text.rs`, implement word-wrap line breaking. Use `cosmic_text::Buffer` to shape text with a set width. Extract line breaks. Handle `word-break: break-word` and `overflow-wrap: break-word`. Write 3 tests: normal wrapping, single long word, multiple lines. | Line breaking | ✅ |
+| P5.3.3 | **Inline box layout** — Create `crates/vex-layout/src/inline.rs`. Function: `layout_inline(box: &mut LayoutBox, containing_width: f32, text_engine: &TextEngine, styles)`. For inline elements: flow left-to-right, wrap to next line when exceeding `containing_width`. For text nodes: call `measure_text`, position each line. For inline-block: layout as block, then place inline. Handle `text-align` at the line level (left/center/right/justify). Write 4 tests. | `inline.rs` + tests | ✅ |
 
 ---
 
@@ -452,9 +452,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P5.4.1 | **Flex container** — Create `crates/vex-layout/src/flex.rs`. Function: `layout_flex(box: &mut LayoutBox, containing: Rect, styles)`. Implement CSS Flexbox Level 1 algorithm: (1) Determine main axis from `flex-direction`. (2) Resolve flex item sizes: collect `flex-basis`, `flex-grow`, `flex-shrink` for each child. (3) Calculate free space on main axis. (4) Distribute free space: grow items with `flex-grow > 0`, shrink items if overflow with `flex-shrink > 0`. (5) Handle `flex-wrap: wrap` — when items overflow, start new flex line. | Flex core algorithm | ⬜ |
-| P5.4.2 | **Flex alignment** — In `flex.rs`, implement: `justify-content` (flex-start, flex-end, center, space-between, space-around, space-evenly) — distributes space on main axis. `align-items` (stretch, flex-start, flex-end, center, baseline) — positions items on cross axis. `align-self` — per-item override. Write 6 tests: each justify-content value, stretch vs center, wrap. | Flex alignment + tests | ⬜ |
-| P5.4.3 | **Flex order** — In `flex.rs`, sort flex items by `order` property before layout (default order: 0, preserve source order for equal values). Write 1 test. | Flex order | ⬜ |
+| P5.4.1 | **Flex container** — Create `crates/vex-layout/src/flex.rs`. Function: `layout_flex(box: &mut LayoutBox, containing: Rect, styles)`. Implement CSS Flexbox Level 1 algorithm: (1) Determine main axis from `flex-direction`. (2) Resolve flex item sizes: collect `flex-basis`, `flex-grow`, `flex-shrink` for each child. (3) Calculate free space on main axis. (4) Distribute free space: grow items with `flex-grow > 0`, shrink items if overflow with `flex-shrink > 0`. (5) Handle `flex-wrap: wrap` — when items overflow, start new flex line. | Flex core algorithm | ✅ |
+| P5.4.2 | **Flex alignment** — In `flex.rs`, implement: `justify-content` (flex-start, flex-end, center, space-between, space-around, space-evenly) — distributes space on main axis. `align-items` (stretch, flex-start, flex-end, center, baseline) — positions items on cross axis. `align-self` — per-item override. Write 6 tests: each justify-content value, stretch vs center, wrap. | Flex alignment + tests | ✅ |
+| P5.4.3 | **Flex order** — In `flex.rs`, sort flex items by `order` property before layout (default order: 0, preserve source order for equal values). Write 1 test. | Flex order | ✅ |
 
 ---
 
@@ -462,10 +462,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P5.5.1 | **Relative positioning** — Create `crates/vex-layout/src/positioned.rs`. After normal flow layout, for `position: relative` elements: offset by `top`/`left`/`right`/`bottom` from normal position. Don't affect siblings. Write 2 tests. | Relative positioning + tests | ⬜ |
-| P5.5.2 | **Absolute positioning** — For `position: absolute`: remove from normal flow. Find nearest ancestor with `position` ≠ `static` (the "containing block"). Position relative to that containing block using `top`/`left`/`right`/`bottom`. If both `left` and `right` set, compute width. Write 3 tests. | Absolute positioning + tests | ⬜ |
-| P5.5.3 | **Fixed positioning** — For `position: fixed`: position relative to viewport. Store separately so it doesn't scroll with content. Write 1 test. | Fixed positioning | ⬜ |
-| P5.5.4 | **Z-index stacking** — Create `crates/vex-layout/src/stacking.rs`. Build stacking contexts: elements with `position` ≠ `static` and `z-index` ≠ `auto` create stacking contexts. Sort children by z-index within each context. Output: `Vec<StackingLayer>` ordered back-to-front for the painter. Write 3 tests. | `stacking.rs` + tests | ⬜ |
+| P5.5.1 | **Relative positioning** — Create `crates/vex-layout/src/positioned.rs`. After normal flow layout, for `position: relative` elements: offset by `top`/`left`/`right`/`bottom` from normal position. Don't affect siblings. Write 2 tests. | Relative positioning + tests | ✅ |
+| P5.5.2 | **Absolute positioning** — For `position: absolute`: remove from normal flow. Find nearest ancestor with `position` ≠ `static` (the "containing block"). Position relative to that containing block using `top`/`left`/`right`/`bottom`. If both `left` and `right` set, compute width. Write 3 tests. | Absolute positioning + tests | ✅ |
+| P5.5.3 | **Fixed positioning** — For `position: fixed`: position relative to viewport. Store separately so it doesn't scroll with content. Write 1 test. | Fixed positioning | ✅ |
+| P5.5.4 | **Z-index stacking** — Create `crates/vex-layout/src/stacking.rs`. Build stacking contexts: elements with `position` ≠ `static` and `z-index` ≠ `auto` create stacking contexts. Sort children by z-index within each context. Output: `Vec<StackingLayer>` ordered back-to-front for the painter. Write 3 tests. | `stacking.rs` + tests | ✅ |
 
 ---
 
@@ -473,9 +473,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P5.6.1 | **Layout pipeline** — Create `crates/vex-layout/src/lib.rs` pipeline function: `layout(document, styles, viewport_size, text_engine) -> LayoutBox`. Build tree → block layout → inline layout → flex layout → positioned layout → stacking order. | Pipeline function | ⬜ |
-| P5.6.2 | **Benchmark** — Benchmark: layout a 5000-element DOM (synthetic: nested divs with mixed block/inline/flex). Target: <16ms. | Benchmark | ⬜ |
-| P5.6.3 | **Visual dump** — Implement `dump_layout_tree(box, indent) -> String` that prints a text representation of each box's position and size. Useful for debugging. | Debug dump | ⬜ |
+| P5.6.1 | **Layout pipeline** — Create `crates/vex-layout/src/lib.rs` pipeline function: `layout(document, styles, viewport_size, text_engine) -> LayoutBox`. Build tree → block layout → inline layout → flex layout → positioned layout → stacking order. | Pipeline function | ✅ |
+| P5.6.2 | **Benchmark** — Benchmark: layout a 5000-element DOM (synthetic: nested divs with mixed block/inline/flex). Target: <16ms. | Benchmark | ✅ |
+| P5.6.3 | **Visual dump** — Implement `dump_layout_tree(box, indent) -> String` that prints a text representation of each box's position and size. Useful for debugging. | Debug dump | ✅ |
 
 ---
 ---
