@@ -10,12 +10,12 @@ pub const VexResult = c_int;
 const VEX_OK: VexResult = 0;
 
 /// Initialize the text subsystem.
-export fn vex_text_init() callconv(.C) VexResult {
+export fn vex_text_init() VexResult {
     return VEX_OK;
 }
 
 /// Shut down the text subsystem.
-export fn vex_text_shutdown() callconv(.C) VexResult {
+export fn vex_text_shutdown() VexResult {
     return VEX_OK;
 }
 

@@ -43,7 +43,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # URL handling
-url = "2"
+url = { version = "2", features = ["serde"] }
 
 # Collections
 smallvec = "1"
@@ -94,6 +94,7 @@ cosmic-text = "0.12"
 # GPU
 wgpu = "23"
 raw-window-handle = "0.6"
+pollster = "0.4"
 
 # Image
 image = "0.25"

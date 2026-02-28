@@ -10,12 +10,12 @@ pub const VexResult = c_int;
 const VEX_OK: VexResult = 0;
 
 /// Initialize the media subsystem.
-export fn vex_media_init() callconv(.C) VexResult {
+export fn vex_media_init() VexResult {
     return VEX_OK;
 }
 
 /// Shut down the media subsystem.
-export fn vex_media_shutdown() callconv(.C) VexResult {
+export fn vex_media_shutdown() VexResult {
     return VEX_OK;
 }
 

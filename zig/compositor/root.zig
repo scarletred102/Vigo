@@ -10,12 +10,12 @@ pub const VexResult = c_int;
 const VEX_OK: VexResult = 0;
 
 /// Initialize the compositor.
-export fn vex_compositor_init() callconv(.C) VexResult {
+export fn vex_compositor_init() VexResult {
     return VEX_OK;
 }
 
 /// Shut down the compositor.
-export fn vex_compositor_shutdown() callconv(.C) VexResult {
+export fn vex_compositor_shutdown() VexResult {
     return VEX_OK;
 }
 

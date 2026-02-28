@@ -5,31 +5,42 @@
 // Exports C ABI for Rust FFI consumption.
 
 const std = @import("std");
+pub const event = @import("event.zig");
+pub const window = @import("window.zig");
 
-/// Result code: 0 = success, negative = error.
-pub const VexResult = c_int;
-const VEX_OK: VexResult = 0;
+const Event = event.Event;
+const WindowConfig = window.WindowConfig;
+const RawHandle = window.RawHandle;
 
 // ── C ABI Exports ─────────────────────────────────────────────────
 
-/// Initialize the platform layer. Call once at startup.
-export fn vex_platform_init() callconv(.C) VexResult {
-    return VEX_OK;
+export fn vex_platform_create_window(config: *const WindowConfig) ?*anyopaque {
+    const hwnd = window.createWindow(config) orelse return null;
+    return @ptrCast(hwnd);
 }
 
-/// Shut down the platform layer. Call once at exit.
-export fn vex_platform_shutdown() callconv(.C) VexResult {
-    return VEX_OK;
+export fn vex_platform_destroy_window(handle: *anyopaque) void {
+    window.destroyWindow(@ptrCast(@alignCast(handle)));
+}
+
+export fn vex_platform_poll_event(out: *Event) bool {
+    return window.pollEvent(out);
+}
+
+export fn vex_platform_get_dpi(handle: *anyopaque) f32 {
+    return window.getDpiScale(@ptrCast(@alignCast(handle)));
+}
+
+export fn vex_platform_get_raw_handle(handle: *anyopaque, out: *RawHandle) void {
+    out.* = window.getRawHandle(@ptrCast(@alignCast(handle)));
 }
 
 // ── Tests ─────────────────────────────────────────────────────────
 
-test "platform_init returns OK" {
-    const result = vex_platform_init();
-    try std.testing.expectEqual(VEX_OK, result);
+test "event module" {
+    _ = event;
 }
 
-test "platform_shutdown returns OK" {
-    const result = vex_platform_shutdown();
-    try std.testing.expectEqual(VEX_OK, result);
+test "window module compiles" {
+    _ = window;
 }

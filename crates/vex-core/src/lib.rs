@@ -4,18 +4,26 @@
 //! # vex-core
 //!
 //! Core types and primitives shared across the entire Vex browser engine.
-//!
-//! This crate provides:
-//! - Geometry primitives (`Point`, `Size`, `Rect`, `Insets`)
-//! - Color type with CSS parsing
-//! - URL wrapper (`VexUrl`)
-//! - Node ID allocator (`VexId`)
-//! - Unified error types (`VexError`, `VexResult`)
 
+pub mod color;
+pub mod error;
+pub mod geometry;
+pub mod id;
+pub mod vex_url;
+
+// Re-exports for ergonomic access.
+pub use color::Color;
+pub use error::{VexError, VexResult};
+pub use geometry::{Insets, Point, Rect, Size};
+pub use id::{IdAllocator, VexId};
+pub use vex_url::VexUrl;
+
+/// Engine version string.
 pub fn engine_version() -> &'static str {
-    "0.1.0"
+    env!("CARGO_PKG_VERSION")
 }
 
+/// Engine codename.
 pub fn engine_name() -> &'static str {
     "Vex"
 }

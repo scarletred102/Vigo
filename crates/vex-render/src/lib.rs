@@ -3,8 +3,13 @@
 
 //! # vex-render
 //!
-//! GPU rendering pipeline for the Vex browser engine.
-//!
-//! Builds display lists from layout trees and renders via wgpu.
-//! Manages glyph atlas, image atlas, scrolling, and the Zig
-//! platform layer bridge for windowing.
+//! GPU rendering pipeline and platform windowing for the Vex browser engine.
+
+pub mod event;
+pub mod gpu;
+pub mod platform;
+mod platform_ffi;
+
+pub use event::Event;
+pub use gpu::GpuContext;
+pub use platform::Window;

@@ -20,11 +20,11 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P0.1.1 | Create `remake/vigo-engine/` directory as the new monorepo root. | Empty directory with `.gitignore` | ⬜ |
-| P0.1.2 | Create `LICENSE` file — proprietary license text (same as old repo). | `LICENSE` | ⬜ |
-| P0.1.3 | Create `README.md` with project name "Vigo Engine", codename "Vex", one-paragraph description, build instructions placeholder, and architecture diagram from PLAN.md. | `README.md` | ⬜ |
-| P0.1.4 | Create `.gitignore` covering: Rust (`target/`, `Cargo.lock` for libs), Zig (`zig-cache/`, `zig-out/`), OS files (`.DS_Store`, `Thumbs.db`), IDE files (`.vscode/`, `.idea/`). | `.gitignore` | ⬜ |
-| P0.1.5 | Create `.editorconfig` — UTF-8, LF line endings, 4-space indent for Rust, 4-space indent for Zig, 2-space for TOML/YAML/JSON. | `.editorconfig` | ⬜ |
+| P0.1.1 | Create `remake/vigo-engine/` directory as the new monorepo root. | Empty directory with `.gitignore` | ✅ |
+| P0.1.2 | Create `LICENSE` file — proprietary license text (same as old repo). | `LICENSE` | ✅ |
+| P0.1.3 | Create `README.md` with project name "Vigo Engine", codename "Vex", one-paragraph description, build instructions placeholder, and architecture diagram from PLAN.md. | `README.md` | ✅ |
+| P0.1.4 | Create `.gitignore` covering: Rust (`target/`, `Cargo.lock` for libs), Zig (`zig-cache/`, `zig-out/`), OS files (`.DS_Store`, `Thumbs.db`), IDE files (`.vscode/`, `.idea/`). | `.gitignore` | ✅ |
+| P0.1.5 | Create `.editorconfig` — UTF-8, LF line endings, 4-space indent for Rust, 4-space indent for Zig, 2-space for TOML/YAML/JSON. | `.editorconfig` | ✅ |
 
 ---
 
@@ -125,13 +125,13 @@
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
 | P1.1.1 | **VexString** — Create `crates/vex-core/src/string.rs`. Implement an interned string type backed by a global `HashSet<&'static str>` (or use the `string_cache` crate). Must support: `From<&str>`, `From<String>`, `PartialEq`, `Eq`, `Hash`, `Clone` (cheap — it's just an index/pointer), `Display`, `Debug`, `Serialize`/`Deserialize`. Write 5 tests: creation, equality, hashing, display, clone-is-cheap (assert pointer equality). | `src/string.rs` + tests | ⬜ |
-| P1.1.2 | **VexUrl** — Create `src/url.rs`. Thin wrapper around the `url::Url` crate. Add methods: `parse(input: &str) -> Result<Self>`, `origin() -> String`, `scheme() -> &str`, `host() -> Option<&str>`, `path() -> &str`, `query_pairs() -> impl Iterator`, `is_https() -> bool`, `join(relative: &str) -> Result<Self>`. Write 8 tests: valid URL, invalid URL, origin extraction, relative URL join, HTTPS detection, query parsing, scheme access, empty input. | `src/url.rs` + tests | ⬜ |
-| P1.1.3 | **Geometry primitives** — Create `src/geometry.rs`. Define: `Point { x: f32, y: f32 }`, `Size { width: f32, height: f32 }`, `Rect { origin: Point, size: Size }`, `Insets { top: f32, right: f32, bottom: f32, left: f32 }` (for margins/padding). Implement `Rect::contains(point)`, `Rect::intersects(other)`, `Rect::union(other)`, `Rect::offset(dx, dy)`, `Rect::inset(insets)`. All types derive `Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize`. Write 10 tests covering each method. | `src/geometry.rs` + tests | ⬜ |
-| P1.1.4 | **Color** — Create `src/color.rs`. Define `Color { r: u8, g: u8, b: u8, a: u8 }`. Constructors: `Color::rgba(r, g, b, a)`, `Color::rgb(r, g, b)` (a=255), `Color::from_hex("#rrggbb")`, `Color::from_hex("#rrggbbaa")`, `Color::from_css_name("red")` (support the 17 CSS named colors + "transparent"). Method: `to_f32_array() -> [f32; 4]` (for GPU shader uniforms). Write 8 tests: hex parsing, named colors, transparent, f32 conversion, invalid hex. | `src/color.rs` + tests | ⬜ |
-| P1.1.5 | **VexId** — Create `src/id.rs`. A `#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)] struct VexId(u32)` used as an arena index for DOM nodes. Implement `VexId::new(index: u32)`, `VexId::index() -> u32`, `Display` (prints `"node#123"`). An `IdAllocator` struct that hands out sequential IDs and can recycle freed ones (free list). Write 5 tests: sequential allocation, recycle, display format. | `src/id.rs` + tests | ⬜ |
-| P1.1.6 | **VexError** — Create `src/error.rs`. Define a unified error enum using `thiserror::Error`. Variants: `Network(String)`, `Parse(String)`, `Css(String)`, `Layout(String)`, `Js(String)`, `Io(#[from] std::io::Error)`, `Url(#[from] url::ParseError)`, `Platform(String)`, `Storage(String)`, `Internal(String)`. Define `pub type VexResult<T> = Result<T, VexError>`. Write 3 tests: error creation, display, from-conversion. | `src/error.rs` + tests | ⬜ |
-| P1.1.7 | **Lib re-exports** — Update `src/lib.rs` to declare all modules (`mod string; mod url; mod geometry; mod color; mod id; mod error;`) and re-export all public types at crate root. Add crate-level doc comment explaining vex-core's role. | Updated `src/lib.rs` | ⬜ |
-| P1.1.8 | Run `cargo test -p vex-core` — all tests pass. Run `cargo clippy -p vex-core` — no warnings. | Green tests + clippy | ⬜ |
+| P1.1.2 | **VexUrl** — Create `src/url.rs`. Thin wrapper around the `url::Url` crate. Add methods: `parse(input: &str) -> Result<Self>`, `origin() -> String`, `scheme() -> &str`, `host() -> Option<&str>`, `path() -> &str`, `query_pairs() -> impl Iterator`, `is_https() -> bool`, `join(relative: &str) -> Result<Self>`. Write 8 tests: valid URL, invalid URL, origin extraction, relative URL join, HTTPS detection, query parsing, scheme access, empty input. | `src/url.rs` + tests | ✅ |
+| P1.1.3 | **Geometry primitives** — Create `src/geometry.rs`. Define: `Point { x: f32, y: f32 }`, `Size { width: f32, height: f32 }`, `Rect { origin: Point, size: Size }`, `Insets { top: f32, right: f32, bottom: f32, left: f32 }` (for margins/padding). Implement `Rect::contains(point)`, `Rect::intersects(other)`, `Rect::union(other)`, `Rect::offset(dx, dy)`, `Rect::inset(insets)`. All types derive `Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize`. Write 10 tests covering each method. | `src/geometry.rs` + tests | ✅ |
+| P1.1.4 | **Color** — Create `src/color.rs`. Define `Color { r: u8, g: u8, b: u8, a: u8 }`. Constructors: `Color::rgba(r, g, b, a)`, `Color::rgb(r, g, b)` (a=255), `Color::from_hex("#rrggbb")`, `Color::from_hex("#rrggbbaa")`, `Color::from_css_name("red")` (support the 17 CSS named colors + "transparent"). Method: `to_f32_array() -> [f32; 4]` (for GPU shader uniforms). Write 8 tests: hex parsing, named colors, transparent, f32 conversion, invalid hex. | `src/color.rs` + tests | ✅ |
+| P1.1.5 | **VexId** — Create `src/id.rs`. A `#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)] struct VexId(u32)` used as an arena index for DOM nodes. Implement `VexId::new(index: u32)`, `VexId::index() -> u32`, `Display` (prints `"node#123"`). An `IdAllocator` struct that hands out sequential IDs and can recycle freed ones (free list). Write 5 tests: sequential allocation, recycle, display format. | `src/id.rs` + tests | ✅ |
+| P1.1.6 | **VexError** — Create `src/error.rs`. Define a unified error enum using `thiserror::Error`. Variants: `Network(String)`, `Parse(String)`, `Css(String)`, `Layout(String)`, `Js(String)`, `Io(#[from] std::io::Error)`, `Url(#[from] url::ParseError)`, `Platform(String)`, `Storage(String)`, `Internal(String)`. Define `pub type VexResult<T> = Result<T, VexError>`. Write 3 tests: error creation, display, from-conversion. | `src/error.rs` + tests | ✅ |
+| P1.1.7 | **Lib re-exports** — Update `src/lib.rs` to declare all modules (`mod string; mod url; mod geometry; mod color; mod id; mod error;`) and re-export all public types at crate root. Add crate-level doc comment explaining vex-core's role. | Updated `src/lib.rs` | ✅ |
+| P1.1.8 | Run `cargo test -p vex-core` — all tests pass. Run `cargo clippy -p vex-core` — no warnings. | Green tests + clippy | ✅ |
 
 ---
 
@@ -139,14 +139,14 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P1.2.1 | **Event types** — Create `zig/platform/event.zig`. Define a tagged union `Event` with variants: `WindowClose`, `WindowResize { width: u32, height: u32 }`, `WindowFocus { focused: bool }`, `KeyDown { keycode: u32, modifiers: u32 }`, `KeyUp { keycode: u32, modifiers: u32 }`, `MouseMove { x: i32, y: i32 }`, `MouseButtonDown { button: u8, x: i32, y: i32 }`, `MouseButtonUp { button: u8, x: i32, y: i32 }`, `MouseScroll { dx: f32, dy: f32 }`, `None`. Write Zig tests for event creation and tag matching. | `event.zig` + tests | ⬜ |
-| P1.2.2 | **Window handle** — Create `zig/platform/window.zig`. Define `WindowConfig` struct: `{ title: [*:0]const u8, width: u32, height: u32, resizable: bool }`. Define `WindowHandle` as an opaque pointer type. On Windows, implement using Win32 `CreateWindowExW` (register WNDCLASS, create HWND). On other platforms, stub with `@compileError("not implemented")` for now. Implement `create(config: WindowConfig) -> ?WindowHandle` and `destroy(handle: WindowHandle) -> void`. | `window.zig` | ⬜ |
-| P1.2.3 | **Event loop** — In `window.zig`, implement `poll_event(handle: WindowHandle) -> Event`. On Windows: call `PeekMessageW`, `TranslateMessage`, `DispatchMessageW`, translate `WM_*` messages into Vex `Event` variants. Handle `WM_CLOSE` → `WindowClose`, `WM_SIZE` → `WindowResize`, `WM_KEYDOWN/UP`, `WM_MOUSEMOVE`, `WM_LBUTTONDOWN/UP`, `WM_MOUSEWHEEL`. On other platforms: stub. | Event loop in `window.zig` | ⬜ |
-| P1.2.4 | **DPI detection** — In `window.zig`, implement `get_dpi_scale(handle: WindowHandle) -> f32`. On Windows: call `GetDpiForWindow`. Return 1.0 as fallback. | DPI function | ⬜ |
-| P1.2.5 | **Raw window handle** — In `window.zig`, implement `get_raw_handle(handle: WindowHandle) -> RawHandle`. Returns the HWND (Windows), NSView (macOS), or X11 window ID. This is needed for wgpu surface creation. Define `RawHandle` as a struct `{ hwnd: ?*anyopaque, hinstance: ?*anyopaque }` (Windows-specific for now). | `get_raw_handle` function | ⬜ |
-| P1.2.6 | **C ABI exports** — Update `zig/platform/root.zig` to export all public functions with C calling convention: `vex_platform_create_window(*const WindowConfigC) -> ?*anyopaque`, `vex_platform_destroy_window(*anyopaque) -> void`, `vex_platform_poll_event(*anyopaque, *EventC) -> bool`, `vex_platform_get_dpi(*anyopaque) -> f32`, `vex_platform_get_raw_handle(*anyopaque, *RawHandleC) -> void`. Define C-compatible struct versions (`WindowConfigC`, `EventC`, `RawHandleC`) with explicit layout. | `root.zig` exports | ⬜ |
-| P1.2.7 | **Platform test binary** — Create `zig/platform/test_window.zig` — a standalone test that creates a window, polls events in a loop, prints each event to stderr, and exits on WindowClose. Build it as an executable in `build.zig`. Verify it runs manually and shows a blank window. | `test_window.zig` | ⬜ |
-| P1.2.8 | Run `zig build` — platform library compiles. Run `zig build test` — event tests pass. Run test binary manually — window appears. | Green Zig build | ⬜ |
+| P1.2.1 | **Event types** | `event.zig` + tests | ✅ |
+| P1.2.2 | **Window handle** | `window.zig` | ✅ |
+| P1.2.3 | **Event loop** | Event loop in `window.zig` | ✅ |
+| P1.2.4 | **DPI detection** | DPI function | ✅ |
+| P1.2.5 | **Raw window handle** | `get_raw_handle` function | ✅ |
+| P1.2.6 | **C ABI exports** | `root.zig` exports | ✅ |
+| P1.2.7 | **Platform test binary** | `test_window.zig` | ⬜ |
+| P1.2.8 | Run `zig build` + `zig build test` — platform library compiles, tests pass. | Green Zig build | ✅ |
 
 ---
 
@@ -154,12 +154,12 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P1.3.1 | **Arena allocator** — Create `zig/alloc/arena.zig`. Implement `ArenaAllocator` that pre-allocates a large block (configurable default: 1MB) and bumps a pointer for each allocation. Supports `reset()` to reclaim all memory at once (no individual frees). Implement the Zig `Allocator` interface. Write tests: allocate 100 items, reset, allocate again. Verify no system alloc calls after initial block. | `arena.zig` + tests | ⬜ |
-| P1.3.2 | **Pool allocator** — Create `zig/alloc/pool.zig`. Implements fixed-size block allocation. Constructor takes `block_size: usize` and `block_count: usize`. Pre-allocates `block_size * block_count` bytes. `alloc()` returns next free block (from free list). `free(ptr)` returns block to free list. Write tests: allocate all blocks, free some, re-allocate, verify no fragmentation. | `pool.zig` + tests | ⬜ |
-| P1.3.3 | **Frame allocator** — Create `zig/alloc/frame.zig`. A double-buffered arena: two arenas that swap each frame. `begin_frame()` resets the "current" arena. All allocations during frame use current arena. `end_frame()` swaps current ↔ previous. This ensures the previous frame's data stays alive for one frame (useful for display lists). Write tests: allocate in frame 1, swap, verify data from frame 1 still readable in frame 2, but gone after frame 3. | `frame.zig` + tests | ⬜ |
+| P1.3.1 | **Arena allocator** | `arena.zig` + tests | ✅ |
+| P1.3.2 | **Pool allocator** | `pool.zig` + tests | ✅ |
+| P1.3.3 | **Frame allocator** | `frame.zig` + tests | ✅ |
 | P1.3.4 | **Statistics tracker** — Create `zig/alloc/stats.zig`. A wrapper allocator that tracks: `total_allocated`, `total_freed`, `current_usage`, `peak_usage`, `allocation_count`. Wraps any inner allocator. Write tests: allocate/free, check stats. | `stats.zig` + tests | ⬜ |
-| P1.3.5 | **C ABI exports** — Update `zig/alloc/root.zig` to export: `vex_arena_create(size: usize) -> *anyopaque`, `vex_arena_alloc(*anyopaque, size: usize, align: usize) -> ?*anyopaque`, `vex_arena_reset(*anyopaque)`, `vex_arena_destroy(*anyopaque)`. Same pattern for pool allocator. | `root.zig` exports | ⬜ |
-| P1.3.6 | Run `zig build test` — all allocator tests pass. | Green tests | ⬜ |
+| P1.3.5 | **C ABI exports** | `root.zig` exports | ✅ |
+| P1.3.6 | Run `zig build test` — all allocator tests pass. | Green tests | ✅ |
 
 ---
 
@@ -167,13 +167,13 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P1.4.1 | **FFI type definitions** — Create `crates/vex-render/src/platform_ffi.rs`. Define Rust `#[repr(C)]` structs matching the Zig C exports: `WindowConfigC`, `EventC` (with tag field + union data), `RawHandleC`. Declare all `extern "C"` functions with matching signatures. Add `// SAFETY:` comments on each. | `platform_ffi.rs` | ⬜ |
-| P1.4.2 | **Safe Rust wrappers** — Create `crates/vex-render/src/platform.rs`. Define `Window` struct that owns a raw handle and calls `vex_platform_destroy_window` in `Drop`. Methods: `Window::new(title, width, height) -> VexResult<Self>`, `Window::poll_event() -> Option<Event>`, `Window::dpi_scale() -> f32`, `Window::raw_handle() -> RawWindowHandle` (implement `raw_window_handle::HasRawWindowHandle`). Convert `EventC` into a Rust `Event` enum (mirroring the Zig Event but idiomatic Rust). | `platform.rs` | ⬜ |
-| P1.4.3 | **Event enum (Rust)** — Create `crates/vex-render/src/event.rs`. Define `enum Event { WindowClose, WindowResize { width: u32, height: u32 }, KeyDown { keycode: u32, modifiers: Modifiers }, KeyUp { ... }, MouseMove { x: i32, y: i32 }, MouseButtonDown { button: MouseButton, x: i32, y: i32 }, ... MouseScroll { dx: f32, dy: f32 } }`. Define `Modifiers` flags struct (shift, ctrl, alt, super). Define `MouseButton` enum (Left, Right, Middle). | `event.rs` | ⬜ |
-| P1.4.4 | **wgpu surface creation** — Create `crates/vex-render/src/gpu.rs`. Implement `GpuContext` struct. In `GpuContext::new(window: &Window)`: create `wgpu::Instance` (Vulkan + DX12 + Metal backends), create `wgpu::Surface` from the window's raw handle using `unsafe { instance.create_surface(&window) }`, request `Adapter` (high-performance preference), request `Device` + `Queue` with default limits, configure surface with `SurfaceConfiguration` (bgra8 format, FIFO present mode, window size). Store all handles. | `gpu.rs` | ⬜ |
-| P1.4.5 | **Render loop** — In `gpu.rs`, implement `GpuContext::render_frame(&self, clear_color: Color)`. Get current surface texture, create a `CommandEncoder`, begin a render pass with the clear color as the load operation, end pass, submit. Present the surface texture. This gives us a solid-colored window. | render_frame method | ⬜ |
-| P1.4.6 | **Main event loop** — Update `crates/vex-app/src/main.rs`. Initialize `tracing_subscriber`. Create `Window::new("Vigo Engine", 1280, 720)`. Create `GpuContext::new(&window)`. Enter loop: `while let Some(event) = window.poll_event()` → match on event, log each event with `tracing::debug!`, on `WindowClose` break, on `WindowResize` reconfigure GPU surface, otherwise call `gpu.render_frame(Color::from_hex("#1a1a2e"))` (dark background). After loop, resources drop automatically. | Updated `main.rs` | ⬜ |
-| P1.4.7 | **Build integration test** — Run `just build` (which runs zig build first, then cargo build). Verify no linker errors. Run `just run` — a 1280×720 window with dark background appears. Moving mouse / pressing keys produces tracing output. Closing window exits cleanly. | Working window demo | ⬜ |
+| P1.4.1 | **FFI type definitions** | `platform_ffi.rs` | ✅ |
+| P1.4.2 | **Safe Rust wrappers** | `platform.rs` | ✅ |
+| P1.4.3 | **Event enum (Rust)** | `event.rs` | ✅ |
+| P1.4.4 | **wgpu surface creation** | `gpu.rs` | ✅ |
+| P1.4.5 | **Render loop** | render_frame method | ✅ |
+| P1.4.6 | **Main event loop** | Updated `main.rs` | ✅ |
+| P1.4.7 | **Build integration test** — Window opens, GPU renders, mouse/keyboard events logged, close exits cleanly. | Working window demo | ✅ |
 
 ---
 ---
