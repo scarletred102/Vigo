@@ -12,3 +12,5 @@ vex-core = { path = "../vex-core" }
 smallvec.workspace = true
 serde.workspace = true
 selectors.workspace = true
+cssparser.workspace = true
+precomputed-hash = "0.1"

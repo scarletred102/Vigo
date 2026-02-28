@@ -9,6 +9,7 @@ pub mod color;
 pub mod error;
 pub mod geometry;
 pub mod id;
+pub mod string;
 pub mod vex_url;
 
 // Re-exports for ergonomic access.
@@ -16,6 +17,7 @@ pub use color::Color;
 pub use error::{VexError, VexResult};
 pub use geometry::{Insets, Point, Rect, Size};
 pub use id::{IdAllocator, VexId};
+pub use string::VexString;
 pub use vex_url::VexUrl;
 
 /// Engine version string.

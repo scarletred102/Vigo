@@ -32,24 +32,24 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P0.2.1 | Create root `Cargo.toml` as a Cargo workspace. Set `resolver = "2"`. Define `members` array listing all 16 crates under `crates/*`. Define shared `[workspace.dependencies]` for common deps (thiserror, serde, tokio, tracing, url). Define `[workspace.package]` with shared metadata (version = "0.1.0", edition = "2024", license, authors, rust-version = "1.85"). | `Cargo.toml` | ⬜ |
-| P0.2.2 | Create `crates/vex-core/Cargo.toml` with `[package]` inheriting workspace metadata. Add deps: `thiserror`, `url`, `serde` (with derive feature), `smallvec`. Create `crates/vex-core/src/lib.rs` with license header and `//! Vex core types` doc comment. | `crates/vex-core/` | ⬜ |
-| P0.2.3 | Create `crates/vex-net/Cargo.toml`. Deps: `hyper` (client, http1, http2 features), `hyper-util`, `hyper-rustls`, `rustls`, `tokio` (full), `quinn`, `trust-dns-resolver`, `http`, `bytes`, `flate2`, `brotli`, `zstd`, `vex-core` (path). Create `src/lib.rs` stub. | `crates/vex-net/` | ⬜ |
-| P0.2.4 | Create `crates/vex-dom/Cargo.toml`. Deps: `vex-core` (path), `smallvec`, `serde`. Create `src/lib.rs` stub. | `crates/vex-dom/` | ⬜ |
-| P0.2.5 | Create `crates/vex-html/Cargo.toml`. Deps: `html5ever`, `markup5ever`, `tendril`, `vex-core` (path), `vex-dom` (path). Create `src/lib.rs` stub. | `crates/vex-html/` | ⬜ |
-| P0.2.6 | Create `crates/vex-css/Cargo.toml`. Deps: `cssparser`, `selectors`, `vex-core` (path), `vex-dom` (path). Create `src/lib.rs` stub. | `crates/vex-css/` | ⬜ |
-| P0.2.7 | Create `crates/vex-layout/Cargo.toml`. Deps: `vex-core` (path), `vex-dom` (path), `vex-css` (path), `cosmic-text`. Create `src/lib.rs` stub. | `crates/vex-layout/` | ⬜ |
-| P0.2.8 | Create `crates/vex-js/Cargo.toml`. Deps: `boa_engine`, `boa_gc`, `vex-core` (path), `vex-dom` (path), `vex-net` (path). Create `src/lib.rs` stub. | `crates/vex-js/` | ⬜ |
-| P0.2.9 | Create `crates/vex-render/Cargo.toml`. Deps: `wgpu`, `winit`, `raw-window-handle`, `vex-core` (path), `vex-layout` (path), `image`, `resvg`. Create `src/lib.rs` stub. Has `build.rs` placeholder for future Zig linking. | `crates/vex-render/` | ⬜ |
-| P0.2.10 | Create `crates/vex-media/Cargo.toml`. Deps: `vex-core` (path), `vex-render` (path), `tokio`. Create `src/lib.rs` stub. Has `build.rs` placeholder for future Zig linking. | `crates/vex-media/` | ⬜ |
-| P0.2.11 | Create `crates/vex-storage/Cargo.toml`. Deps: `rusqlite` (bundled feature), `serde`, `serde_json`, `vex-core` (path). Create `src/lib.rs` stub. | `crates/vex-storage/` | ⬜ |
-| P0.2.12 | Create `crates/vex-security/Cargo.toml`. Deps: `vex-core` (path), `vex-net` (path), `url`. Create `src/lib.rs` stub. | `crates/vex-security/` | ⬜ |
-| P0.2.13 | Create `crates/vex-privacy/Cargo.toml`. Deps: `vex-core` (path), `vex-net` (path), `regex`, `aho-corasick`. Create `src/lib.rs` stub. | `crates/vex-privacy/` | ⬜ |
-| P0.2.14 | Create `crates/vex-crypto/Cargo.toml`. Deps: `chacha20poly1305`, `argon2`, `ed25519-dalek`, `x25519-dalek`, `rand`, `zeroize`, `vex-core` (path). Create `src/lib.rs` stub. | `crates/vex-crypto/` | ⬜ |
-| P0.2.15 | Create `crates/vex-sync/Cargo.toml`. Deps: `vex-core` (path), `vex-crypto` (path), `vex-net` (path), `serde`, `serde_json`, `tokio`. Create `src/lib.rs` stub. | `crates/vex-sync/` | ⬜ |
-| P0.2.16 | Create `crates/vex-browser/Cargo.toml`. Deps: `vex-core` (path), `vex-dom` (path), `vex-html` (path), `vex-css` (path), `vex-layout` (path), `vex-js` (path), `vex-render` (path), `vex-net` (path), `vex-storage` (path), `vex-privacy` (path). Create `src/lib.rs` stub. | `crates/vex-browser/` | ⬜ |
-| P0.2.17 | Create `crates/vex-app/Cargo.toml`. This is the binary crate (`[[bin]]` target named `vigo`). Deps: `vex-browser` (path), `vex-render` (path), `tokio` (rt-multi-thread, macros), `tracing`, `tracing-subscriber`. Create `src/main.rs` with `fn main()` that prints "Vigo Engine v0.1.0 — Vex". | `crates/vex-app/` | ⬜ |
-| P0.2.18 | Run `cargo check` on the entire workspace. Fix any dependency resolution or syntax errors until it passes clean. | Green `cargo check` | ⬜ |
+| P0.2.1 | Create root `Cargo.toml` as a Cargo workspace. Set `resolver = "2"`. Define `members` array listing all 16 crates under `crates/*`. Define shared `[workspace.dependencies]` for common deps (thiserror, serde, tokio, tracing, url). Define `[workspace.package]` with shared metadata (version = "0.1.0", edition = "2024", license, authors, rust-version = "1.85"). | `Cargo.toml` | ✅ |
+| P0.2.2 | Create `crates/vex-core/Cargo.toml` with `[package]` inheriting workspace metadata. Add deps: `thiserror`, `url`, `serde` (with derive feature), `smallvec`. Create `crates/vex-core/src/lib.rs` with license header and `//! Vex core types` doc comment. | `crates/vex-core/` | ✅ |
+| P0.2.3 | Create `crates/vex-net/Cargo.toml`. Deps: `hyper` (client, http1, http2 features), `hyper-util`, `hyper-rustls`, `rustls`, `tokio` (full), `quinn`, `trust-dns-resolver`, `http`, `bytes`, `flate2`, `brotli`, `zstd`, `vex-core` (path). Create `src/lib.rs` stub. | `crates/vex-net/` | ✅ |
+| P0.2.4 | Create `crates/vex-dom/Cargo.toml`. Deps: `vex-core` (path), `smallvec`, `serde`. Create `src/lib.rs` stub. | `crates/vex-dom/` | ✅ |
+| P0.2.5 | Create `crates/vex-html/Cargo.toml`. Deps: `html5ever`, `markup5ever`, `tendril`, `vex-core` (path), `vex-dom` (path). Create `src/lib.rs` stub. | `crates/vex-html/` | ✅ |
+| P0.2.6 | Create `crates/vex-css/Cargo.toml`. Deps: `cssparser`, `selectors`, `vex-core` (path), `vex-dom` (path). Create `src/lib.rs` stub. | `crates/vex-css/` | ✅ |
+| P0.2.7 | Create `crates/vex-layout/Cargo.toml`. Deps: `vex-core` (path), `vex-dom` (path), `vex-css` (path), `cosmic-text`. Create `src/lib.rs` stub. | `crates/vex-layout/` | ✅ |
+| P0.2.8 | Create `crates/vex-js/Cargo.toml`. Deps: `boa_engine`, `boa_gc`, `vex-core` (path), `vex-dom` (path), `vex-net` (path). Create `src/lib.rs` stub. | `crates/vex-js/` | ✅ |
+| P0.2.9 | Create `crates/vex-render/Cargo.toml`. Deps: `wgpu`, `winit`, `raw-window-handle`, `vex-core` (path), `vex-layout` (path), `image`, `resvg`. Create `src/lib.rs` stub. Has `build.rs` placeholder for future Zig linking. | `crates/vex-render/` | ✅ |
+| P0.2.10 | Create `crates/vex-media/Cargo.toml`. Deps: `vex-core` (path), `vex-render` (path), `tokio`. Create `src/lib.rs` stub. Has `build.rs` placeholder for future Zig linking. | `crates/vex-media/` | ✅ |
+| P0.2.11 | Create `crates/vex-storage/Cargo.toml`. Deps: `rusqlite` (bundled feature), `serde`, `serde_json`, `vex-core` (path). Create `src/lib.rs` stub. | `crates/vex-storage/` | ✅ |
+| P0.2.12 | Create `crates/vex-security/Cargo.toml`. Deps: `vex-core` (path), `vex-net` (path), `url`. Create `src/lib.rs` stub. | `crates/vex-security/` | ✅ |
+| P0.2.13 | Create `crates/vex-privacy/Cargo.toml`. Deps: `vex-core` (path), `vex-net` (path), `regex`, `aho-corasick`. Create `src/lib.rs` stub. | `crates/vex-privacy/` | ✅ |
+| P0.2.14 | Create `crates/vex-crypto/Cargo.toml`. Deps: `chacha20poly1305`, `argon2`, `ed25519-dalek`, `x25519-dalek`, `rand`, `zeroize`, `vex-core` (path). Create `src/lib.rs` stub. | `crates/vex-crypto/` | ✅ |
+| P0.2.15 | Create `crates/vex-sync/Cargo.toml`. Deps: `vex-core` (path), `vex-crypto` (path), `vex-net` (path), `serde`, `serde_json`, `tokio`. Create `src/lib.rs` stub. | `crates/vex-sync/` | ✅ |
+| P0.2.16 | Create `crates/vex-browser/Cargo.toml`. Deps: `vex-core` (path), `vex-dom` (path), `vex-html` (path), `vex-css` (path), `vex-layout` (path), `vex-js` (path), `vex-render` (path), `vex-net` (path), `vex-storage` (path), `vex-privacy` (path). Create `src/lib.rs` stub. | `crates/vex-browser/` | ✅ |
+| P0.2.17 | Create `crates/vex-app/Cargo.toml`. This is the binary crate (`[[bin]]` target named `vigo`). Deps: `vex-browser` (path), `vex-render` (path), `tokio` (rt-multi-thread, macros), `tracing`, `tracing-subscriber`. Create `src/main.rs` with `fn main()` that prints "Vigo Engine v0.1.0 — Vex". | `crates/vex-app/` | ✅ |
+| P0.2.18 | Run `cargo check` on the entire workspace. Fix any dependency resolution or syntax errors until it passes clean. | Green `cargo check` | ✅ |
 
 ---
 
@@ -57,13 +57,13 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P0.3.1 | Create `zig/build.zig` — top-level Zig build file. Define 5 static library targets: `vex_platform`, `vex_compositor`, `vex_media_zig`, `vex_text`, `vex_alloc`. Each exports a `.a`/`.lib` to `zig-out/lib/`. Set optimization mode to `.ReleaseSafe` for release, `.Debug` for debug. Add `zig build test` step that runs all Zig tests. | `zig/build.zig` | ⬜ |
-| P0.3.2 | Create `zig/platform/root.zig` — stub file exporting one C ABI function: `export fn vex_platform_init() callconv(.C) c_int { return 0; }`. This is the "hello world" of the platform layer. | `zig/platform/root.zig` | ⬜ |
-| P0.3.3 | Create `zig/compositor/root.zig` — stub exporting `export fn vex_compositor_init() callconv(.C) c_int { return 0; }`. | `zig/compositor/root.zig` | ⬜ |
-| P0.3.4 | Create `zig/media/root.zig` — stub exporting `export fn vex_media_init() callconv(.C) c_int { return 0; }`. | `zig/media/root.zig` | ⬜ |
-| P0.3.5 | Create `zig/text/root.zig` — stub exporting `export fn vex_text_init() callconv(.C) c_int { return 0; }`. | `zig/text/root.zig` | ⬜ |
-| P0.3.6 | Create `zig/alloc/root.zig` — stub exporting `export fn vex_alloc_init() callconv(.C) c_int { return 0; }`. | `zig/alloc/root.zig` | ⬜ |
-| P0.3.7 | Run `zig build` from `zig/` directory. Verify all 5 static libraries are produced in `zig-out/lib/`. Fix any build errors. | Green `zig build` | ⬜ |
+| P0.3.1 | Create `zig/build.zig` — top-level Zig build file. Define 5 static library targets: `vex_platform`, `vex_compositor`, `vex_media_zig`, `vex_text`, `vex_alloc`. Each exports a `.a`/`.lib` to `zig-out/lib/`. Set optimization mode to `.ReleaseSafe` for release, `.Debug` for debug. Add `zig build test` step that runs all Zig tests. | `zig/build.zig` | ✅ |
+| P0.3.2 | Create `zig/platform/root.zig` — stub file exporting one C ABI function: `export fn vex_platform_init() callconv(.C) c_int { return 0; }`. This is the "hello world" of the platform layer. | `zig/platform/root.zig` | ✅ |
+| P0.3.3 | Create `zig/compositor/root.zig` — stub exporting `export fn vex_compositor_init() callconv(.C) c_int { return 0; }`. | `zig/compositor/root.zig` | ✅ |
+| P0.3.4 | Create `zig/media/root.zig` — stub exporting `export fn vex_media_init() callconv(.C) c_int { return 0; }`. | `zig/media/root.zig` | ✅ |
+| P0.3.5 | Create `zig/text/root.zig` — stub exporting `export fn vex_text_init() callconv(.C) c_int { return 0; }`. | `zig/text/root.zig` | ✅ |
+| P0.3.6 | Create `zig/alloc/root.zig` — stub exporting `export fn vex_alloc_init() callconv(.C) c_int { return 0; }`. | `zig/alloc/root.zig` | ✅ |
+| P0.3.7 | Run `zig build` from `zig/` directory. Verify all 5 static libraries are produced in `zig-out/lib/`. Fix any build errors. | Green `zig build` | ✅ |
 
 ---
 
@@ -71,10 +71,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P0.4.1 | Create `crates/vex-render/build.rs` — Cargo build script that: (a) determines the Zig output directory relative to the workspace root, (b) calls `println!("cargo:rustc-link-search=native={zig_out_dir}")`, (c) calls `println!("cargo:rustc-link-lib=static=vex_platform")` and `println!("cargo:rustc-link-lib=static=vex_compositor")`, (d) calls `println!("cargo:rerun-if-changed=../../zig/platform/root.zig")`. | `crates/vex-render/build.rs` | ⬜ |
+| P0.4.1 | Create `crates/vex-render/build.rs` — Cargo build script that: (a) determines the Zig output directory relative to the workspace root, (b) calls `println!("cargo:rustc-link-search=native={zig_out_dir}")`, (c) calls `println!("cargo:rustc-link-lib=static=vex_platform")` and `println!("cargo:rustc-link-lib=static=vex_compositor")`, (d) calls `println!("cargo:rerun-if-changed=../../zig/platform/root.zig")`. | `crates/vex-render/build.rs` | ✅ |
 | P0.4.2 | Create `crates/vex-media/build.rs` — similar to above but links `vex_media_zig` and `vex_text`. | `crates/vex-media/build.rs` | ⬜ |
-| P0.4.3 | Create `crates/vex-render/src/ffi.rs` — Rust `extern "C"` declarations matching the Zig stubs: `extern "C" { fn vex_platform_init() -> i32; fn vex_compositor_init() -> i32; }`. Add `mod ffi;` to `lib.rs`. | `crates/vex-render/src/ffi.rs` | ⬜ |
-| P0.4.4 | Verify the full build chain works: run `zig build` first, then `cargo check` — the Rust crates that depend on Zig libs should find the .lib/.a files and resolve the extern symbols. | Green build chain | ⬜ |
+| P0.4.3 | Create `crates/vex-render/src/ffi.rs` — Rust `extern "C"` declarations matching the Zig stubs: `extern "C" { fn vex_platform_init() -> i32; fn vex_compositor_init() -> i32; }`. Add `mod ffi;` to `lib.rs`. | `crates/vex-render/src/ffi.rs` | ✅ |
+| P0.4.4 | Verify the full build chain works: run `zig build` first, then `cargo check` — the Rust crates that depend on Zig libs should find the .lib/.a files and resolve the extern symbols. | Green build chain | ✅ |
 
 ---
 
@@ -82,9 +82,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P0.5.1 | Create `justfile` (for the `just` command runner) in the monorepo root with these recipes: `build` (zig build && cargo build), `test` (zig build test && cargo test), `check` (cargo check && cargo clippy), `fmt` (cargo fmt --check && zig fmt check), `run` (zig build && cargo run -p vex-app), `bench` (cargo bench), `clean` (cargo clean && rm -rf zig/zig-out zig/zig-cache). | `justfile` | ⬜ |
-| P0.5.2 | Create `.github/workflows/ci.yml` — GitHub Actions workflow triggered on push/PR. Jobs: (1) `rust` — install Rust stable, run `cargo check --workspace`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --all -- --check`. (2) `zig` — install Zig 0.13+, run `cd zig && zig build && zig build test`. Matrix: os = [ubuntu-latest, windows-latest, macos-latest]. | `.github/workflows/ci.yml` | ⬜ |
-| P0.5.3 | Create `rust-toolchain.toml` specifying the Rust version channel (stable) and components (rustfmt, clippy). | `rust-toolchain.toml` | ⬜ |
+| P0.5.1 | Create `justfile` (for the `just` command runner) in the monorepo root with these recipes: `build` (zig build && cargo build), `test` (zig build test && cargo test), `check` (cargo check && cargo clippy), `fmt` (cargo fmt --check && zig fmt check), `run` (zig build && cargo run -p vex-app), `bench` (cargo bench), `clean` (cargo clean && rm -rf zig/zig-out zig/zig-cache). | `justfile` | ✅ |
+| P0.5.2 | Create `.github/workflows/ci.yml` — GitHub Actions workflow triggered on push/PR. Jobs: (1) `rust` — install Rust stable, run `cargo check --workspace`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --all -- --check`. (2) `zig` — install Zig 0.13+, run `cd zig && zig build && zig build test`. Matrix: os = [ubuntu-latest, windows-latest, macos-latest]. | `.github/workflows/ci.yml` | ✅ |
+| P0.5.3 | Create `rust-toolchain.toml` specifying the Rust version channel (stable) and components (rustfmt, clippy). | `rust-toolchain.toml` | ✅ |
 
 ---
 
@@ -92,10 +92,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P0.6.1 | Create `docs/RUST_STYLE.md` — Rust coding standards: license header on every file, error handling with `thiserror` (no `.unwrap()` in lib code), `tracing` for logging (not `println!`), doc comments on all public items, `#[must_use]` on fallible functions, `unsafe` blocks require `// SAFETY:` comment. | `docs/RUST_STYLE.md` | ⬜ |
-| P0.6.2 | Create `docs/ZIG_STYLE.md` — Zig coding standards: license header, all exported functions use C calling convention, snake_case naming, explicit allocators (no hidden allocations), all test functions named `test_<description>`, error sets documented. | `docs/ZIG_STYLE.md` | ⬜ |
-| P0.6.3 | Create `docs/ARCHITECTURE.md` — copy the architecture diagram and language split section from PLAN.md. Add crate dependency graph (text-based). | `docs/ARCHITECTURE.md` | ⬜ |
-| P0.6.4 | Create `docs/FFI_CONVENTIONS.md` — document the Rust↔Zig interop pattern: how Zig exports C ABI, how Rust declares externs, naming convention (`vex_<module>_<function>`), error return conventions (0 = success, negative = error code), memory ownership rules (caller allocates / callee allocates with free function). | `docs/FFI_CONVENTIONS.md` | ⬜ |
+| P0.6.1 | Create `docs/RUST_STYLE.md` — Rust coding standards: license header on every file, error handling with `thiserror` (no `.unwrap()` in lib code), `tracing` for logging (not `println!`), doc comments on all public items, `#[must_use]` on fallible functions, `unsafe` blocks require `// SAFETY:` comment. | `docs/RUST_STYLE.md` | ✅ |
+| P0.6.2 | Create `docs/ZIG_STYLE.md` — Zig coding standards: license header, all exported functions use C calling convention, snake_case naming, explicit allocators (no hidden allocations), all test functions named `test_<description>`, error sets documented. | `docs/ZIG_STYLE.md` | ✅ |
+| P0.6.3 | Create `docs/ARCHITECTURE.md` — copy the architecture diagram and language split section from PLAN.md. Add crate dependency graph (text-based). | `docs/ARCHITECTURE.md` | ✅ |
+| P0.6.4 | Create `docs/FFI_CONVENTIONS.md` — document the Rust↔Zig interop pattern: how Zig exports C ABI, how Rust declares externs, naming convention (`vex_<module>_<function>`), error return conventions (0 = success, negative = error code), memory ownership rules (caller allocates / callee allocates with free function). | `docs/FFI_CONVENTIONS.md` | ✅ |
 
 ---
 
@@ -103,10 +103,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P0.7.1 | Run `just build` — must complete without errors. | Green build | ⬜ |
-| P0.7.2 | Run `just test` — all crate stubs pass (trivially — no tests yet, but no failures). | Green tests | ⬜ |
-| P0.7.3 | Run `just run` — must print "Vigo Engine v0.1.0 — Vex" to stdout. | Working binary | ⬜ |
-| P0.7.4 | Verify file count: 16 Rust crates × (Cargo.toml + src/lib.rs or src/main.rs) = ~35 files + zig stubs + docs + CI = ~55+ files total. List all files, confirm nothing missing. | File manifest | ⬜ |
+| P0.7.1 | Run `just build` — must complete without errors. | Green build | ✅ |
+| P0.7.2 | Run `just test` — all crate stubs pass (trivially — no tests yet, but no failures). | Green tests | ✅ |
+| P0.7.3 | Run `just run` — must print "Vigo Engine v0.1.0 — Vex" to stdout. | Working binary | ✅ |
+| P0.7.4 | Verify file count: 16 Rust crates × (Cargo.toml + src/lib.rs or src/main.rs) = ~35 files + zig stubs + docs + CI = ~55+ files total. List all files, confirm nothing missing. | File manifest | ✅ |
 
 ---
 ---
@@ -124,7 +124,7 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P1.1.1 | **VexString** — Create `crates/vex-core/src/string.rs`. Implement an interned string type backed by a global `HashSet<&'static str>` (or use the `string_cache` crate). Must support: `From<&str>`, `From<String>`, `PartialEq`, `Eq`, `Hash`, `Clone` (cheap — it's just an index/pointer), `Display`, `Debug`, `Serialize`/`Deserialize`. Write 5 tests: creation, equality, hashing, display, clone-is-cheap (assert pointer equality). | `src/string.rs` + tests | ⬜ |
+| P1.1.1 | **VexString** — Create `crates/vex-core/src/string.rs`. Implement an interned string type backed by a global `HashSet<&'static str>` (or use the `string_cache` crate). Must support: `From<&str>`, `From<String>`, `PartialEq`, `Eq`, `Hash`, `Clone` (cheap — it's just an index/pointer), `Display`, `Debug`, `Serialize`/`Deserialize`. Write 5 tests: creation, equality, hashing, display, clone-is-cheap (assert pointer equality). | `src/string.rs` + tests | ✅ |
 | P1.1.2 | **VexUrl** — Create `src/url.rs`. Thin wrapper around the `url::Url` crate. Add methods: `parse(input: &str) -> Result<Self>`, `origin() -> String`, `scheme() -> &str`, `host() -> Option<&str>`, `path() -> &str`, `query_pairs() -> impl Iterator`, `is_https() -> bool`, `join(relative: &str) -> Result<Self>`. Write 8 tests: valid URL, invalid URL, origin extraction, relative URL join, HTTPS detection, query parsing, scheme access, empty input. | `src/url.rs` + tests | ✅ |
 | P1.1.3 | **Geometry primitives** — Create `src/geometry.rs`. Define: `Point { x: f32, y: f32 }`, `Size { width: f32, height: f32 }`, `Rect { origin: Point, size: Size }`, `Insets { top: f32, right: f32, bottom: f32, left: f32 }` (for margins/padding). Implement `Rect::contains(point)`, `Rect::intersects(other)`, `Rect::union(other)`, `Rect::offset(dx, dy)`, `Rect::inset(insets)`. All types derive `Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize`. Write 10 tests covering each method. | `src/geometry.rs` + tests | ✅ |
 | P1.1.4 | **Color** — Create `src/color.rs`. Define `Color { r: u8, g: u8, b: u8, a: u8 }`. Constructors: `Color::rgba(r, g, b, a)`, `Color::rgb(r, g, b)` (a=255), `Color::from_hex("#rrggbb")`, `Color::from_hex("#rrggbbaa")`, `Color::from_css_name("red")` (support the 17 CSS named colors + "transparent"). Method: `to_f32_array() -> [f32; 4]` (for GPU shader uniforms). Write 8 tests: hex parsing, named colors, transparent, f32 conversion, invalid hex. | `src/color.rs` + tests | ✅ |
@@ -157,7 +157,7 @@
 | P1.3.1 | **Arena allocator** | `arena.zig` + tests | ✅ |
 | P1.3.2 | **Pool allocator** | `pool.zig` + tests | ✅ |
 | P1.3.3 | **Frame allocator** | `frame.zig` + tests | ✅ |
-| P1.3.4 | **Statistics tracker** — Create `zig/alloc/stats.zig`. A wrapper allocator that tracks: `total_allocated`, `total_freed`, `current_usage`, `peak_usage`, `allocation_count`. Wraps any inner allocator. Write tests: allocate/free, check stats. | `stats.zig` + tests | ⬜ |
+| P1.3.4 | **Statistics tracker** — Create `zig/alloc/stats.zig`. A wrapper allocator that tracks: `total_allocated`, `total_freed`, `current_usage`, `peak_usage`, `allocation_count`. Wraps any inner allocator. Write tests: allocate/free, check stats. | `stats.zig` + tests | ✅ |
 | P1.3.5 | **C ABI exports** | `root.zig` exports | ✅ |
 | P1.3.6 | Run `zig build test` — all allocator tests pass. | Green tests | ✅ |
 
@@ -224,9 +224,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P2.4.1 | **Cache storage** — Create `crates/vex-net/src/cache.rs`. Define `HttpCache` struct backed by an in-memory `HashMap<VexUrl, CachedResponse>`. `CachedResponse` stores: body, headers, `ETag`, `Last-Modified`, `Cache-Control` directives (max-age, no-cache, no-store), insertion timestamp. | `cache.rs` | ⬜ |
-| P2.4.2 | **Cache-Control parsing** — In `cache.rs`, implement `parse_cache_control(header: &str) -> CacheDirectives`. Parse: `max-age=N`, `no-cache`, `no-store`, `must-revalidate`, `public`, `private`. Write 5 tests. | Cache-Control parser | ⬜ |
-| P2.4.3 | **Cache integration** — Modify `fetch()`: before sending request, check cache. If cached and fresh (within max-age), return cached response with `was_cached: true`. If stale, add `If-None-Match` (ETag) or `If-Modified-Since` header. If server returns 304, return cached body. If `no-store`, skip cache entirely. Write 4 tests with mock server. | Cache logic | ⬜ |
+| P2.4.1 | **Cache storage** — Create `crates/vex-net/src/cache.rs`. Define `HttpCache` struct backed by an in-memory `HashMap<VexUrl, CachedResponse>`. `CachedResponse` stores: body, headers, `ETag`, `Last-Modified`, `Cache-Control` directives (max-age, no-cache, no-store), insertion timestamp. | `cache.rs` | ✅ |
+| P2.4.2 | **Cache-Control parsing** — In `cache.rs`, implement `parse_cache_control(header: &str) -> CacheDirectives`. Parse: `max-age=N`, `no-cache`, `no-store`, `must-revalidate`, `public`, `private`. Write 5 tests. | Cache-Control parser | ✅ |
+| P2.4.3 | **Cache integration** — Modify `fetch()`: before sending request, check cache. If cached and fresh (within max-age), return cached response with `was_cached: true`. If stale, add `If-None-Match` (ETag) or `If-Modified-Since` header. If server returns 304, return cached body. If `no-store`, skip cache entirely. Write 4 tests with mock server. | Cache logic | ✅ |
 
 ---
 
@@ -238,8 +238,8 @@
 | P2.5.2 | **Domain blocklist** — Create `crates/vex-privacy/src/adblock.rs`. Implement `AdblockEngine` struct holding a `HashSet<String>` of blocked domains. Method: `is_blocked(url: &VexUrl) -> bool` — checks host against blocklist, including subdomain matching (if `ads.example.com` is blocked, so is `foo.ads.example.com`). Load from a text file (one domain per line). Write 6 tests: exact match, subdomain, non-match, empty host. | `adblock.rs` + tests | ✅ |
 | P2.5.3 | **HTTPS-only mode** — Create `crates/vex-privacy/src/https.rs`. Function: `enforce_https(url: &mut VexUrl) -> bool` — upgrades `http://` to `https://`. Returns false if already HTTPS. Exempts: localhost, 127.0.0.1, .local, .onion. Write 5 tests. | `https.rs` + tests | ✅ |
 | P2.5.4 | **Header sanitization** — Create `crates/vex-privacy/src/headers.rs`. Function: `sanitize_headers(headers: &mut HeaderMap)` — removes headers: `X-Client-Data`, `Sec-Browsing-Topics`, `Attribution-Reporting-*`. Enforces strict referrer: if cross-origin, reduce to origin-only. Write 4 tests. | `headers.rs` + tests | ✅ |
-| P2.5.5 | **Privacy middleware** — Create `crates/vex-privacy/src/middleware.rs`. A `PrivacyLayer` struct that wraps all the above. Method: `process_request(&self, request: &mut Request)` — calls strip_tracking_params, enforce_https, sanitize_headers, check adblock (return error if blocked). Expose in `lib.rs`. | `middleware.rs` | ⬜ |
-| P2.5.6 | **Wire privacy into vex-net** — Modify `HttpClient::fetch()` to accept an optional `&PrivacyLayer` and call `process_request()` before sending. | Privacy in fetch | ⬜ |
+| P2.5.5 | **Privacy middleware** — Create `crates/vex-privacy/src/middleware.rs`. A `PrivacyLayer` struct that wraps all the above. Method: `process_request(&self, request: &mut Request)` — calls strip_tracking_params, enforce_https, sanitize_headers, check adblock (return error if blocked). Expose in `lib.rs`. | `middleware.rs` | ✅ |
+| P2.5.6 | **Wire privacy into vex-net** — Modify `HttpClient::fetch()` to accept an optional `&PrivacyLayer` and call `process_request()` before sending. | Privacy in fetch | ✅ |
 
 ---
 
@@ -268,10 +268,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P3.1.1 | **Node storage** — Create `crates/vex-dom/src/arena.rs`. Implement `NodeArena` — a `Vec<Node>` indexed by `VexId`. Methods: `alloc(node_data: NodeData) -> VexId`, `get(id: VexId) -> &Node`, `get_mut(id: VexId) -> &mut Node`. Node is never removed (arena model — freed when whole document is dropped). | `arena.rs` | ⬜ |
-| P3.1.2 | **Node structure** — Create `crates/vex-dom/src/node.rs`. Define `Node { id: VexId, parent: Option<VexId>, first_child: Option<VexId>, last_child: Option<VexId>, next_sibling: Option<VexId>, prev_sibling: Option<VexId>, data: NodeData }`. Enum `NodeData { Document, Element(ElementData), Text(String), Comment(String), DocumentFragment }`. `ElementData { tag_name: VexString, attributes: Vec<Attribute>, namespace: Namespace }`. `Attribute { name: VexString, value: String }`. `Namespace` enum: `Html, Svg, MathMl`. | `node.rs` | ⬜ |
-| P3.1.3 | **Tree manipulation** — Create `crates/vex-dom/src/tree.rs`. Functions that operate on `NodeArena`: `append_child(arena, parent_id, child_id)` — sets up parent/child/sibling links, `insert_before(arena, parent_id, child_id, reference_id)`, `remove_child(arena, parent_id, child_id)` — unlinks from sibling chain (node stays in arena, just disconnected). Write 8 tests: append, insert_before, remove, verify all links. | `tree.rs` + tests | ⬜ |
-| P3.1.4 | **Traversal** — Create `crates/vex-dom/src/traversal.rs`. Implement iterators: `ChildrenIter` (iterates first_child → next_sibling chain), `DescendantsIter` (depth-first pre-order traversal of subtree), `AncestorsIter` (walks parent chain to root). Each takes `&NodeArena` and a starting `VexId`. Write 5 tests: children count, descendant order, ancestor chain. | `traversal.rs` + tests | ⬜ |
+| P3.1.1 | **Node storage** — Create `crates/vex-dom/src/arena.rs`. Implement `NodeArena` — a `Vec<Node>` indexed by `VexId`. Methods: `alloc(node_data: NodeData) -> VexId`, `get(id: VexId) -> &Node`, `get_mut(id: VexId) -> &mut Node`. Node is never removed (arena model — freed when whole document is dropped). | `arena.rs` | ✅ |
+| P3.1.2 | **Node structure** — Create `crates/vex-dom/src/node.rs`. Define `Node { id: VexId, parent: Option<VexId>, first_child: Option<VexId>, last_child: Option<VexId>, next_sibling: Option<VexId>, prev_sibling: Option<VexId>, data: NodeData }`. Enum `NodeData { Document, Element(ElementData), Text(String), Comment(String), DocumentFragment }`. `ElementData { tag_name: VexString, attributes: Vec<Attribute>, namespace: Namespace }`. `Attribute { name: VexString, value: String }`. `Namespace` enum: `Html, Svg, MathMl`. | `node.rs` | ✅ |
+| P3.1.3 | **Tree manipulation** — Create `crates/vex-dom/src/tree.rs`. Functions that operate on `NodeArena`: `append_child(arena, parent_id, child_id)` — sets up parent/child/sibling links, `insert_before(arena, parent_id, child_id, reference_id)`, `remove_child(arena, parent_id, child_id)` — unlinks from sibling chain (node stays in arena, just disconnected). Write 8 tests: append, insert_before, remove, verify all links. | `tree.rs` + tests | ✅ |
+| P3.1.4 | **Traversal** — Create `crates/vex-dom/src/traversal.rs`. Implement iterators: `ChildrenIter` (iterates first_child → next_sibling chain), `DescendantsIter` (depth-first pre-order traversal of subtree), `AncestorsIter` (walks parent chain to root). Each takes `&NodeArena` and a starting `VexId`. Write 5 tests: children count, descendant order, ancestor chain. | `traversal.rs` + tests | ✅ |
 
 ---
 
@@ -279,10 +279,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P3.2.1 | **Document struct** — Create `crates/vex-dom/src/document.rs`. `Document { arena: NodeArena, root: VexId }`. The root node is always `NodeData::Document`. Methods: `Document::new() -> Self` (creates arena + root), `Document::root_element() -> Option<VexId>` (first Element child of root — the `<html>` element), `Document::create_element(tag: &str) -> VexId`, `Document::create_text(text: &str) -> VexId`, `Document::create_comment(text: &str) -> VexId`. | `document.rs` | ⬜ |
-| P3.2.2 | **Element access** — In `document.rs`, add: `get_element_by_id(id: &str) -> Option<VexId>` — linear scan of all elements checking `id` attribute. `get_elements_by_tag_name(tag: &str) -> Vec<VexId>` — linear scan. `get_elements_by_class_name(class: &str) -> Vec<VexId>` — check `class` attribute (space-separated). Write 5 tests. | Element query methods | ⬜ |
-| P3.2.3 | **Attribute access** — Create `crates/vex-dom/src/attributes.rs`. Helper functions: `get_attribute(arena, id, name) -> Option<&str>`, `set_attribute(arena, id, name, value)`, `remove_attribute(arena, id, name) -> bool`, `has_attribute(arena, id, name) -> bool`, `has_class(arena, id, class_name) -> bool` (checks space-separated class list). Write 6 tests. | `attributes.rs` + tests | ⬜ |
-| P3.2.4 | **Text content** — In `document.rs` or a new `src/text_content.rs`, implement: `text_content(arena, id) -> String` (concatenate all descendant Text nodes), `inner_html(arena, id) -> String` (serialize children to HTML string), `outer_html(arena, id) -> String` (serialize element + children). Write 4 tests. | Text/HTML accessors | ⬜ |
+| P3.2.1 | **Document struct** — Create `crates/vex-dom/src/document.rs`. `Document { arena: NodeArena, root: VexId }`. The root node is always `NodeData::Document`. Methods: `Document::new() -> Self` (creates arena + root), `Document::root_element() -> Option<VexId>` (first Element child of root — the `<html>` element), `Document::create_element(tag: &str) -> VexId`, `Document::create_text(text: &str) -> VexId`, `Document::create_comment(text: &str) -> VexId`. | `document.rs` | ✅ |
+| P3.2.2 | **Element access** — In `document.rs`, add: `get_element_by_id(id: &str) -> Option<VexId>` — linear scan of all elements checking `id` attribute. `get_elements_by_tag_name(tag: &str) -> Vec<VexId>` — linear scan. `get_elements_by_class_name(class: &str) -> Vec<VexId>` — check `class` attribute (space-separated). Write 5 tests. | Element query methods | ✅ |
+| P3.2.3 | **Attribute access** — Create `crates/vex-dom/src/attributes.rs`. Helper functions: `get_attribute(arena, id, name) -> Option<&str>`, `set_attribute(arena, id, name, value)`, `remove_attribute(arena, id, name) -> bool`, `has_attribute(arena, id, name) -> bool`, `has_class(arena, id, class_name) -> bool` (checks space-separated class list). Write 6 tests. | `attributes.rs` + tests | ✅ |
+| P3.2.4 | **Text content** — In `document.rs` or a new `src/text_content.rs`, implement: `text_content(arena, id) -> String` (concatenate all descendant Text nodes), `inner_html(arena, id) -> String` (serialize children to HTML string), `outer_html(arena, id) -> String` (serialize element + children). Write 4 tests. | Text/HTML accessors | ✅ |
 
 ---
 
@@ -290,11 +290,11 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P3.3.1 | **TreeSink implementation** — Create `crates/vex-html/src/sink.rs`. Implement `html5ever::tree_builder::TreeSink` for a custom `VexSink` struct that wraps a `Document`. Required methods: `get_document() -> VexId`, `elem_name(target) -> ExpandedName`, `create_element(name, attrs, flags) -> VexId`, `create_comment(text) -> VexId`, `append(parent, child)`, `append_before_sibling(sibling, child)`, `append_doctype_to_document(name, public, system)`, `remove_from_parent(target)`, `reparent_children(node, new_parent)`, `get_template_contents(target) -> VexId`, `same_node(x, y) -> bool`, `set_quirks_mode(mode)`, `mark_script_already_started(node)`, `parse_error(msg)`. Each maps to `vex-dom` tree operations. | `sink.rs` | ⬜ |
-| P3.3.2 | **Parser wrapper** — Create `crates/vex-html/src/parser.rs`. Function: `parse_html(input: &str) -> Document`. Creates `VexSink`, creates `html5ever::parse_document(sink, ParseOpts::default())`, feeds entire input, returns the `Document`. Also: `parse_html_fragment(input: &str, context_tag: &str) -> Document` for innerHTML parsing. | `parser.rs` | ⬜ |
-| P3.3.3 | **Incremental parsing** — In `parser.rs`, implement `HtmlParser` struct with `fn feed(&mut self, chunk: &[u8])` and `fn finish(self) -> Document`. Allows parsing as bytes arrive from network. Uses `html5ever::tendril::TendrilSink::process()`. | Incremental parser | ⬜ |
-| P3.3.4 | **Script/style extraction** — After parsing, walk the DOM. For each `<script>` element: extract text content (inline script) or `src` attribute (external). For each `<style>` element: extract text content. For each `<link rel="stylesheet">`: extract `href`. Return these as `Vec<ScriptInfo>` and `Vec<StyleInfo>`. This is needed later for CSS and JS phases. | Script/style extraction | ⬜ |
-| P3.3.5 | **Parse tests** — Write 15 unit tests in `crates/vex-html/tests/`: (1) empty document, (2) basic `<html><head><body>`, (3) nested divs, (4) attributes preserved, (5) text nodes, (6) comments, (7) self-closing tags (`<br>`, `<img>`), (8) malformed HTML (missing close tags — verify auto-correction), (9) entities (`&amp;` → `&`), (10) `<template>` content, (11) `<script>` content not parsed as HTML, (12) multiple classes, (13) id attribute, (14) deeply nested structure (100 levels), (15) real-world HTML snippet (paste a chunk of example.com source). | 15 tests | ⬜ |
+| P3.3.1 | **TreeSink implementation** — Create `crates/vex-html/src/sink.rs`. Implement `html5ever::tree_builder::TreeSink` for a custom `VexSink` struct that wraps a `Document`. Required methods: `get_document() -> VexId`, `elem_name(target) -> ExpandedName`, `create_element(name, attrs, flags) -> VexId`, `create_comment(text) -> VexId`, `append(parent, child)`, `append_before_sibling(sibling, child)`, `append_doctype_to_document(name, public, system)`, `remove_from_parent(target)`, `reparent_children(node, new_parent)`, `get_template_contents(target) -> VexId`, `same_node(x, y) -> bool`, `set_quirks_mode(mode)`, `mark_script_already_started(node)`, `parse_error(msg)`. Each maps to `vex-dom` tree operations. | `sink.rs` | ✅ |
+| P3.3.2 | **Parser wrapper** — Create `crates/vex-html/src/parser.rs`. Function: `parse_html(input: &str) -> Document`. Creates `VexSink`, creates `html5ever::parse_document(sink, ParseOpts::default())`, feeds entire input, returns the `Document`. Also: `parse_html_fragment(input: &str, context_tag: &str) -> Document` for innerHTML parsing. | `parser.rs` | ✅ |
+| P3.3.3 | **Incremental parsing** — In `parser.rs`, implement `HtmlParser` struct with `fn feed(&mut self, chunk: &[u8])` and `fn finish(self) -> Document`. Allows parsing as bytes arrive from network. Uses `html5ever::tendril::TendrilSink::process()`. | Incremental parser | ✅ |
+| P3.3.4 | **Script/style extraction** — After parsing, walk the DOM. For each `<script>` element: extract text content (inline script) or `src` attribute (external). For each `<style>` element: extract text content. For each `<link rel="stylesheet">`: extract `href`. Return these as `Vec<ScriptInfo>` and `Vec<StyleInfo>`. This is needed later for CSS and JS phases. | Script/style extraction | ✅ |
+| P3.3.5 | **Parse tests** — Write 15 unit tests in `crates/vex-html/tests/`: (1) empty document, (2) basic `<html><head><body>`, (3) nested divs, (4) attributes preserved, (5) text nodes, (6) comments, (7) self-closing tags (`<br>`, `<img>`), (8) malformed HTML (missing close tags — verify auto-correction), (9) entities (`&amp;` → `&`), (10) `<template>` content, (11) `<script>` content not parsed as HTML, (12) multiple classes, (13) id attribute, (14) deeply nested structure (100 levels), (15) real-world HTML snippet (paste a chunk of example.com source). | 15 tests | ✅ |
 
 ---
 
@@ -302,10 +302,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P3.4.1 | **SelectorImpl trait** — Create `crates/vex-dom/src/selector_impl.rs`. Implement the `selectors::SelectorImpl` trait for a `VexSelectorImpl` struct. Define associated types: `AttrValue = String`, `Identifier = VexString`, `LocalName = VexString`, `NamespaceUrl = VexString`, `BooleanAttribute = String`, `NonTSPseudoClass` (empty enum for now), `PseudoElement` (empty enum). | `selector_impl.rs` | ⬜ |
-| P3.4.2 | **Element trait** — Create `crates/vex-dom/src/selector_element.rs`. Implement `selectors::Element` for a `VexElement<'a>` wrapper that borrows `&'a NodeArena` and holds `VexId`. Required methods: `opaque() -> OpaqueElement`, `parent_element()`, `parent_node()`, `prev_sibling_element()`, `next_sibling_element()`, `first_element_child()`, `is_html_element_in_html_document()`, `has_local_name(name)`, `has_namespace(ns)`, `is_part()`, `has_id(id, case)`, `has_class(name, case)`, `attr_matches(ns, local_name, operation)`, `match_pseudo_class(pc)`, `match_non_ts_pseudo_class(pc)`. Each reads from the arena. | `selector_element.rs` | ⬜ |
-| P3.4.3 | **querySelector/querySelectorAll** — In `document.rs`, implement: `query_selector(arena, root_id, selector_str) -> Option<VexId>` and `query_selector_all(arena, root_id, selector_str) -> Vec<VexId>`. Use `selectors::parser::SelectorList::parse()` and `selectors::matching::matches_selector()`. Iterate descendants, return first match / all matches. | Query methods | ⬜ |
-| P3.4.4 | **Selector tests** — Write 10 tests: `div` (type), `.class`, `#id`, `div.foo`, `div > p` (child combinator), `div p` (descendant), `p + p` (adjacent sibling), `[href]` (attribute), `div.a.b` (multiple classes), complex chain `#main > .content p.text`. | 10 tests | ⬜ |
+| P3.4.1 | **SelectorImpl trait** — Create `crates/vex-dom/src/selector_impl.rs`. Implement the `selectors::SelectorImpl` trait for a `VexSelectorImpl` struct. Define associated types: `AttrValue = String`, `Identifier = VexString`, `LocalName = VexString`, `NamespaceUrl = VexString`, `BooleanAttribute = String`, `NonTSPseudoClass` (empty enum for now), `PseudoElement` (empty enum). | `selector_impl.rs` | ✅ |
+| P3.4.2 | **Element trait** — Create `crates/vex-dom/src/selector_element.rs`. Implement `selectors::Element` for a `VexElement<'a>` wrapper that borrows `&'a NodeArena` and holds `VexId`. Required methods: `opaque() -> OpaqueElement`, `parent_element()`, `parent_node()`, `prev_sibling_element()`, `next_sibling_element()`, `first_element_child()`, `is_html_element_in_html_document()`, `has_local_name(name)`, `has_namespace(ns)`, `is_part()`, `has_id(id, case)`, `has_class(name, case)`, `attr_matches(ns, local_name, operation)`, `match_pseudo_class(pc)`, `match_non_ts_pseudo_class(pc)`. Each reads from the arena. | `selector_element.rs` | ✅ |
+| P3.4.3 | **querySelector/querySelectorAll** — In `document.rs`, implement: `query_selector(arena, root_id, selector_str) -> Option<VexId>` and `query_selector_all(arena, root_id, selector_str) -> Vec<VexId>`. Use `selectors::parser::SelectorList::parse()` and `selectors::matching::matches_selector()`. Iterate descendants, return first match / all matches. | Query methods | ✅ |
+| P3.4.4 | **Selector tests** — Write 10 tests: `div` (type), `.class`, `#id`, `div.foo`, `div > p` (child combinator), `div p` (descendant), `p + p` (adjacent sibling), `[href]` (attribute), `div.a.b` (multiple classes), complex chain `#main > .content p.text`. | 10 tests | ✅ |
 
 ---
 
@@ -313,10 +313,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P3.5.1 | **Event types** — Create `crates/vex-dom/src/events/event_type.rs`. Define `EventType` enum: `Click`, `MouseDown`, `MouseUp`, `MouseMove`, `KeyDown`, `KeyUp`, `Focus`, `Blur`, `Input`, `Change`, `Submit`, `Load`, `DOMContentLoaded`, `Scroll`, `Resize`, `Custom(String)`. Each has `fn name(&self) -> &str` returning the JS-compatible name (e.g., `Click` → `"click"`). | `event_type.rs` | ⬜ |
-| P3.5.2 | **Event object** — Create `crates/vex-dom/src/events/event.rs`. Define `Event { event_type: EventType, target: VexId, current_target: Option<VexId>, phase: EventPhase, bubbles: bool, cancelable: bool, default_prevented: bool, propagation_stopped: bool }`. `EventPhase` enum: `Capturing`, `AtTarget`, `Bubbling`. Methods: `prevent_default()`, `stop_propagation()`, `stop_immediate_propagation()`. | `event.rs` | ⬜ |
-| P3.5.3 | **Listener storage** — Create `crates/vex-dom/src/events/listeners.rs`. `EventListenerMap` — a `HashMap<VexId, HashMap<EventType, Vec<EventListener>>>`. `EventListener { callback_id: u64, capture: bool }`. The `callback_id` is an opaque handle that will be resolved to a JS function in Phase 7. Methods: `add_listener(node, event_type, callback_id, capture)`, `remove_listener(node, event_type, callback_id)`, `get_listeners(node, event_type) -> &[EventListener]`. Write 5 tests. | `listeners.rs` + tests | ⬜ |
-| P3.5.4 | **Event dispatch** — Create `crates/vex-dom/src/events/dispatch.rs`. Function: `dispatch_event(arena, listeners, event) -> bool` (returns whether default was prevented). Algorithm: (1) Build path from target to root (list of ancestor VexIds). (2) Capture phase: walk root → target, fire listeners with `capture: true`. (3) At-target phase: fire all listeners for target. (4) Bubbling phase (if `event.bubbles`): walk target → root, fire listeners with `capture: false`. At each step, check `propagation_stopped`. Return `event.default_prevented`. Write 6 tests: basic dispatch, bubbling, capture, stopPropagation, preventDefault, non-bubbling event. | `dispatch.rs` + tests | ⬜ |
+| P3.5.1 | **Event types** — Create `crates/vex-dom/src/events/event_type.rs`. Define `EventType` enum: `Click`, `MouseDown`, `MouseUp`, `MouseMove`, `KeyDown`, `KeyUp`, `Focus`, `Blur`, `Input`, `Change`, `Submit`, `Load`, `DOMContentLoaded`, `Scroll`, `Resize`, `Custom(String)`. Each has `fn name(&self) -> &str` returning the JS-compatible name (e.g., `Click` → `"click"`). | `event_type.rs` | ✅ |
+| P3.5.2 | **Event object** — Create `crates/vex-dom/src/events/event.rs`. Define `Event { event_type: EventType, target: VexId, current_target: Option<VexId>, phase: EventPhase, bubbles: bool, cancelable: bool, default_prevented: bool, propagation_stopped: bool }`. `EventPhase` enum: `Capturing`, `AtTarget`, `Bubbling`. Methods: `prevent_default()`, `stop_propagation()`, `stop_immediate_propagation()`. | `event.rs` | ✅ |
+| P3.5.3 | **Listener storage** — Create `crates/vex-dom/src/events/listeners.rs`. `EventListenerMap` — a `HashMap<VexId, HashMap<EventType, Vec<EventListener>>>`. `EventListener { callback_id: u64, capture: bool }`. The `callback_id` is an opaque handle that will be resolved to a JS function in Phase 7. Methods: `add_listener(node, event_type, callback_id, capture)`, `remove_listener(node, event_type, callback_id)`, `get_listeners(node, event_type) -> &[EventListener]`. Write 5 tests. | `listeners.rs` + tests | ✅ |
+| P3.5.4 | **Event dispatch** — Create `crates/vex-dom/src/events/dispatch.rs`. Function: `dispatch_event(arena, listeners, event) -> bool` (returns whether default was prevented). Algorithm: (1) Build path from target to root (list of ancestor VexIds). (2) Capture phase: walk root → target, fire listeners with `capture: true`. (3) At-target phase: fire all listeners for target. (4) Bubbling phase (if `event.bubbles`): walk target → root, fire listeners with `capture: false`. At each step, check `propagation_stopped`. Return `event.default_prevented`. Write 6 tests: basic dispatch, bubbling, capture, stopPropagation, preventDefault, non-bubbling event. | `dispatch.rs` + tests | ✅ |
 
 ---
 
@@ -324,7 +324,7 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P3.6.1 | **HTML serializer** — Create `crates/vex-dom/src/serialize.rs`. Function: `serialize_to_html(arena, node_id) -> String`. Walk subtree depth-first. For elements: output `<tag attr="val">...children...</tag>`. For text: escape `<`, `>`, `&`. For void elements (`br`, `img`, `hr`, `input`, `meta`, `link`): self-closing, no end tag. For comments: `<!--text-->`. Write 5 tests including round-trip (parse → serialize → compare). | `serialize.rs` + tests | ⬜ |
+| P3.6.1 | **HTML serializer** — Create `crates/vex-dom/src/serialize.rs`. Function: `serialize_to_html(arena, node_id) -> String`. Walk subtree depth-first. For elements: output `<tag attr="val">...children...</tag>`. For text: escape `<`, `>`, `&`. For void elements (`br`, `img`, `hr`, `input`, `meta`, `link`): self-closing, no end tag. For comments: `<!--text-->`. Write 5 tests including round-trip (parse → serialize → compare). | `serialize.rs` + tests | ✅ |
 
 ---
 

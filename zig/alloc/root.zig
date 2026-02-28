@@ -8,6 +8,7 @@ const std = @import("std");
 pub const arena = @import("arena.zig");
 pub const pool = @import("pool.zig");
 pub const frame = @import("frame.zig");
+pub const stats = @import("stats.zig");
 
 const Arena = arena.Arena;
 
@@ -53,4 +54,8 @@ test "pool module" {
 
 test "frame module" {
     _ = frame;
+}
+
+test "stats module" {
+    _ = stats;
 }

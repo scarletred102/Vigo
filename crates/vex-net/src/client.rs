@@ -85,6 +85,25 @@ impl HttpClient {
     ///
     /// Handles: TLS, decompression, redirects, cookies.
     pub async fn fetch(&self, request: Request) -> VexResult<Response> {
+        self.fetch_filtered(request, |_| Ok(())).await
+    }
+
+    /// Fetch a URL after running the request through a filter.
+    ///
+    /// The `filter` closure can modify the request (e.g., stripping tracking
+    /// parameters, sanitizing headers) or return `Err` to block the request
+    /// entirely. This is the integration point for `vex-privacy::PrivacyLayer`.
+    ///
+    /// ```ignore
+    /// let privacy = PrivacyLayer::new();
+    /// client.fetch_filtered(request, |req| privacy.process_request(req)).await?;
+    /// ```
+    pub async fn fetch_filtered<F>(&self, mut request: Request, filter: F) -> VexResult<Response>
+    where
+        F: FnOnce(&mut Request) -> VexResult<()>,
+    {
+        filter(&mut request)?;
+
         let mut current_url = request.url.clone();
         let mut current_method = request.method;
         let mut redirects = 0u8;

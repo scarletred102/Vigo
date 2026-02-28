@@ -6,13 +6,13 @@
 
 ## Current State (2026-02-28)
 
-**Phase 0 ✅ — Phase 1 ✅ — Phase 2 ✅ — Phase 3 next**
+**Phase 0 ✅ — Phase 1 ✅ — Phase 2 ✅ — Phase 3 (core done) ✅ — Phase 4 next**
 
-The browser opens a 1280×720 window with a GPU-rendered dark background (wgpu/Vulkan). Events work. The network stack can fetch any HTTPS page with TLS 1.3, follow redirects, decompress gzip/brotli/zstd, and manage cookies. Privacy filters strip tracking params, block ad domains, enforce HTTPS, and sanitize headers.
+The browser opens a 1280×720 window with a GPU-rendered dark background (wgpu/Vulkan). Events work. The network stack can fetch any HTTPS page with TLS 1.3, follow redirects, decompress gzip/brotli/zstd, and manage cookies. Privacy filters strip tracking params, block ad domains, enforce HTTPS, and sanitize headers. **Any HTML can be parsed into a full DOM tree**, queried (by id/tag/class), traversed, mutated, and serialized back to HTML.
 
 ```
 cargo run -p vex-app
-cargo test -p vex-core -p vex-net -p vex-privacy  # 83 tests
+cargo test -p vex-core -p vex-net -p vex-privacy -p vex-dom -p vex-html  # 130 tests
 ```
 
 This opens the window. Close it normally to exit.
@@ -30,7 +30,9 @@ This opens the window. Close it normally to exit.
 | `vex-app` | **Runs ✅** | Entry point binary. Creates window, inits GPU, runs event loop, clears to dark background |
 | `vex-net` | **27 tests ✅** | HTTP/1.1+2 client (hyper+rustls), TLS 1.3, DNS/DoH (hickory), gzip/br/zstd decompression, cookie jar, redirect following (301-308), types (Request/Response/Method) |
 | `vex-privacy` | **25 tests ✅** | Tracking param stripper (50+ params), domain adblock engine, HTTPS-only mode, header sanitization, cross-origin referrer reduction |
-| Everything else | Stubs | `vex-dom`, `vex-html`, `vex-css`, `vex-layout`, `vex-js`, `vex-media`, `vex-storage`, `vex-security`, `vex-crypto`, `vex-sync`, `vex-browser` |
+| `vex-dom` | **29 tests ✅** | Arena-allocated DOM tree (Node, Element, Text, Comment, Doctype), tree manipulation (append/insert/remove/reparent), depth-first/children/ancestor iterators, attribute helpers, `getElementById/getElementsByTagName/getElementsByClassName`, `text_content`, HTML serializer |
+| `vex-html` | **18 tests ✅** | html5ever `TreeSink` integration, full-document parsing, fragment parsing, handles malformed HTML, entities, void elements, `<script>` raw text, deeply nested structures |
+| Everything else | Stubs | `vex-css`, `vex-layout`, `vex-js`, `vex-media`, `vex-storage`, `vex-security`, `vex-crypto`, `vex-sync`, `vex-browser` |
 
 ### Zig Modules (5, under `zig/`)
 
@@ -45,14 +47,14 @@ This opens the window. Close it normally to exit.
 ### Test Commands
 
 ```bash
-# All Rust tests (83 passing: 31 core + 23 net unit + 4 net integration + 25 privacy)
-cargo test -p vex-core -p vex-net -p vex-privacy
+# All Rust tests (130 passing: 31 core + 23 net unit + 4 net integration + 25 privacy + 29 dom + 17 html integration + 1 html doctest)
+cargo test -p vex-core -p vex-net -p vex-privacy -p vex-dom -p vex-html
 
 # Zig tests (11 passing)
 cd zig && zig build test
 
 # Clippy (0 warnings)
-cargo clippy -p vex-core -p vex-net -p vex-privacy -p vex-render -p vex-app -- -Dwarnings
+cargo clippy -p vex-core -p vex-net -p vex-privacy -p vex-dom -p vex-html -p vex-render -p vex-app -- -Dwarnings
 ```
 
 ---

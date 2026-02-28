@@ -12,3 +12,6 @@ thiserror.workspace = true
 serde.workspace = true
 url.workspace = true
 smallvec.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

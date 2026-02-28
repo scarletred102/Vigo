@@ -9,6 +9,7 @@
 //! DNS resolution with DoH support, caching, compression,
 //! cookie handling, and redirect following.
 
+pub mod cache;
 pub mod client;
 pub mod cookies;
 pub mod decompress;
@@ -17,6 +18,7 @@ pub mod tls;
 pub mod types;
 
 // Re-export the main public API.
+pub use cache::HttpCache;
 pub use client::{ClientConfig, HttpClient};
 pub use cookies::CookieJar;
 pub use dns::{DnsMode, DnsResolver, DoHProvider};
