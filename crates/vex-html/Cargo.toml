@@ -1,0 +1,15 @@
+[package]
+name = "vex-html"
+description = "HTML5 parser (html5ever) into vex-dom tree"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+vex-core = { path = "../vex-core" }
+vex-dom = { path = "../vex-dom" }
+html5ever.workspace = true
+markup5ever.workspace = true
+tendril.workspace = true

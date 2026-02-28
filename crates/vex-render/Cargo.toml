@@ -1,0 +1,16 @@
+[package]
+name = "vex-render"
+description = "GPU rendering pipeline: wgpu, display lists, glyph/image atlas"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+vex-core = { path = "../vex-core" }
+vex-layout = { path = "../vex-layout" }
+wgpu.workspace = true
+raw-window-handle.workspace = true
+image.workspace = true
+tracing.workspace = true

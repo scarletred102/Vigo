@@ -1,31 +1,40 @@
-# Vigo Browser — .gitignore
-
-# ── Build outputs ───────────────────────────────────────────────
-out/
-build/Debug/
-build/Release/
+# Vigo Engine (Vex) — .gitignore
 
 # ── Rust ────────────────────────────────────────────────────────
-vigo-core/rust/target/
-**/*.rs.bk
+target/
+Cargo.lock
 
-# ── Node ────────────────────────────────────────────────────────
-node_modules/
-npm-debug.log*
+# ── Zig ─────────────────────────────────────────────────────────
+zig/zig-cache/
+zig/zig-out/
+zig/.zig-cache/
+
+# ── OS ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
 
 # ── IDE / Editor ────────────────────────────────────────────────
-.vscode/settings.json
+.vscode/
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
-Thumbs.db
 
-# ── Chromium source (fetched separately, not part of this repo) ─
-src/
+# ── Build artifacts ─────────────────────────────────────────────
+*.o
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe
+*.pdb
 
-# ── Secrets (never commit) ──────────────────────────────────────
+# ── Reference material (porting only) ──────────────────────────
+reference/
+
+# ── Secrets ─────────────────────────────────────────────────────
 *.key
 *.pem
 *.p12

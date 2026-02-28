@@ -1,0 +1,16 @@
+[package]
+name = "vex-js"
+description = "JavaScript engine (Boa) with Web API bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+vex-core = { path = "../vex-core" }
+vex-dom = { path = "../vex-dom" }
+vex-net = { path = "../vex-net" }
+boa_engine.workspace = true
+boa_gc.workspace = true
+tracing.workspace = true

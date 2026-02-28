@@ -1,0 +1,28 @@
+[package]
+name = "vex-net"
+description = "HTTP/1.1+2 client, TLS 1.3, DNS/DoH, caching, compression"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+vex-core = { path = "../vex-core" }
+hyper.workspace = true
+hyper-util.workspace = true
+hyper-rustls.workspace = true
+rustls.workspace = true
+webpki-roots.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+bytes.workspace = true
+tokio.workspace = true
+hickory-resolver.workspace = true
+flate2.workspace = true
+brotli.workspace = true
+zstd.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url.workspace = true
+serde.workspace = true
