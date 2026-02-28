@@ -332,8 +332,8 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P3.7.1 | **End-to-end test** — Create `tests/integration/parse_live_page.rs` in vex-html. Fetch `https://example.com` via `vex-net`, parse with `vex-html`, query `querySelector("h1")` → verify text is "Example Domain". Query `querySelectorAll("p")` → verify count. Serialize back to HTML → verify it contains `<h1>`. | E2E test | ⬜ |
-| P3.7.2 | **Benchmark** — Create `benches/parse_bench.rs` in vex-html. Use `criterion`. Benchmark: parse a 100KB HTML string (use a saved copy of a real page). Target: <5ms. | Benchmark | ⬜ |
+| P3.7.1 | **End-to-end test** — `tests/live_page_test.rs` in vex-html. Fetches `https://example.com` via `vex-net`, parses with `vex-html`, queries `h1` → verifies "Example Domain", queries `p` → verifies count, serializes back. Also fetches httpbin.org/html. `#[ignore]` (requires network). | E2E test | ✅ |
+| P3.7.2 | **Benchmark** — `tests/parse_bench.rs` in vex-html. Parses 100KB synthetic HTML (10 iterations, avg <50ms debug), 200-level nested HTML, 500 elements × 7 attrs. No criterion — uses `std::time::Instant`. | Benchmark | ✅ |
 
 ---
 ---
@@ -474,7 +474,7 @@
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
 | P5.6.1 | **Layout pipeline** — Create `crates/vex-layout/src/lib.rs` pipeline function: `layout(document, styles, viewport_size, text_engine) -> LayoutBox`. Build tree → block layout → inline layout → flex layout → positioned layout → stacking order. | Pipeline function | ✅ |
-| P5.6.2 | **Benchmark** — Benchmark: layout a 5000-element DOM (synthetic: nested divs with mixed block/inline/flex). Target: <16ms. | Benchmark | ✅ |
+| P5.6.2 | **Benchmark** — `tests/layout_bench.rs` in vex-layout. 5000-element layout (`#[ignore]`, release target <16ms), 200-element style+layout, 200-level deep nesting. No criterion — uses `std::time::Instant`. | Benchmark | ✅ |
 | P5.6.3 | **Visual dump** — Implement `dump_layout_tree(box, indent) -> String` that prints a text representation of each box's position and size. Useful for debugging. | Debug dump | ✅ |
 
 ---

@@ -13,3 +13,7 @@ vex-dom = { path = "../vex-dom" }
 html5ever.workspace = true
 markup5ever.workspace = true
 tendril.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+vex-net = { path = "../vex-net" }

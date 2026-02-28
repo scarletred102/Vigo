@@ -15,3 +15,4 @@ cosmic-text.workspace = true
 
 [dev-dependencies]
 vex-html = { path = "../vex-html" }
+vex-css = { path = "../vex-css" }
