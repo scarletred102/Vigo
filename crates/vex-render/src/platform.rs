@@ -24,8 +24,9 @@ pub struct Window {
 
 // SAFETY: Window is only accessed from the main thread.
 // The raw pointer is to a Zig-managed struct that lives for the
-// window's lifetime.  wgpu requires Send for surface creation.
+// window's lifetime.  wgpu requires both Send + Sync for surface creation.
 unsafe impl Send for Window {}
+unsafe impl Sync for Window {}
 
 impl Window {
     /// Create a new native window.
