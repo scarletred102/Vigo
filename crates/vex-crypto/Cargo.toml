@@ -1,0 +1,18 @@
+[package]
+name = "vex-crypto"
+description = "Cryptography: ChaCha20-Poly1305, Argon2, Ed25519, X25519"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+vex-core = { path = "../vex-core" }
+chacha20poly1305.workspace = true
+argon2.workspace = true
+ed25519-dalek.workspace = true
+x25519-dalek.workspace = true
+rand.workspace = true
+zeroize.workspace = true
+thiserror.workspace = true

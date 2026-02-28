@@ -1,0 +1,16 @@
+[package]
+name = "vex-privacy"
+description = "Privacy engine: ad blocking, tracker stripping, HTTPS enforcement"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+vex-core = { path = "../vex-core" }
+vex-net = { path = "../vex-net" }
+regex.workspace = true
+aho-corasick.workspace = true
+url.workspace = true
+tracing.workspace = true

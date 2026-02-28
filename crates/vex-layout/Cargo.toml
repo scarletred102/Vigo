@@ -1,0 +1,18 @@
+[package]
+name = "vex-layout"
+description = "Layout engine: block, inline, flex, positioned, text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+vex-core = { path = "../vex-core" }
+vex-dom = { path = "../vex-dom" }
+vex-css = { path = "../vex-css" }
+cosmic-text.workspace = true
+
+[dev-dependencies]
+vex-html = { path = "../vex-html" }
+vex-css = { path = "../vex-css" }

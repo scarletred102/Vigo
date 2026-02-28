@@ -1,0 +1,15 @@
+[package]
+name = "vex-security"
+description = "Security: SOP, CORS, CSP, sandboxing, origin model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+vex-core = { path = "../vex-core" }
+vex-net = { path = "../vex-net" }
+url.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

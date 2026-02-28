@@ -1,0 +1,14 @@
+[package]
+name = "vex-media"
+description = "Media pipeline: audio/video decode, streaming, A/V sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+vex-core = { path = "../vex-core" }
+vex-render = { path = "../vex-render" }
+tokio.workspace = true
+tracing.workspace = true

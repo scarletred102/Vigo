@@ -1,35 +1,52 @@
-# Dependencies
-node_modules/
+# Vigo Engine (Vex) — .gitignore
 
-# Build output
-dist/
-out/
+# ── Rust ────────────────────────────────────────────────────────
+target/
+Cargo.lock
 
-# Electron builder cache
-.electron-builder-cache/
+# ── Zig ─────────────────────────────────────────────────────────
+zig/zig-cache/
+zig/zig-out/
+zig/.zig-cache/
 
-# OS files
+# ── OS ──────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# IDE / Editor
+# ── IDE / Editor ────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Logs
-*.log
-npm-debug.log*
+# ── Build artifacts ─────────────────────────────────────────────
+*.o
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe
+*.pdb
 
-# Test output
-tests/benchmark-report.json
+# ── Reference material (porting only) ──────────────────────────
+reference/
 
-# Environment
-.env
-.env.local
+# ── Secrets ─────────────────────────────────────────────────────
+*.key
+*.pem
+*.p12
+api_keys.gni
+local_args.gn
 
-# Vigo user data (generated at runtime)
-userData/
+# ── OS ──────────────────────────────────────────────────────────
+*.obj
+*.o
+*.lib
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
