@@ -47,6 +47,7 @@ url = { version = "2", features = ["serde"] }
 
 # Collections
 smallvec = "1"
+precomputed-hash = "0.1"
 
 # Regex
 regex = "1"

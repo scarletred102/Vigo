@@ -3,11 +3,14 @@
 
 //! GPU context: wgpu instance, device, queue, and surface management.
 
+#[cfg(target_os = "windows")]
 use vex_core::{VexError, VexResult};
 
+#[cfg(target_os = "windows")]
 use crate::platform::Window;
 
 /// Holds all GPU state needed for rendering.
+#[cfg(target_os = "windows")]
 pub struct GpuContext<'w> {
     pub surface: wgpu::Surface<'w>,
     pub device: wgpu::Device,
@@ -15,6 +18,7 @@ pub struct GpuContext<'w> {
     pub config: wgpu::SurfaceConfiguration,
 }
 
+#[cfg(target_os = "windows")]
 impl<'w> GpuContext<'w> {
     /// Initialise the GPU pipeline from an existing window.
     ///

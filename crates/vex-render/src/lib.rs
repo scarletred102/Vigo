@@ -7,9 +7,13 @@
 
 pub mod event;
 pub mod gpu;
+#[cfg(target_os = "windows")]
 pub mod platform;
+#[cfg(target_os = "windows")]
 mod platform_ffi;
 
 pub use event::Event;
+#[cfg(target_os = "windows")]
 pub use gpu::GpuContext;
+#[cfg(target_os = "windows")]
 pub use platform::Window;

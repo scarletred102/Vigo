@@ -6,10 +6,10 @@
 use std::num::NonZeroIsize;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use raw_window_handle::{
-    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
-    RawWindowHandle, Win32WindowHandle, WindowHandle, WindowsDisplayHandle,
-};
+use raw_window_handle::{DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle};
+
+#[cfg(target_os = "windows")]
+use raw_window_handle::{RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle};
 use vex_core::{VexError, VexResult};
 
 use crate::event::{Event, MouseButton};
@@ -24,9 +24,8 @@ pub struct Window {
 
 // SAFETY: Window is only accessed from the main thread.
 // The raw pointer is to a Zig-managed struct that lives for the
-// window's lifetime.  wgpu requires Send+Sync for surface creation.
+// window's lifetime.  wgpu requires Send for surface creation.
 unsafe impl Send for Window {}
-unsafe impl Sync for Window {}
 
 impl Window {
     /// Create a new native window.
@@ -142,11 +141,15 @@ impl Drop for Window {
 
 // ── raw-window-handle integration ────────────────────────────────────
 
+#[cfg(target_os = "windows")]
 impl HasWindowHandle for Window {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
         let raw = self.raw_handle();
         let hwnd = raw.hwnd as isize;
-        let hwnd_nz = NonZeroIsize::new(hwnd).expect("HWND must not be null");
+        let hwnd_nz = match NonZeroIsize::new(hwnd) {
+            Some(nz) => nz,
+            None => return Err(HandleError::Unavailable),
+        };
         let mut win32 = Win32WindowHandle::new(hwnd_nz);
         let hinstance = raw.hinstance as isize;
         if let Some(nz) = NonZeroIsize::new(hinstance) {
@@ -157,11 +160,26 @@ impl HasWindowHandle for Window {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
+impl HasWindowHandle for Window {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        Err(HandleError::Unavailable)
+    }
+}
+
+#[cfg(target_os = "windows")]
 impl HasDisplayHandle for Window {
     fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
         // SAFETY: Windows display handle is a zero-sized marker.
         Ok(unsafe {
             DisplayHandle::borrow_raw(RawDisplayHandle::Windows(WindowsDisplayHandle::new()))
         })
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl HasDisplayHandle for Window {
+    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
+        Err(HandleError::Unavailable)
     }
 }

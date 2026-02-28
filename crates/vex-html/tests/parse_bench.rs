@@ -46,6 +46,7 @@ fn generate_large_html(target_kb: usize) -> String {
 }
 
 #[test]
+#[ignore = "benchmark: timing-sensitive, run manually with --nocapture"]
 fn bench_parse_100kb_html() {
     let html = generate_large_html(100);
     let size_kb = html.len() / 1024;
@@ -78,6 +79,7 @@ fn bench_parse_100kb_html() {
 }
 
 #[test]
+#[ignore = "benchmark: timing-sensitive, run manually with --nocapture"]
 fn bench_parse_deeply_nested_html() {
     // Stress test: 200 levels of nesting
     let mut html = String::from("<!DOCTYPE html><html><body>");
@@ -105,6 +107,7 @@ fn bench_parse_deeply_nested_html() {
 }
 
 #[test]
+#[ignore = "benchmark: timing-sensitive, run manually with --nocapture"]
 fn bench_parse_many_attributes() {
     // Stress test: elements with many attributes
     let mut html = String::from("<!DOCTYPE html><html><body>");

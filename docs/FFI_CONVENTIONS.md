@@ -38,8 +38,8 @@ Shared structs use `extern struct` in Zig and `#[repr(C)]` in Rust.
 
 ```zig
 // Zig side
-pub const WindowConfigC = extern struct {
-    title: [*:0]const u8,
+pub const WindowConfig = extern struct {
+    title: [*:0]const u16,  // null-terminated UTF-16 (Win32 wide string)
     width: u32,
     height: u32,
     resizable: u8,  // 0 = false, 1 = true
@@ -50,7 +50,7 @@ pub const WindowConfigC = extern struct {
 // Rust side
 #[repr(C)]
 pub struct WindowConfigC {
-    pub title: *const c_char,
+    pub title: *const u16,  // null-terminated UTF-16 pointer
     pub width: u32,
     pub height: u32,
     pub resizable: u8,
@@ -65,7 +65,7 @@ Caller provides a buffer pointer + size. Callee writes into it.
 Used for: event polling, small struct outputs.
 
 ```zig
-export fn vex_platform_poll_event(handle: *anyopaque, out_event: *EventC) callconv(.C) c_int
+export fn vex_platform_poll_event(out_event: *EventC) callconv(.C) bool
 ```
 
 ### Rule 2: Callee Allocates
@@ -87,7 +87,8 @@ export fn vex_platform_destroy_window(handle: *anyopaque) callconv(.C) void
 ## String Convention
 
 - Strings passed Zig→Rust: null-terminated `[*:0]const u8` / `*const c_char`.
-- Strings passed Rust→Zig: null-terminated `CString` pointer.
+- Strings passed Rust→Zig (Win32 wide): null-terminated UTF-16 `[*:0]const u16` / `*const u16`.
+- Strings passed Rust→Zig (general): null-terminated `CString` pointer.
 - Lifetime: valid only for duration of the function call unless documented otherwise.
 
 ## Build Integration

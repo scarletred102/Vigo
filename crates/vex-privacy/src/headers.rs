@@ -28,12 +28,16 @@ pub fn sanitize_headers(headers: &mut HashMap<String, String>, request_host: Opt
     });
 
     // Enforce strict referrer: cross-origin → origin-only
-    if let Some(referrer) = headers.get("referer").cloned() {
-        if let (Some(req_host), Ok(ref_url)) = (request_host, url::Url::parse(&referrer)) {
-            if ref_url.host_str() != Some(req_host) {
-                // Cross-origin: reduce to origin only
-                let origin = ref_url.origin().ascii_serialization();
-                headers.insert("referer".to_string(), origin);
+    // Case-insensitive lookup since header maps may have mixed-case keys.
+    let referer_key = headers.keys().find(|k| k.eq_ignore_ascii_case("referer")).cloned();
+    if let Some(key) = referer_key {
+        if let Some(referrer) = headers.get(&key).cloned() {
+            if let (Some(req_host), Ok(ref_url)) = (request_host, url::Url::parse(&referrer)) {
+                if ref_url.host_str() != Some(req_host) {
+                    // Cross-origin: reduce to origin only
+                    let origin = ref_url.origin().ascii_serialization();
+                    headers.insert(key, origin);
+                }
             }
         }
     }
@@ -87,5 +91,13 @@ mod tests {
         sanitize_headers(&mut h, Some("example.com"));
         // Same origin: full referrer preserved
         assert_eq!(h["referer"], "https://example.com/page?q=1");
+    }
+
+    #[test]
+    fn cross_origin_referer_mixed_case() {
+        // Referrer key with mixed casing (common in HTTP stacks)
+        let mut h = headers(&[("Referer", "https://other.com/secret/path?q=1")]);
+        sanitize_headers(&mut h, Some("example.com"));
+        assert_eq!(h["Referer"], "https://other.com");
     }
 }

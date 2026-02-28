@@ -83,12 +83,13 @@ pub fn strip_tracking_params(url: &VexUrl) -> VexUrl {
     if pairs.is_empty() {
         new_url.set_query(None);
     } else {
-        let query_string: String = pairs
-            .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join("&");
-        new_url.set_query(Some(&query_string));
+        {
+            let mut query_pairs = new_url.query_pairs_mut();
+            query_pairs.clear();
+            for (k, v) in &pairs {
+                query_pairs.append_pair(k, v);
+            }
+        } // drop query_pairs to release the mutable borrow on new_url
     }
 
     // Re-parse to create a VexUrl (infallible since we started from a valid URL)
