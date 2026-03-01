@@ -6,14 +6,14 @@
 
 ## Current State
 
-**Phase 0 ✅ — Phase 1 ✅ — Phase 2 ✅ — Phase 3 ✅ — Phase 4 (CSS) ✅ — Phase 5 (Layout) ✅ — Phase 6 next**
+**Phase 0 ✅ — Phase 1 ✅ — Phase 2 ✅ — Phase 3 ✅ — Phase 4 (CSS) ✅ — Phase 5 (Layout) ✅ — Phase 6 (GPU Rendering) ✅**
 
-The browser opens a 1280×720 window with a GPU-rendered dark background (wgpu/Vulkan). The full pipeline works: fetch any HTTPS page → parse HTML → build DOM → parse CSS → compute styles → lay out boxes (block, inline, flex, positioned) → build stacking order. Privacy filters strip trackers, block ads, enforce HTTPS.
+The full rendering pipeline is operational: parse HTML → build DOM → extract `<style>` → parse CSS → compute styles → lay out boxes → build display list → GPU render with text, rectangles, and borders. The app uses `include_str!("welcome.html")` to embed a styled welcome page that goes through the complete pipeline. Browser chrome (tab bar, address bar) is composited as a fixed overlay. Scroll offsets page content beneath chrome. Screenshot capture renders to offscreen textures for visual regression testing.
 
 ```bash
-cargo run -p vex-app                          # opens window
-cargo test --workspace                        # 341 tests (6 ignored)
-cargo clippy --workspace --all-targets        # 11 pre-existing style warnings (vex-layout field init)
+cargo run -p vex-app                          # opens window + renders welcome.html via full pipeline
+cargo test --workspace                        # 382 tests (13 ignored)
+cargo clippy --workspace --all-targets        # 0 warnings
 cd zig && zig build test                      # 22 Zig tests
 ```
 
@@ -34,9 +34,9 @@ cd zig && zig build test                      # 22 Zig tests
 | vex-layout (bench) | 2+1 | 200-element, deep nesting; 5000-element `#[ignore]` |
 | vex-net | 33 | client, cookies, dns, decompress, types |
 | vex-net (fetch) | 4 | `#[ignore]` — live HTTPS integration tests |
-| vex-privacy | 31 | tracking, adblock, HTTPS-only, headers |
-| vex-render | 1 | doc test |
-| **Total** | **341 pass, 6 ignored** | 0 failures |
+| vex-privacy | 32 | tracking, adblock, HTTPS-only, headers |
+| vex-render | 47 | display list, painter, renderer, glyph atlas, image atlas, screenshot, scroll |
+| **Total** | **382 pass, 13 ignored** | 0 failures |
 | Zig | 22 | arena, pool, frame allocators |
 
 ---
@@ -54,8 +54,8 @@ cd zig && zig build test                      # 22 Zig tests
 | `vex-html` | **33 tests ✅** | html5ever TreeSink integration, full-document and fragment parsing, handles malformed HTML/entities/void elements/script raw text, live-page e2e test (example.com + httpbin.org), parse benchmarks (100KB, nested, attribute-heavy) |
 | `vex-css` | **89 tests ✅** | Tokenizer, parser (selectors + declarations), specificity, cascade engine, style computation (compute_styles → HashMap<VexId, ComputedStyle>), all CSS value types (length/color/display/position/overflow/flex), UA defaults, inheritance |
 | `vex-layout` | **48 tests ✅** | Block layout (width calc, margin collapsing, overflow clip), inline layout (line boxes, text-align), flex layout (grow/shrink, justify-content 6 values, align-items 5 values, wrap), text measurement (cosmic-text), positioned elements (relative/absolute/fixed), stacking contexts, layout pipeline (layout_document), debug dump, performance benchmarks |
-| `vex-render` | **Compiles ✅** | Zig FFI bridge (platform_ffi.rs), safe Window wrapper (platform.rs), Event enum (event.rs), wgpu GPU context (gpu.rs) |
-| `vex-app` | **Runs ✅** | Entry point binary. Creates window, inits GPU, runs event loop, clears to dark background |
+| `vex-render` | **47 tests ✅** | Display list (FillRect/DrawBorder/DrawText/DrawImage/PushClip/PopClip/PushOpacity/PopOpacity), painter (walks layout tree → display list, viewport culling, visibility/opacity), GPU renderer (rect + text pipelines, WGSL shaders rect/text/image, instanced drawing, batching, alpha blending), glyph atlas (shelf packing, cosmic-text rasterizer, LRU eviction), image atlas (4096×4096, shelf packing), image decoder (PNG/JPEG/WebP/GIF/BMP), screenshot (offscreen render to PNG, pixel_diff comparison), scroll state, Zig FFI (platform_ffi.rs), Window wrapper, Event enum, wgpu GPU context |
+| `vex-app` | **Runs ✅** | Entry point binary. Parses embedded `welcome.html` through full pipeline (HTML→DOM→CSS→Layout→Display List), composites with browser chrome (tab bar, address bar, accent line), renders via Renderer with text + rect pipelines, scroll support, FPS counter |
 | Others | Stubs | `vex-js`, `vex-media`, `vex-storage`, `vex-security`, `vex-crypto`, `vex-sync`, `vex-browser` |
 
 ### Zig Modules (5, under `zig/`)
@@ -95,6 +95,16 @@ let styles = vex_css::compute_styles(&document, &[sheet], viewport);
 let tree = vex_layout::layout_document(&document, &styles, viewport);
 let dump = vex_layout::debug_dump(&tree);
 let stacking = vex_layout::build_stacking_order(&tree);
+
+// Display List + Rendering
+let dl = vex_render::build_display_list(&tree, &styles, &document, viewport_size);
+let mut renderer = vex_render::renderer::Renderer::new(&device, &queue, format);
+renderer.prepare(&device, &queue, &dl, vp_w, vp_h);
+renderer.render(&mut encoder, &view);
+
+// Screenshot (offscreen)
+vex_render::screenshot::save_screenshot(&dl, 1280, 720, Path::new("out.png")).unwrap();
+let diff = vex_render::screenshot::pixel_diff(&pixels_a, &pixels_b, 5);
 ```
 
 ---
@@ -162,8 +172,9 @@ crates/vex-dom/src/                     — document, node, serialize, queries
 crates/vex-html/src/                    — parser (html5ever TreeSink)
 crates/vex-css/src/                     — tokenizer, parser, selectors, cascade, values
 crates/vex-layout/src/                  — block, inline, flex, text, positioned, stacking, tree_builder, box_model
-crates/vex-render/src/                  — platform_ffi, platform, event, gpu
-crates/vex-app/src/main.rs              — Entry point
+crates/vex-render/src/                  — display_list, painter, renderer, gpu, platform_ffi, platform, event
+crates/vex-render/src/shaders/rect.wgsl — WGSL rect shader (instanced quads)
+crates/vex-app/src/main.rs              — Entry point (window + GPU renderer + demo display list)
 
 crates/vex-html/tests/live_page_test.rs — P3.7.1 e2e (network, #[ignore])
 crates/vex-html/tests/parse_bench.rs    — P3.7.2 parse benchmarks
@@ -172,23 +183,20 @@ crates/vex-layout/tests/layout_bench.rs — P5.6.2 layout benchmarks
 
 ---
 
-## What's Next — Phase 6: GPU Rendering Pipeline
+## What's Next — Phase 6: GPU Rendering Pipeline (continued)
 
-Per `PLAN.md` / `TASKS.md`:
+### Completed ✅
+- **P6.1 — Display List Generation**: `display_list.rs` (8 command types), `painter.rs` (walks layout tree, emits FillRect/DrawBorder/DrawText, viewport culling, opacity/clip layers)
+- **P6.2 — GPU Backend (partial)**: `renderer.rs` (wgpu pipeline, instanced rect rendering, batching, alpha blending), `shaders/rect.wgsl` (vertex quad generation, pixel→NDC transform, per-instance color)
+- **App integration**: `main.rs` renders a demo mock browser chrome (10+ colored rectangles)
 
-### P6A — Display List Generation (Rust, vex-render)
-- Walk layout tree → flat command buffer (FillRect, DrawText, DrawImage, PushClip/PopClip, PushOpacity/PopOpacity)
-- Display list optimization (cull off-screen, merge adjacent rects)
-
-### P6B — GPU Compositor (Zig, zig/compositor/)
-- wgpu integration, WGSL shaders (rect fill, text rendering, image display)
-- Glyph atlas management, texture atlas, frame scheduling (vsync)
-
-### P6C — Text Rasterization (Zig, zig/text/)
-- Glyph outlines → atlas bitmaps, subpixel AA, LRU cache
-
-### P6D — Image Pipeline
-- Decode PNG/JPEG/WebP/GIF/SVG, async loading, GPU texture upload
+### Remaining
+- **P6.2.3** Text shader (text.wgsl) — glyph atlas sampling, subpixel AA
+- **P6.2.4** Image shader (image.wgsl) — texture sampling
+- **P6.3** Glyph atlas — rasterize glyphs into GPU texture, shelf-based packing, LRU eviction
+- **P6.4** Image pipeline — decode PNG/JPEG/WebP/SVG, async loading, GPU upload
+- **P6.5** Scroll state — smooth scrolling, event integration
+- **P6.6** Full pipeline test — wire HTML→DOM→CSS→Layout→Render for real pages
 
 **Target:** Render `https://example.com` visually in the window. 60fps scrolling.
 

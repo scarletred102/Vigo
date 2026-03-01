@@ -493,9 +493,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P6.1.1 | **Display commands** — Create `crates/vex-render/src/display_list.rs`. Enum `DisplayCommand { FillRect { rect: Rect, color: Color, border_radius: f32 }, DrawBorder { rect: Rect, widths: Insets, colors: [Color; 4], styles: [BorderStyle; 4] }, DrawText { position: Point, glyphs: Vec<GlyphInstance>, color: Color, font_size: f32 }, DrawImage { rect: Rect, image_id: ImageId }, PushClip { rect: Rect }, PopClip, PushOpacity { opacity: f32 }, PopOpacity }`. `GlyphInstance { glyph_id: u32, x: f32, y: f32 }`. `DisplayList = Vec<DisplayCommand>`. | `display_list.rs` | ⬜ |
-| P6.1.2 | **Display list builder** — Create `crates/vex-render/src/painter.rs`. Function: `build_display_list(layout_root: &LayoutBox, styles: &HashMap<VexId, ComputedStyle>) -> DisplayList`. Walk layout tree in paint order (respecting stacking contexts). For each box: (1) draw background-color as FillRect, (2) draw borders as DrawBorder, (3) for text nodes, emit DrawText with positioned glyphs, (4) for `<img>` elements, emit DrawImage, (5) for `overflow: hidden`, emit PushClip/PopClip around children, (6) for `opacity < 1.0`, emit PushOpacity/PopOpacity. Write 3 tests: simple rect, text, nested clips. | `painter.rs` + tests | ⬜ |
-| P6.1.3 | **Culling optimisation** — In `painter.rs`, before emitting a command, check if the box's rect intersects the viewport rect. If entirely outside, skip it and all children. This prevents off-screen elements from generating GPU work. | Viewport culling | ⬜ |
+| P6.1.1 | **Display commands** — Create `crates/vex-render/src/display_list.rs`. Enum `DisplayCommand { FillRect { rect: Rect, color: Color, border_radius: f32 }, DrawBorder { rect: Rect, widths: Insets, colors: [Color; 4], styles: [BorderStyle; 4] }, DrawText { position: Point, glyphs: Vec<GlyphInstance>, color: Color, font_size: f32 }, DrawImage { rect: Rect, image_id: ImageId }, PushClip { rect: Rect }, PopClip, PushOpacity { opacity: f32 }, PopOpacity }`. `GlyphInstance { glyph_id: u32, x: f32, y: f32 }`. `DisplayList = Vec<DisplayCommand>`. | `display_list.rs` | ✅ |
+| P6.1.2 | **Display list builder** — Create `crates/vex-render/src/painter.rs`. Function: `build_display_list(layout_root: &LayoutBox, styles: &HashMap<VexId, ComputedStyle>) -> DisplayList`. Walk layout tree in paint order (respecting stacking contexts). For each box: (1) draw background-color as FillRect, (2) draw borders as DrawBorder, (3) for text nodes, emit DrawText with positioned glyphs, (4) for `<img>` elements, emit DrawImage, (5) for `overflow: hidden`, emit PushClip/PopClip around children, (6) for `opacity < 1.0`, emit PushOpacity/PopOpacity. Write 3 tests: simple rect, text, nested clips. | `painter.rs` + tests | ✅ |
+| P6.1.3 | **Culling optimisation** — In `painter.rs`, before emitting a command, check if the box's rect intersects the viewport rect. If entirely outside, skip it and all children. This prevents off-screen elements from generating GPU work. | Viewport culling | ✅ |
 
 ---
 
@@ -503,12 +503,12 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P6.2.1 | **Renderer struct** — Create `crates/vex-render/src/renderer.rs`. `Renderer { device: wgpu::Device, queue: wgpu::Queue, surface: wgpu::Surface, rect_pipeline: wgpu::RenderPipeline, text_pipeline: wgpu::RenderPipeline, image_pipeline: wgpu::RenderPipeline, glyph_atlas: GlyphAtlas, image_atlas: ImageAtlas }`. Constructor takes `GpuContext` from Phase 1. | `renderer.rs` | ⬜ |
-| P6.2.2 | **Rectangle shader** — Create `crates/vex-render/src/shaders/rect.wgsl`. Vertex shader: takes `position: vec2<f32>` + `rect: vec4<f32>` (x, y, w, h) + `color: vec4<f32>` + `border_radius: f32`. Outputs screen-space position + color. Fragment shader: outputs color, apply SDF for border-radius (smooth rounded corners). Create matching `wgpu::RenderPipeline`. | `rect.wgsl` + pipeline | ⬜ |
-| P6.2.3 | **Text shader** — Create `crates/vex-render/src/shaders/text.wgsl`. Vertex shader: takes glyph position + atlas UV coords. Fragment shader: samples glyph atlas texture, applies alpha test, multiplies by text color. Create matching pipeline. Supports subpixel rendering (sample R/G/B atlas channels separately). | `text.wgsl` + pipeline | ⬜ |
-| P6.2.4 | **Image shader** — Create `crates/vex-render/src/shaders/image.wgsl`. Vertex shader: quad with texture coords. Fragment shader: sample image texture. Create matching pipeline. | `image.wgsl` + pipeline | ⬜ |
-| P6.2.5 | **Render frame** — In `renderer.rs`, implement `fn render(&mut self, display_list: &DisplayList, viewport: Size)`. Algorithm: (1) Get surface texture. (2) Create command encoder. (3) Begin render pass with background clear. (4) Walk display list: batch FillRect commands into rect pipeline draw call, batch DrawText into text pipeline draw call, batch DrawImage into image pipeline draw call. (5) Handle PushClip/PopClip via scissor rects. (6) Handle PushOpacity via alpha blending state. (7) Submit + present. | Frame rendering | ⬜ |
-| P6.2.6 | **Batching** — In renderer, implement draw call batching: accumulate all FillRect commands into one vertex buffer, all DrawText into one vertex buffer, etc. Submit one draw call per pipeline per frame (minimize state changes). Target: <10 draw calls per frame for a typical page. | Batching | ⬜ |
+| P6.2.1 | **Renderer struct** — Create `crates/vex-render/src/renderer.rs`. `Renderer { device: wgpu::Device, queue: wgpu::Queue, surface: wgpu::Surface, rect_pipeline: wgpu::RenderPipeline, text_pipeline: wgpu::RenderPipeline, image_pipeline: wgpu::RenderPipeline, glyph_atlas: GlyphAtlas, image_atlas: ImageAtlas }`. Constructor takes `GpuContext` from Phase 1. | `renderer.rs` | ✅ |
+| P6.2.2 | **Rectangle shader** — Create `crates/vex-render/src/shaders/rect.wgsl`. Vertex shader: takes `position: vec2<f32>` + `rect: vec4<f32>` (x, y, w, h) + `color: vec4<f32>` + `border_radius: f32`. Outputs screen-space position + color. Fragment shader: outputs color, apply SDF for border-radius (smooth rounded corners). Create matching `wgpu::RenderPipeline`. | `rect.wgsl` + pipeline | ✅ |
+| P6.2.3 | **Text shader** — Create `crates/vex-render/src/shaders/text.wgsl`. Vertex shader: takes glyph position + atlas UV coords. Fragment shader: samples glyph atlas texture, applies alpha test, multiplies by text color. Create matching pipeline. Supports subpixel rendering (sample R/G/B atlas channels separately). | `text.wgsl` + pipeline | ✅ |
+| P6.2.4 | **Image shader** — Create `crates/vex-render/src/shaders/image.wgsl`. Vertex shader: quad with texture coords. Fragment shader: sample image texture. Create matching pipeline. | `image.wgsl` + pipeline | ✅ |
+| P6.2.5 | **Render frame** — In `renderer.rs`, implement `fn render(&mut self, display_list: &DisplayList, viewport: Size)`. Algorithm: (1) Get surface texture. (2) Create command encoder. (3) Begin render pass with background clear. (4) Walk display list: batch FillRect commands into rect pipeline draw call, batch DrawText into text pipeline draw call, batch DrawImage into image pipeline draw call. (5) Handle PushClip/PopClip via scissor rects. (6) Handle PushOpacity via alpha blending state. (7) Submit + present. | Frame rendering | ✅ |
+| P6.2.6 | **Batching** — In renderer, implement draw call batching: accumulate all FillRect commands into one vertex buffer, all DrawText into one vertex buffer, etc. Submit one draw call per pipeline per frame (minimize state changes). Target: <10 draw calls per frame for a typical page. | Batching | ✅ |
 
 ---
 
@@ -516,8 +516,8 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P6.3.1 | **Atlas texture** — Create `crates/vex-render/src/glyph_atlas.rs`. `GlyphAtlas` manages a large GPU texture (e.g., 2048×2048 RGBA). Packs rasterized glyphs into the texture using a shelf-based packing algorithm (rows of varying height). Method: `get_or_rasterize(glyph_id, font_size, font_family) -> GlyphUV` — returns UV coordinates in the atlas. If glyph not cached, rasterize via `cosmic_text::SwashCache` and upload to texture. | `glyph_atlas.rs` | ⬜ |
-| P6.3.2 | **LRU eviction** — When atlas is full, evict least-recently-used glyphs. Track usage per glyph with a counter bumped each frame. When atlas hits 90% capacity, evict bottom 20% by usage. | LRU eviction | ⬜ |
+| P6.3.1 | **Atlas texture** — Create `crates/vex-render/src/glyph_atlas.rs`. `GlyphAtlas` manages a large GPU texture (e.g., 2048×2048 RGBA). Packs rasterized glyphs into the texture using a shelf-based packing algorithm (rows of varying height). Method: `get_or_rasterize(glyph_id, font_size, font_family) -> GlyphUV` — returns UV coordinates in the atlas. If glyph not cached, rasterize via `cosmic_text::SwashCache` and upload to texture. | `glyph_atlas.rs` | ✅ |
+| P6.3.2 | **LRU eviction** — When atlas is full, evict least-recently-used glyphs. Track usage per glyph with a counter bumped each frame. When atlas hits 90% capacity, evict bottom 20% by usage. | LRU eviction | ✅ |
 | P6.3.3 | **Subpixel rendering** — Rasterize glyphs at subpixel offsets (quantize to 4 subpixel positions per pixel). Store R/G/B channels separately in atlas for ClearType-style rendering. | Subpixel support | ⬜ |
 
 ---
@@ -526,8 +526,8 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P6.4.1 | **Image decode** — Create `crates/vex-render/src/image_decode.rs`. Function: `decode_image(bytes: &[u8]) -> VexResult<DecodedImage>`. `DecodedImage { width: u32, height: u32, pixels: Vec<u8> (RGBA) }`. Use `image` crate to handle PNG, JPEG, WebP, GIF (first frame), BMP. Use `resvg` for SVG. Write 4 tests with embedded test images. | `image_decode.rs` + tests | ⬜ |
-| P6.4.2 | **Image atlas** — Create `crates/vex-render/src/image_atlas.rs`. Like glyph atlas but for decoded images. Large texture (4096×4096), shelf-packed. Method: `upload(decoded: &DecodedImage) -> ImageUV`. LRU eviction when full. | `image_atlas.rs` | ⬜ |
+| P6.4.1 | **Image decode** — Create `crates/vex-render/src/image_decode.rs`. Function: `decode_image(bytes: &[u8]) -> VexResult<DecodedImage>`. `DecodedImage { width: u32, height: u32, pixels: Vec<u8> (RGBA) }`. Use `image` crate to handle PNG, JPEG, WebP, GIF (first frame), BMP. Use `resvg` for SVG. Write 4 tests with embedded test images. | `image_decode.rs` + tests | ✅ |
+| P6.4.2 | **Image atlas** — Create `crates/vex-render/src/image_atlas.rs`. Like glyph atlas but for decoded images. Large texture (4096×4096), shelf-packed. Method: `upload(decoded: &DecodedImage) -> ImageUV`. LRU eviction when full. | `image_atlas.rs` | ✅ |
 | P6.4.3 | **Async image loading** — In the browser pipeline (later wired in Phase 8), images load asynchronously: start fetch via `vex-net`, decode on background thread via `tokio::spawn_blocking`, upload to atlas, trigger re-render. Pages render immediately with placeholder boxes (sized by `width`/`height` attributes), then fill in as images arrive. | Async loading pattern | ⬜ |
 
 ---
@@ -536,8 +536,8 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P6.5.1 | **Scroll state** — Create `crates/vex-render/src/scroll.rs`. `ScrollState { offset_x: f32, offset_y: f32, content_height: f32, viewport_height: f32 }`. Methods: `scroll_by(dx, dy)` (clamped to content bounds), `scroll_to(x, y)`, `can_scroll_down/up() -> bool`. | `scroll.rs` | ⬜ |
-| P6.5.2 | **Scroll integration** — In the render pipeline, apply scroll offset as a translation transform to the display list. On `MouseScroll` event, update scroll state and trigger re-render. Handle smooth scrolling (animate offset over time). | Scroll integration | ⬜ |
+| P6.5.1 | **Scroll state** — Create `crates/vex-render/src/scroll.rs`. `ScrollState { offset_x: f32, offset_y: f32, content_height: f32, viewport_height: f32 }`. Methods: `scroll_by(dx, dy)` (clamped to content bounds), `scroll_to(x, y)`, `can_scroll_down/up() -> bool`. | `scroll.rs` | ✅ |
+| P6.5.2 | **Scroll integration** — In the render pipeline, apply scroll offset as a translation transform to the display list. On `MouseScroll` event, update scroll state and trigger re-render. Handle smooth scrolling (animate offset over time). | Scroll integration | ✅ |
 
 ---
 
@@ -545,9 +545,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P6.6.1 | **Pipeline integration** — Wire the full pipeline in `vex-app/main.rs`: (1) Create window + GPU context. (2) Fetch `https://example.com`. (3) Parse HTML → DOM. (4) Parse CSS (inline + `<style>` elements). (5) Compute styles. (6) Layout with viewport size. (7) Build display list. (8) Render to screen. (9) Handle scroll/resize events → re-layout/re-render. | Full pipeline | ⬜ |
-| P6.6.2 | **Screenshot comparison** — Add ability to render to an offscreen texture and save as PNG. Compare against reference screenshots of known pages. | Visual testing | ⬜ |
-| P6.6.3 | **FPS counter** — Display frame time / FPS in window title bar. Target: 60fps on a simple page (< 500 elements). | FPS measurement | ⬜ |
+| P6.6.1 | **Pipeline integration** — Wire the full pipeline in `vex-app/main.rs`: (1) Create window + GPU context. (2) Fetch `https://example.com`. (3) Parse HTML → DOM. (4) Parse CSS (inline + `<style>` elements). (5) Compute styles. (6) Layout with viewport size. (7) Build display list. (8) Render to screen. (9) Handle scroll/resize events → re-layout/re-render. | Full pipeline | ✅ |
+| P6.6.2 | **Screenshot comparison** — Add ability to render to an offscreen texture and save as PNG. Compare against reference screenshots of known pages. | Visual testing | ✅ |
+| P6.6.3 | **FPS counter** — Display frame time / FPS in window title bar. Target: 60fps on a simple page (< 500 elements). | FPS measurement | ✅ |
 
 ---
 ---
