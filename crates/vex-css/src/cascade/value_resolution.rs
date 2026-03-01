@@ -3,9 +3,9 @@
 
 //! CSS value resolution: convert relative units (em, rem, %, vw, vh) to px.
 
-use vex_core::Size;
 use crate::properties::Property;
 use crate::values::LengthValue;
+use vex_core::Size;
 
 /// Resolve a length property value to absolute pixels.
 pub fn resolve_value(
@@ -27,25 +27,121 @@ pub fn resolve_property(
     containing_width: f32,
 ) -> Property {
     match property {
-        Property::Width(l) => Property::Width(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::Height(l) => Property::Height(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::MinWidth(l) => Property::MinWidth(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::MinHeight(l) => Property::MinHeight(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::MaxWidth(l) => Property::MaxWidth(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::MaxHeight(l) => Property::MaxHeight(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
+        Property::Width(l) => Property::Width(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::Height(l) => Property::Height(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::MinWidth(l) => Property::MinWidth(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::MinHeight(l) => Property::MinHeight(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::MaxWidth(l) => Property::MaxWidth(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::MaxHeight(l) => Property::MaxHeight(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
 
-        Property::MarginTop(l) => Property::MarginTop(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::MarginRight(l) => Property::MarginRight(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::MarginBottom(l) => Property::MarginBottom(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::MarginLeft(l) => Property::MarginLeft(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
+        Property::MarginTop(l) => Property::MarginTop(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::MarginRight(l) => Property::MarginRight(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::MarginBottom(l) => Property::MarginBottom(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::MarginLeft(l) => Property::MarginLeft(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
 
-        Property::PaddingTop(l) => Property::PaddingTop(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::PaddingRight(l) => Property::PaddingRight(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::PaddingBottom(l) => Property::PaddingBottom(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::PaddingLeft(l) => Property::PaddingLeft(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
+        Property::PaddingTop(l) => Property::PaddingTop(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::PaddingRight(l) => Property::PaddingRight(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::PaddingBottom(l) => Property::PaddingBottom(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::PaddingLeft(l) => Property::PaddingLeft(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
 
-        Property::FontSize(l) => Property::FontSize(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
-        Property::LineHeight(l) => Property::LineHeight(resolve_to_px(l, parent_font_size, root_font_size, viewport, containing_width)),
+        Property::FontSize(l) => Property::FontSize(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
+        Property::LineHeight(l) => Property::LineHeight(resolve_to_px(
+            l,
+            parent_font_size,
+            root_font_size,
+            viewport,
+            containing_width,
+        )),
 
         // Non-length properties pass through unchanged
         other => other.clone(),
@@ -69,7 +165,10 @@ fn resolve_to_px(
 mod tests {
     use super::*;
 
-    const VP: Size = Size { width: 1920.0, height: 1080.0 };
+    const VP: Size = Size {
+        width: 1920.0,
+        height: 1080.0,
+    };
 
     #[test]
     fn resolve_em_to_px() {
@@ -115,7 +214,13 @@ mod tests {
 
     #[test]
     fn resolve_property_width() {
-        let p = resolve_property(&Property::Width(LengthValue::Em(2.0)), 16.0, 16.0, VP, 800.0);
+        let p = resolve_property(
+            &Property::Width(LengthValue::Em(2.0)),
+            16.0,
+            16.0,
+            VP,
+            800.0,
+        );
         assert_eq!(p, Property::Width(LengthValue::Px(32.0)));
     }
 }

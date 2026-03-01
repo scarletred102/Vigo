@@ -42,7 +42,9 @@ impl VexUrl {
         self.0.join(relative).map(Self).map_err(VexError::from)
     }
 
-    pub fn query_pairs(&self) -> impl Iterator<Item = (std::borrow::Cow<'_, str>, std::borrow::Cow<'_, str>)> {
+    pub fn query_pairs(
+        &self,
+    ) -> impl Iterator<Item = (std::borrow::Cow<'_, str>, std::borrow::Cow<'_, str>)> {
         self.0.query_pairs()
     }
 

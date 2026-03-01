@@ -6,10 +6,14 @@
 use std::num::NonZeroIsize;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use raw_window_handle::{DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle};
+use raw_window_handle::{
+    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
+};
 
 #[cfg(target_os = "windows")]
-use raw_window_handle::{RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle};
+use raw_window_handle::{
+    RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle,
+};
 use vex_core::{VexError, VexResult};
 
 use crate::event::{Event, MouseButton};
@@ -88,10 +92,7 @@ impl Window {
                 keycode: raw.a as u32,
                 modifiers: raw.b as u32,
             },
-            EventTag::MouseMove => Event::MouseMove {
-                x: raw.a,
-                y: raw.b,
-            },
+            EventTag::MouseMove => Event::MouseMove { x: raw.a, y: raw.b },
             EventTag::MouseButtonDown => Event::MouseButtonDown {
                 button: MouseButton::from_raw(raw.c as u8),
                 x: raw.a,

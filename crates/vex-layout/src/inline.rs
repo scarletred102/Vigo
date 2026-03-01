@@ -10,8 +10,8 @@
 use std::collections::HashMap;
 
 use vex_core::{Rect, VexId};
-use vex_css::ComputedStyle;
 use vex_css::values::text::TextAlign;
+use vex_css::ComputedStyle;
 use vex_dom::{NodeArena, NodeData};
 
 use crate::box_model::LayoutBox;
@@ -107,7 +107,8 @@ fn build_line_boxes(
 
     for (i, child) in children.iter().enumerate() {
         // Measure the child
-        let (child_w, child_h) = measure_inline_child(child, arena, styles, text_engine, available_width);
+        let (child_w, child_h) =
+            measure_inline_child(child, arena, styles, text_engine, available_width);
 
         // Does it fit on the current line?
         if current_line.width + child_w > available_width && !current_line.fragments.is_empty() {
@@ -162,9 +163,7 @@ fn measure_inline_child(
                 (s.font_size, s.line_height)
             } else {
                 // Use the parent's style as fallback
-                let parent_style = node
-                    .parent
-                    .and_then(|pid| styles.get(&pid));
+                let parent_style = node.parent.and_then(|pid| styles.get(&pid));
                 match parent_style {
                     Some(ps) => (ps.font_size, ps.line_height),
                     None => (16.0, 19.2),

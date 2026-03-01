@@ -6,6 +6,7 @@
 use vex_core::VexId;
 
 use crate::arena::NodeArena;
+use crate::forms::FormStateMap;
 use crate::node::{ElementData, Namespace, NodeData};
 use crate::traversal::{Children, Descendants};
 use crate::tree;
@@ -16,6 +17,7 @@ use crate::tree;
 pub struct Document {
     arena: NodeArena,
     root: VexId,
+    form_states: FormStateMap,
 }
 
 impl Document {
@@ -23,7 +25,11 @@ impl Document {
     pub fn new() -> Self {
         let mut arena = NodeArena::new();
         let root = arena.alloc(NodeData::Document);
-        Self { arena, root }
+        Self {
+            arena,
+            root,
+            form_states: FormStateMap::new(),
+        }
     }
 
     /// The root `#document` node id.
@@ -45,6 +51,16 @@ impl Document {
     /// Mutably borrow the node arena.
     pub fn arena_mut(&mut self) -> &mut NodeArena {
         &mut self.arena
+    }
+
+    /// Borrow the form state map.
+    pub fn form_states(&self) -> &FormStateMap {
+        &self.form_states
+    }
+
+    /// Mutably borrow the form state map.
+    pub fn form_states_mut(&mut self) -> &mut FormStateMap {
+        &mut self.form_states
     }
 
     // ── Factory methods ──────────────────────────────────────────────

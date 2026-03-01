@@ -56,8 +56,6 @@ impl LengthValue {
     }
 }
 
-
-
 /// Parse a CSS length string like "10px", "2em", "50%", "auto".
 pub fn parse_length(input: &str) -> Option<LengthValue> {
     let input = input.trim();
@@ -105,37 +103,55 @@ mod tests {
     #[test]
     fn resolve_px() {
         let v = LengthValue::Px(16.0);
-        assert_eq!(v.resolve(12.0, 16.0, Size::new(1920.0, 1080.0), 800.0), 16.0);
+        assert_eq!(
+            v.resolve(12.0, 16.0, Size::new(1920.0, 1080.0), 800.0),
+            16.0
+        );
     }
 
     #[test]
     fn resolve_em() {
         let v = LengthValue::Em(2.0);
-        assert_eq!(v.resolve(14.0, 16.0, Size::new(1920.0, 1080.0), 800.0), 28.0);
+        assert_eq!(
+            v.resolve(14.0, 16.0, Size::new(1920.0, 1080.0), 800.0),
+            28.0
+        );
     }
 
     #[test]
     fn resolve_rem() {
         let v = LengthValue::Rem(1.5);
-        assert_eq!(v.resolve(14.0, 16.0, Size::new(1920.0, 1080.0), 800.0), 24.0);
+        assert_eq!(
+            v.resolve(14.0, 16.0, Size::new(1920.0, 1080.0), 800.0),
+            24.0
+        );
     }
 
     #[test]
     fn resolve_percent() {
         let v = LengthValue::Percent(50.0);
-        assert_eq!(v.resolve(14.0, 16.0, Size::new(1920.0, 1080.0), 800.0), 400.0);
+        assert_eq!(
+            v.resolve(14.0, 16.0, Size::new(1920.0, 1080.0), 800.0),
+            400.0
+        );
     }
 
     #[test]
     fn resolve_vw() {
         let v = LengthValue::Vw(10.0);
-        assert_eq!(v.resolve(14.0, 16.0, Size::new(1920.0, 1080.0), 800.0), 192.0);
+        assert_eq!(
+            v.resolve(14.0, 16.0, Size::new(1920.0, 1080.0), 800.0),
+            192.0
+        );
     }
 
     #[test]
     fn resolve_vh() {
         let v = LengthValue::Vh(50.0);
-        assert_eq!(v.resolve(14.0, 16.0, Size::new(1920.0, 1080.0), 800.0), 540.0);
+        assert_eq!(
+            v.resolve(14.0, 16.0, Size::new(1920.0, 1080.0), 800.0),
+            540.0
+        );
     }
 
     #[test]

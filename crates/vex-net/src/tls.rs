@@ -45,6 +45,10 @@ mod tests {
         // Verifies the root store isn't empty (Mozilla roots are embedded).
         let mut root_store = rustls::RootCertStore::empty();
         root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-        assert!(root_store.len() > 100, "expected 100+ root CAs, got {}", root_store.len());
+        assert!(
+            root_store.len() > 100,
+            "expected 100+ root CAs, got {}",
+            root_store.len()
+        );
     }
 }

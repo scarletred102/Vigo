@@ -45,7 +45,10 @@ impl Default for ClientConfig {
 
 /// The main HTTP client.
 pub struct HttpClient {
-    inner: Client<hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>, Full<Bytes>>,
+    inner: Client<
+        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+        Full<Bytes>,
+    >,
     config: ClientConfig,
     cookies: CookieJar,
 }
@@ -109,10 +112,20 @@ impl HttpClient {
         let mut redirects = 0u8;
 
         loop {
-            let resp = self.do_fetch(&current_url, current_method, &request.headers, &request.body).await?;
+            let resp = self
+                .do_fetch(
+                    &current_url,
+                    current_method,
+                    &request.headers,
+                    &request.body,
+                )
+                .await?;
 
             // Handle redirects
-            if self.config.follow_redirects && is_redirect(resp.status) && redirects < self.config.max_redirects {
+            if self.config.follow_redirects
+                && is_redirect(resp.status)
+                && redirects < self.config.max_redirects
+            {
                 if let Some(location) = resp.headers.get("location") {
                     let next_url = resolve_redirect(&current_url, location)?;
                     debug!(status = resp.status, to = %next_url, "following redirect");
@@ -122,7 +135,8 @@ impl HttpClient {
                         current_method = Method::Get;
                     }
                     // 301/302: change to GET for POST (historical browser behavior)
-                    if (resp.status == 301 || resp.status == 302) && current_method == Method::Post {
+                    if (resp.status == 301 || resp.status == 302) && current_method == Method::Post
+                    {
                         current_method = Method::Get;
                     }
 
@@ -183,7 +197,12 @@ impl HttpClient {
             self.inner.request(hyper_req),
         )
         .await
-        .map_err(|_| VexError::Network(format!("request timed out after {}s", self.config.timeout_secs)))?
+        .map_err(|_| {
+            VexError::Network(format!(
+                "request timed out after {}s",
+                self.config.timeout_secs
+            ))
+        })?
         .map_err(|e| VexError::Network(format!("request failed: {e}")))?;
 
         let status = hyper_resp.status().as_u16();
@@ -213,7 +232,10 @@ impl HttpClient {
             .to_vec();
 
         // Decompress if needed
-        let encoding = headers.get("content-encoding").map(|s| s.as_str()).unwrap_or("");
+        let encoding = headers
+            .get("content-encoding")
+            .map(|s| s.as_str())
+            .unwrap_or("");
         let body = if encoding.is_empty() || encoding == "identity" {
             raw_body
         } else {

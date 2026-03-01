@@ -29,7 +29,10 @@ pub fn sanitize_headers(headers: &mut HashMap<String, String>, request_host: Opt
 
     // Enforce strict referrer: cross-origin → origin-only
     // Case-insensitive lookup since header maps may have mixed-case keys.
-    let referer_key = headers.keys().find(|k| k.eq_ignore_ascii_case("referer")).cloned();
+    let referer_key = headers
+        .keys()
+        .find(|k| k.eq_ignore_ascii_case("referer"))
+        .cloned();
     if let Some(key) = referer_key {
         if let Some(referrer) = headers.get(&key).cloned() {
             if let (Some(req_host), Ok(ref_url)) = (request_host, url::Url::parse(&referrer)) {

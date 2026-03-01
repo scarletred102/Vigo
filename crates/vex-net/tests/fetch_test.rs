@@ -17,7 +17,11 @@ async fn fetch_https_html() {
 
     assert_eq!(response.status, 200);
     let body = response.text().expect("body should be UTF-8");
-    assert!(body.contains("<html"), "expected HTML in body, got: {}", &body[..80.min(body.len())]);
+    assert!(
+        body.contains("<html"),
+        "expected HTML in body, got: {}",
+        &body[..80.min(body.len())]
+    );
 }
 
 #[tokio::test]
@@ -36,8 +40,7 @@ async fn fetch_follows_redirect() {
 #[ignore = "requires network access"]
 async fn fetch_404_returns_status() {
     let client = HttpClient::new().expect("client should init");
-    let request =
-        Request::get("https://httpbin.org/status/404").expect("URL should parse");
+    let request = Request::get("https://httpbin.org/status/404").expect("URL should parse");
 
     let response = client.fetch(request).await.expect("fetch should succeed");
 
@@ -56,5 +59,9 @@ async fn fetch_gzip_decompression() {
     assert_eq!(response.status, 200);
     let body = response.text().expect("body should be UTF-8");
     // httpbin /gzip returns a JSON with "gzipped": true
-    assert!(body.contains("gzipped"), "expected gzip response: {}", &body[..100.min(body.len())]);
+    assert!(
+        body.contains("gzipped"),
+        "expected gzip response: {}",
+        &body[..100.min(body.len())]
+    );
 }

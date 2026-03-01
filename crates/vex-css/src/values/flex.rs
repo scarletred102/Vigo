@@ -165,8 +165,14 @@ mod tests {
 
     #[test]
     fn justify_content_parse() {
-        assert_eq!(JustifyContent::parse("center"), Some(JustifyContent::Center));
-        assert_eq!(JustifyContent::parse("space-between"), Some(JustifyContent::SpaceBetween));
+        assert_eq!(
+            JustifyContent::parse("center"),
+            Some(JustifyContent::Center)
+        );
+        assert_eq!(
+            JustifyContent::parse("space-between"),
+            Some(JustifyContent::SpaceBetween)
+        );
     }
 
     #[test]

@@ -18,8 +18,7 @@ use crate::sink::VexSink;
 /// ```
 pub fn parse_html(input: &str) -> Document {
     let sink = VexSink::new();
-    html5ever::parse_document(sink, ParseOpts::default())
-        .one(input)
+    html5ever::parse_document(sink, ParseOpts::default()).one(input)
 }
 
 /// Parse an HTML fragment in the context of a given element tag.
@@ -28,6 +27,5 @@ pub fn parse_html(input: &str) -> Document {
 pub fn parse_html_fragment(input: &str, context_tag: &str) -> Document {
     let sink = VexSink::new();
     let context = QualName::new(None, ns!(html), LocalName::from(context_tag));
-    html5ever::parse_fragment(sink, ParseOpts::default(), context, vec![])
-        .one(input)
+    html5ever::parse_fragment(sink, ParseOpts::default(), context, vec![]).one(input)
 }

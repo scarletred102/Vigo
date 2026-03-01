@@ -68,8 +68,7 @@ mod tests {
     fn gzip_roundtrip() {
         let original = b"The quick brown fox jumps over the lazy dog";
         // Compress with flate2
-        let mut encoder =
-            flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(original).unwrap();
         let compressed = encoder.finish().unwrap();
 

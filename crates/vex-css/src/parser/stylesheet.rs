@@ -188,7 +188,10 @@ fn parse_declarations(text: &str) -> Vec<Declaration> {
 
             let props = parse_declaration(name, value);
             for property in props {
-                declarations.push(Declaration { property, important });
+                declarations.push(Declaration {
+                    property,
+                    important,
+                });
             }
         }
     }
@@ -231,7 +234,10 @@ mod tests {
         assert_eq!(ss.rules.len(), 1);
         assert_eq!(ss.rules[0].selectors, vec!["div"]);
         assert_eq!(ss.rules[0].declarations.len(), 1);
-        assert_eq!(ss.rules[0].declarations[0].property, Property::Display(Display::Block));
+        assert_eq!(
+            ss.rules[0].declarations[0].property,
+            Property::Display(Display::Block)
+        );
     }
 
     #[test]
@@ -252,7 +258,10 @@ mod tests {
         let css = "@media (max-width: 768px) { .mobile { display: block; } }";
         let ss = parse_stylesheet(css);
         assert_eq!(ss.rules.len(), 1);
-        assert_eq!(ss.rules[0].media_condition.as_deref(), Some("(max-width: 768px)"));
+        assert_eq!(
+            ss.rules[0].media_condition.as_deref(),
+            Some("(max-width: 768px)")
+        );
     }
 
     #[test]

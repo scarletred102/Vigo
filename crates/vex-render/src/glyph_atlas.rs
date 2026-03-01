@@ -13,8 +13,7 @@
 use std::collections::HashMap;
 
 use cosmic_text::{
-    Attrs, Buffer, CacheKey, FontSystem, Metrics, Placement, Shaping, SwashCache,
-    SwashContent,
+    Attrs, Buffer, CacheKey, FontSystem, Metrics, Placement, Shaping, SwashCache, SwashContent,
 };
 
 /// Default atlas size: 2048 × 2048 (4 MB single-channel).
@@ -106,12 +105,7 @@ impl GlyphAtlas {
         let metrics = Metrics::new(font_size, line_height);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_size(&mut self.font_system, Some(f32::MAX), None);
-        buffer.set_text(
-            &mut self.font_system,
-            text,
-            Attrs::new(),
-            Shaping::Advanced,
-        );
+        buffer.set_text(&mut self.font_system, text, Attrs::new(), Shaping::Advanced);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let mut glyphs = Vec::new();
@@ -182,7 +176,8 @@ impl GlyphAtlas {
         let threshold = self.frame.saturating_sub(stale_frames);
         let before = self.entries.len();
 
-        self.entries.retain(|_, entry| entry.last_used_frame >= threshold);
+        self.entries
+            .retain(|_, entry| entry.last_used_frame >= threshold);
 
         let evicted = before - self.entries.len();
         if evicted > 0 {
@@ -305,11 +300,7 @@ impl GlyphAtlas {
         }
 
         // Create a new shelf.
-        let shelf_y = self
-            .shelves
-            .last()
-            .map(|s| s.y + s.height)
-            .unwrap_or(0);
+        let shelf_y = self.shelves.last().map(|s| s.y + s.height).unwrap_or(0);
 
         if shelf_y + padded_h > self.height {
             // Atlas full.
@@ -358,10 +349,7 @@ mod tests {
         let mut atlas = GlyphAtlas::new();
         let glyphs = atlas.prepare_text("Hello", 10.0, 20.0, 16.0, 20.0, [1.0, 1.0, 1.0, 1.0]);
         // "Hello" should produce at least 4 visible glyphs (l has same shape but different positions)
-        assert!(
-            !glyphs.is_empty(),
-            "expected glyphs for 'Hello', got none"
-        );
+        assert!(!glyphs.is_empty(), "expected glyphs for 'Hello', got none");
         // All glyphs should have valid UV coordinates.
         for g in &glyphs {
             assert!(g.uv[2] >= g.uv[0], "u1 >= u0");
@@ -401,9 +389,16 @@ mod tests {
         // Prepare many different characters to exercise shelf packing.
         let _ = atlas.prepare_text(
             "abcdefghijklmnopqrstuvwxyz0123456789",
-            0.0, 0.0, 24.0, 30.0, [1.0; 4],
+            0.0,
+            0.0,
+            24.0,
+            30.0,
+            [1.0; 4],
         );
-        assert!(atlas.cached_count() > 10, "many unique glyphs should be cached");
+        assert!(
+            atlas.cached_count() > 10,
+            "many unique glyphs should be cached"
+        );
         assert!(atlas.is_dirty());
     }
 

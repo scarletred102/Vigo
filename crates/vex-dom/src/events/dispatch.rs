@@ -108,11 +108,11 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::super::event_type::EventType;
     use super::*;
     use crate::arena::NodeArena;
     use crate::node::{ElementData, Namespace, NodeData};
     use crate::tree;
-    use super::super::event_type::EventType;
     use vex_core::VexId;
 
     /// Build a small tree: root → parent → child

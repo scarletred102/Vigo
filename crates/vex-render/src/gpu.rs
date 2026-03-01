@@ -51,10 +51,13 @@ impl<'w> GpuContext<'w> {
         tracing::info!("GPU adapter: {}", adapter.get_info().name);
 
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("vex-device"),
-                ..Default::default()
-            }, None)
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("vex-device"),
+                    ..Default::default()
+                },
+                None,
+            )
             .await
             .map_err(|e| VexError::Platform(format!("request device: {e}")))?;
 

@@ -96,7 +96,10 @@ fn bench_parse_deeply_nested_html() {
     let doc = parse_html(&html);
     let elapsed = start.elapsed();
 
-    eprintln!("Parse 200-level nested HTML: {:.2}ms", elapsed.as_secs_f64() * 1000.0);
+    eprintln!(
+        "Parse 200-level nested HTML: {:.2}ms",
+        elapsed.as_secs_f64() * 1000.0
+    );
 
     assert!(doc.root_element().is_some());
     assert!(
@@ -120,7 +123,10 @@ fn bench_parse_many_attributes() {
     let doc = parse_html(&html);
     let elapsed = start.elapsed();
 
-    eprintln!("Parse 500 elements × 7 attrs: {:.2}ms", elapsed.as_secs_f64() * 1000.0);
+    eprintln!(
+        "Parse 500 elements × 7 attrs: {:.2}ms",
+        elapsed.as_secs_f64() * 1000.0
+    );
 
     let divs = doc.get_elements_by_tag_name("div");
     assert_eq!(divs.len(), 500);

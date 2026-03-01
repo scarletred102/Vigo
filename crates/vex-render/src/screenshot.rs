@@ -18,19 +18,11 @@ use crate::renderer::Renderer;
 ///
 /// # Panics
 /// Panics if wgpu cannot find a suitable adapter (e.g. no GPU available).
-pub fn render_to_pixels(
-    dl: &DisplayList,
-    width: u32,
-    height: u32,
-) -> Vec<u8> {
+pub fn render_to_pixels(dl: &DisplayList, width: u32, height: u32) -> Vec<u8> {
     pollster::block_on(render_to_pixels_async(dl, width, height))
 }
 
-async fn render_to_pixels_async(
-    dl: &DisplayList,
-    width: u32,
-    height: u32,
-) -> Vec<u8> {
+async fn render_to_pixels_async(dl: &DisplayList, width: u32, height: u32) -> Vec<u8> {
     // Create a headless device (no surface needed).
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::PRIMARY,
@@ -47,10 +39,13 @@ async fn render_to_pixels_async(
         .expect("no GPU adapter for offscreen rendering");
 
     let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: Some("vex-screenshot-device"),
-            ..Default::default()
-        }, None)
+        .request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("vex-screenshot-device"),
+                ..Default::default()
+            },
+            None,
+        )
         .await
         .expect("failed to create device for screenshot");
 
@@ -59,7 +54,11 @@ async fn render_to_pixels_async(
     // Create offscreen render target.
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("screenshot-target"),
-        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -107,7 +106,11 @@ async fn render_to_pixels_async(
                 rows_per_image: Some(height),
             },
         },
-        wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
     );
 
     queue.submit(std::iter::once(encoder.finish()));

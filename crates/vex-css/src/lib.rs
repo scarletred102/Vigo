@@ -9,16 +9,16 @@
 //! inheritance), and produces `ComputedStyle` for every DOM element.
 //! Supports media queries.
 
-pub mod values;
-pub mod properties;
-pub mod parser;
 pub mod cascade;
 pub mod computed;
-pub mod ua_stylesheet;
 pub mod media;
+pub mod parser;
+pub mod properties;
+pub mod ua_stylesheet;
+pub mod values;
 
 // Re-export key public types.
-pub use computed::ComputedStyle;
 pub use cascade::compute_styles;
-pub use parser::{parse_stylesheet, parse_inline_style, Stylesheet};
-pub use media::{MediaCondition, evaluate_media, parse_media_condition};
+pub use computed::ComputedStyle;
+pub use media::{evaluate_media, parse_media_condition, MediaCondition};
+pub use parser::{parse_inline_style, parse_stylesheet, Stylesheet};

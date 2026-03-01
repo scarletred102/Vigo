@@ -83,7 +83,15 @@ fn compute_recursive(
         // 4. Resolve values to px
         let resolved: Vec<_> = winning_props
             .iter()
-            .map(|p| resolve_property(p, parent_font_size, root_font_size, viewport, viewport.width))
+            .map(|p| {
+                resolve_property(
+                    p,
+                    parent_font_size,
+                    root_font_size,
+                    viewport,
+                    viewport.width,
+                )
+            })
             .collect();
 
         // 5. Start from parent's inherited values + defaults
@@ -105,7 +113,15 @@ fn compute_recursive(
             NodeData::Element(_) => Some(node_id),
             _ => parent_id,
         };
-        compute_recursive(child_id, effective_parent, arena, stylesheets, viewport, root_font_size, styles);
+        compute_recursive(
+            child_id,
+            effective_parent,
+            arena,
+            stylesheets,
+            viewport,
+            root_font_size,
+            styles,
+        );
         child = arena.get(child_id).next_sibling;
     }
 }
@@ -147,7 +163,15 @@ mod tests {
         let ps = doc.get_elements_by_tag_name("p");
         if let Some(p_style) = ps.first().and_then(|id| styles.get(id)) {
             // Color should have been inherited through div → p
-            assert_eq!(p_style.color, vex_core::Color { r: 255, g: 0, b: 0, a: 255 });
+            assert_eq!(
+                p_style.color,
+                vex_core::Color {
+                    r: 255,
+                    g: 0,
+                    b: 0,
+                    a: 255
+                }
+            );
         }
     }
 

@@ -85,6 +85,9 @@ mod tests {
     fn preserves_path_and_query() {
         let u = url("http://example.com/path?q=test&page=2#frag");
         let upgraded = enforce_https(&u).unwrap();
-        assert!(upgraded.inner().as_str().starts_with("https://example.com/path?q=test"));
+        assert!(upgraded
+            .inner()
+            .as_str()
+            .starts_with("https://example.com/path?q=test"));
     }
 }

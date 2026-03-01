@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 
 use vex_core::{Rect, VexId};
-use vex_css::ComputedStyle;
 use vex_css::values::position::Position;
+use vex_css::ComputedStyle;
 
 use crate::box_model::LayoutBox;
 
@@ -87,11 +87,7 @@ fn apply_relative(layout_box: &mut LayoutBox, style: Option<&ComputedStyle>) {
 }
 
 /// Absolute positioning: placed relative to the nearest positioned ancestor.
-fn apply_absolute(
-    layout_box: &mut LayoutBox,
-    style: Option<&ComputedStyle>,
-    containing: Rect,
-) {
+fn apply_absolute(layout_box: &mut LayoutBox, style: Option<&ComputedStyle>, containing: Rect) {
     let style = match style {
         Some(s) => s,
         None => return,
@@ -131,23 +127,21 @@ fn apply_absolute(
 
     // Auto width for absolute boxes: shrink-to-fit (use containing block width)
     if style.width.is_nan() && !style.left.is_nan() && !style.right.is_nan() {
-        let used = style.left + style.right + m.left + m.right + p.left + p.right + b.left + b.right;
+        let used =
+            style.left + style.right + m.left + m.right + p.left + p.right + b.left + b.right;
         layout_box.dimensions.content.size.width = (containing.size.width - used).max(0.0);
     }
 
     // Auto height
     if style.height.is_nan() && !style.top.is_nan() && !style.bottom.is_nan() {
-        let used = style.top + style.bottom + m.top + m.bottom + p.top + p.bottom + b.top + b.bottom;
+        let used =
+            style.top + style.bottom + m.top + m.bottom + p.top + p.bottom + b.top + b.bottom;
         layout_box.dimensions.content.size.height = (containing.size.height - used).max(0.0);
     }
 }
 
 /// Fixed positioning: placed relative to the viewport.
-fn apply_fixed(
-    layout_box: &mut LayoutBox,
-    style: Option<&ComputedStyle>,
-    viewport: Rect,
-) {
+fn apply_fixed(layout_box: &mut LayoutBox, style: Option<&ComputedStyle>, viewport: Rect) {
     // Fixed is the same as absolute, but relative to the viewport.
     apply_absolute(layout_box, style, viewport);
 }

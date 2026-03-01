@@ -13,18 +13,15 @@
 use std::collections::HashMap;
 
 use vex_core::VexId;
-use vex_css::ComputedStyle;
 use vex_css::values::display::Display;
-use vex_dom::{Document, NodeData};
+use vex_css::ComputedStyle;
 use vex_dom::traversal::Children;
+use vex_dom::{Document, NodeData};
 
 use crate::box_model::{BoxType, LayoutBox};
 
 /// Build the root layout box from a document and its computed styles.
-pub fn build_layout_tree(
-    document: &Document,
-    styles: &HashMap<VexId, ComputedStyle>,
-) -> LayoutBox {
+pub fn build_layout_tree(document: &Document, styles: &HashMap<VexId, ComputedStyle>) -> LayoutBox {
     let arena = document.arena();
 
     // Start from the root element (<html>), or the document root.
@@ -103,9 +100,13 @@ fn build_box_for_node(
             for child_id in Children::new(arena, node_id) {
                 let child = arena.get(child_id);
                 if let NodeData::Element(_) = &child.data {
-                    let d = styles.get(&child_id).map(|s| s.display).unwrap_or(Display::Inline);
+                    let d = styles
+                        .get(&child_id)
+                        .map(|s| s.display)
+                        .unwrap_or(Display::Inline);
                     if d != Display::None {
-                        root.children.push(build_box_for_node(child_id, arena, styles));
+                        root.children
+                            .push(build_box_for_node(child_id, arena, styles));
                     }
                 }
             }
@@ -123,7 +124,7 @@ fn display_to_box_type(display: Display) -> BoxType {
         Display::Flex => BoxType::Flex,
         Display::InlineFlex => BoxType::Flex,
         Display::Grid | Display::InlineGrid => BoxType::Block, // Grid → block for now
-        Display::None => BoxType::Block, // Shouldn't reach here
+        Display::None => BoxType::Block,                       // Shouldn't reach here
         Display::Contents => BoxType::Block,
         Display::TableRow | Display::TableCell => BoxType::Block,
     }
@@ -173,11 +174,7 @@ mod tests {
 
     fn build_test(html: &str) -> (Document, HashMap<VexId, ComputedStyle>) {
         let doc = vex_html::parse_html(html);
-        let styles = vex_css::compute_styles(
-            &doc,
-            &[],
-            vex_core::Size::new(1280.0, 720.0),
-        );
+        let styles = vex_css::compute_styles(&doc, &[], vex_core::Size::new(1280.0, 720.0));
         (doc, styles)
     }
 

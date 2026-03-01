@@ -3,9 +3,9 @@
 
 //! CSS property enum covering ~50 most common properties.
 
-use crate::values::*;
 use crate::values::box_model::{BoxSizing, Visibility};
 use crate::values::text::Cursor;
+use crate::values::*;
 
 /// A single CSS declaration (property + value).
 #[derive(Debug, Clone, PartialEq)]
@@ -198,16 +198,40 @@ pub fn parse_declaration(name: &str, value: &str) -> Vec<Property> {
 
     match name.as_str() {
         // Shorthands
-        "margin" => parse_shorthand_4(value, Property::MarginTop, Property::MarginRight, Property::MarginBottom, Property::MarginLeft),
-        "padding" => parse_shorthand_4(value, Property::PaddingTop, Property::PaddingRight, Property::PaddingBottom, Property::PaddingLeft),
-        "border-width" => parse_shorthand_4(value, Property::BorderTopWidth, Property::BorderRightWidth, Property::BorderBottomWidth, Property::BorderLeftWidth),
+        "margin" => parse_shorthand_4(
+            value,
+            Property::MarginTop,
+            Property::MarginRight,
+            Property::MarginBottom,
+            Property::MarginLeft,
+        ),
+        "padding" => parse_shorthand_4(
+            value,
+            Property::PaddingTop,
+            Property::PaddingRight,
+            Property::PaddingBottom,
+            Property::PaddingLeft,
+        ),
+        "border-width" => parse_shorthand_4(
+            value,
+            Property::BorderTopWidth,
+            Property::BorderRightWidth,
+            Property::BorderBottomWidth,
+            Property::BorderLeftWidth,
+        ),
         "border-style" => parse_border_style_shorthand(value),
         "border-color" => parse_border_color_shorthand(value),
         "border" => parse_border_shorthand(value),
 
         // Longhand properties
-        "display" => Display::parse(value).map(Property::Display).into_iter().collect(),
-        "position" => Position::parse(value).map(Property::Position).into_iter().collect(),
+        "display" => Display::parse(value)
+            .map(Property::Display)
+            .into_iter()
+            .collect(),
+        "position" => Position::parse(value)
+            .map(Property::Position)
+            .into_iter()
+            .collect(),
 
         "width" => parse_length_prop(value, Property::Width),
         "height" => parse_length_prop(value, Property::Height),
@@ -231,46 +255,147 @@ pub fn parse_declaration(name: &str, value: &str) -> Vec<Property> {
         "border-bottom-width" => parse_length_prop(value, Property::BorderBottomWidth),
         "border-left-width" => parse_length_prop(value, Property::BorderLeftWidth),
 
-        "border-top-style" => BorderStyle::parse(value).map(Property::BorderTopStyle).into_iter().collect(),
-        "border-right-style" => BorderStyle::parse(value).map(Property::BorderRightStyle).into_iter().collect(),
-        "border-bottom-style" => BorderStyle::parse(value).map(Property::BorderBottomStyle).into_iter().collect(),
-        "border-left-style" => BorderStyle::parse(value).map(Property::BorderLeftStyle).into_iter().collect(),
+        "border-top-style" => BorderStyle::parse(value)
+            .map(Property::BorderTopStyle)
+            .into_iter()
+            .collect(),
+        "border-right-style" => BorderStyle::parse(value)
+            .map(Property::BorderRightStyle)
+            .into_iter()
+            .collect(),
+        "border-bottom-style" => BorderStyle::parse(value)
+            .map(Property::BorderBottomStyle)
+            .into_iter()
+            .collect(),
+        "border-left-style" => BorderStyle::parse(value)
+            .map(Property::BorderLeftStyle)
+            .into_iter()
+            .collect(),
 
-        "border-top-color" => color::parse_color(value).map(Property::BorderTopColor).into_iter().collect(),
-        "border-right-color" => color::parse_color(value).map(Property::BorderRightColor).into_iter().collect(),
-        "border-bottom-color" => color::parse_color(value).map(Property::BorderBottomColor).into_iter().collect(),
-        "border-left-color" => color::parse_color(value).map(Property::BorderLeftColor).into_iter().collect(),
+        "border-top-color" => color::parse_color(value)
+            .map(Property::BorderTopColor)
+            .into_iter()
+            .collect(),
+        "border-right-color" => color::parse_color(value)
+            .map(Property::BorderRightColor)
+            .into_iter()
+            .collect(),
+        "border-bottom-color" => color::parse_color(value)
+            .map(Property::BorderBottomColor)
+            .into_iter()
+            .collect(),
+        "border-left-color" => color::parse_color(value)
+            .map(Property::BorderLeftColor)
+            .into_iter()
+            .collect(),
 
-        "color" => color::parse_color(value).map(Property::Color).into_iter().collect(),
-        "background-color" => color::parse_color(value).map(Property::BackgroundColor).into_iter().collect(),
+        "color" => color::parse_color(value)
+            .map(Property::Color)
+            .into_iter()
+            .collect(),
+        "background-color" => color::parse_color(value)
+            .map(Property::BackgroundColor)
+            .into_iter()
+            .collect(),
 
         "font-family" => vec![Property::FontFamily(FontFamily::parse(value))],
         "font-size" => parse_font_size(value),
-        "font-weight" => FontWeight::parse(value).map(Property::FontWeight).into_iter().collect(),
-        "font-style" => FontStyle::parse(value).map(Property::FontStyle).into_iter().collect(),
+        "font-weight" => FontWeight::parse(value)
+            .map(Property::FontWeight)
+            .into_iter()
+            .collect(),
+        "font-style" => FontStyle::parse(value)
+            .map(Property::FontStyle)
+            .into_iter()
+            .collect(),
         "line-height" => parse_length_prop(value, Property::LineHeight),
 
-        "text-align" => TextAlign::parse(value).map(Property::TextAlign).into_iter().collect(),
-        "text-decoration" => TextDecoration::parse(value).map(Property::TextDecoration).into_iter().collect(),
-        "white-space" => WhiteSpace::parse(value).map(Property::WhiteSpace).into_iter().collect(),
+        "text-align" => TextAlign::parse(value)
+            .map(Property::TextAlign)
+            .into_iter()
+            .collect(),
+        "text-decoration" => TextDecoration::parse(value)
+            .map(Property::TextDecoration)
+            .into_iter()
+            .collect(),
+        "white-space" => WhiteSpace::parse(value)
+            .map(Property::WhiteSpace)
+            .into_iter()
+            .collect(),
 
-        "opacity" => value.parse::<f32>().ok().map(|v| Property::Opacity(v.clamp(0.0, 1.0))).into_iter().collect(),
-        "overflow" => Overflow::parse(value).map(Property::Overflow).into_iter().collect(),
-        "overflow-x" => Overflow::parse(value).map(Property::OverflowX).into_iter().collect(),
-        "overflow-y" => Overflow::parse(value).map(Property::OverflowY).into_iter().collect(),
-        "visibility" => Visibility::parse(value).map(Property::Visibility).into_iter().collect(),
-        "cursor" => Cursor::parse(value).map(Property::Cursor).into_iter().collect(),
-        "box-sizing" => BoxSizing::parse(value).map(Property::BoxSizing).into_iter().collect(),
-        "z-index" => value.parse::<i32>().ok().map(Property::ZIndex).into_iter().collect(),
+        "opacity" => value
+            .parse::<f32>()
+            .ok()
+            .map(|v| Property::Opacity(v.clamp(0.0, 1.0)))
+            .into_iter()
+            .collect(),
+        "overflow" => Overflow::parse(value)
+            .map(Property::Overflow)
+            .into_iter()
+            .collect(),
+        "overflow-x" => Overflow::parse(value)
+            .map(Property::OverflowX)
+            .into_iter()
+            .collect(),
+        "overflow-y" => Overflow::parse(value)
+            .map(Property::OverflowY)
+            .into_iter()
+            .collect(),
+        "visibility" => Visibility::parse(value)
+            .map(Property::Visibility)
+            .into_iter()
+            .collect(),
+        "cursor" => Cursor::parse(value)
+            .map(Property::Cursor)
+            .into_iter()
+            .collect(),
+        "box-sizing" => BoxSizing::parse(value)
+            .map(Property::BoxSizing)
+            .into_iter()
+            .collect(),
+        "z-index" => value
+            .parse::<i32>()
+            .ok()
+            .map(Property::ZIndex)
+            .into_iter()
+            .collect(),
 
-        "flex-direction" => FlexDirection::parse(value).map(Property::FlexDirection).into_iter().collect(),
-        "flex-wrap" => FlexWrap::parse(value).map(Property::FlexWrap).into_iter().collect(),
-        "justify-content" => JustifyContent::parse(value).map(Property::JustifyContent).into_iter().collect(),
-        "align-items" => AlignItems::parse(value).map(Property::AlignItems).into_iter().collect(),
-        "align-self" => AlignSelf::parse(value).map(Property::AlignSelf).into_iter().collect(),
-        "align-content" => AlignContent::parse(value).map(Property::AlignContent).into_iter().collect(),
-        "flex-grow" => value.parse::<f32>().ok().map(Property::FlexGrow).into_iter().collect(),
-        "flex-shrink" => value.parse::<f32>().ok().map(Property::FlexShrink).into_iter().collect(),
+        "flex-direction" => FlexDirection::parse(value)
+            .map(Property::FlexDirection)
+            .into_iter()
+            .collect(),
+        "flex-wrap" => FlexWrap::parse(value)
+            .map(Property::FlexWrap)
+            .into_iter()
+            .collect(),
+        "justify-content" => JustifyContent::parse(value)
+            .map(Property::JustifyContent)
+            .into_iter()
+            .collect(),
+        "align-items" => AlignItems::parse(value)
+            .map(Property::AlignItems)
+            .into_iter()
+            .collect(),
+        "align-self" => AlignSelf::parse(value)
+            .map(Property::AlignSelf)
+            .into_iter()
+            .collect(),
+        "align-content" => AlignContent::parse(value)
+            .map(Property::AlignContent)
+            .into_iter()
+            .collect(),
+        "flex-grow" => value
+            .parse::<f32>()
+            .ok()
+            .map(Property::FlexGrow)
+            .into_iter()
+            .collect(),
+        "flex-shrink" => value
+            .parse::<f32>()
+            .ok()
+            .map(Property::FlexShrink)
+            .into_iter()
+            .collect(),
         "flex-basis" => parse_length_prop(value, Property::FlexBasis),
 
         "top" => parse_length_prop(value, Property::Top),
@@ -278,14 +403,20 @@ pub fn parse_declaration(name: &str, value: &str) -> Vec<Property> {
         "bottom" => parse_length_prop(value, Property::Bottom),
         "left" => parse_length_prop(value, Property::Left),
 
-        "vertical-align" => VerticalAlign::parse(value).map(Property::VerticalAlign).into_iter().collect(),
+        "vertical-align" => VerticalAlign::parse(value)
+            .map(Property::VerticalAlign)
+            .into_iter()
+            .collect(),
 
         _ => vec![], // Unknown property — ignore
     }
 }
 
 fn parse_length_prop(value: &str, constructor: fn(LengthValue) -> Property) -> Vec<Property> {
-    length::parse_length(value).map(constructor).into_iter().collect()
+    length::parse_length(value)
+        .map(constructor)
+        .into_iter()
+        .collect()
 }
 
 fn parse_font_size(value: &str) -> Vec<Property> {
@@ -314,13 +445,36 @@ fn parse_shorthand_4(
     left: fn(LengthValue) -> Property,
 ) -> Vec<Property> {
     let parts: Vec<&str> = value.split_whitespace().collect();
-    let lengths: Vec<LengthValue> = parts.iter().filter_map(|p| length::parse_length(p)).collect();
+    let lengths: Vec<LengthValue> = parts
+        .iter()
+        .filter_map(|p| length::parse_length(p))
+        .collect();
 
     match lengths.len() {
-        1 => vec![top(lengths[0].clone()), right(lengths[0].clone()), bottom(lengths[0].clone()), left(lengths[0].clone())],
-        2 => vec![top(lengths[0].clone()), right(lengths[1].clone()), bottom(lengths[0].clone()), left(lengths[1].clone())],
-        3 => vec![top(lengths[0].clone()), right(lengths[1].clone()), bottom(lengths[2].clone()), left(lengths[1].clone())],
-        4 => vec![top(lengths[0].clone()), right(lengths[1].clone()), bottom(lengths[2].clone()), left(lengths[3].clone())],
+        1 => vec![
+            top(lengths[0].clone()),
+            right(lengths[0].clone()),
+            bottom(lengths[0].clone()),
+            left(lengths[0].clone()),
+        ],
+        2 => vec![
+            top(lengths[0].clone()),
+            right(lengths[1].clone()),
+            bottom(lengths[0].clone()),
+            left(lengths[1].clone()),
+        ],
+        3 => vec![
+            top(lengths[0].clone()),
+            right(lengths[1].clone()),
+            bottom(lengths[2].clone()),
+            left(lengths[1].clone()),
+        ],
+        4 => vec![
+            top(lengths[0].clone()),
+            right(lengths[1].clone()),
+            bottom(lengths[2].clone()),
+            left(lengths[3].clone()),
+        ],
         _ => vec![],
     }
 }
@@ -330,8 +484,18 @@ fn parse_border_style_shorthand(value: &str) -> Vec<Property> {
     let styles: Vec<BorderStyle> = parts.iter().filter_map(|p| BorderStyle::parse(p)).collect();
 
     match styles.len() {
-        1 => vec![Property::BorderTopStyle(styles[0]), Property::BorderRightStyle(styles[0]), Property::BorderBottomStyle(styles[0]), Property::BorderLeftStyle(styles[0])],
-        4 => vec![Property::BorderTopStyle(styles[0]), Property::BorderRightStyle(styles[1]), Property::BorderBottomStyle(styles[2]), Property::BorderLeftStyle(styles[3])],
+        1 => vec![
+            Property::BorderTopStyle(styles[0]),
+            Property::BorderRightStyle(styles[0]),
+            Property::BorderBottomStyle(styles[0]),
+            Property::BorderLeftStyle(styles[0]),
+        ],
+        4 => vec![
+            Property::BorderTopStyle(styles[0]),
+            Property::BorderRightStyle(styles[1]),
+            Property::BorderBottomStyle(styles[2]),
+            Property::BorderLeftStyle(styles[3]),
+        ],
         _ => vec![],
     }
 }
@@ -339,12 +503,14 @@ fn parse_border_style_shorthand(value: &str) -> Vec<Property> {
 fn parse_border_color_shorthand(value: &str) -> Vec<Property> {
     // Just handle single value for now
     color::parse_color(value)
-        .map(|c| vec![
-            Property::BorderTopColor(c.clone()),
-            Property::BorderRightColor(c.clone()),
-            Property::BorderBottomColor(c.clone()),
-            Property::BorderLeftColor(c),
-        ])
+        .map(|c| {
+            vec![
+                Property::BorderTopColor(c.clone()),
+                Property::BorderRightColor(c.clone()),
+                Property::BorderBottomColor(c.clone()),
+                Property::BorderLeftColor(c),
+            ]
+        })
         .unwrap_or_default()
 }
 

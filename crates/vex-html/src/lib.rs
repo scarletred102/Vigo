@@ -8,10 +8,10 @@
 //! Wraps `html5ever` with a custom `TreeSink` that builds a `vex-dom` tree.
 //! Supports full document parsing and fragment parsing.
 
-mod sink;
 pub mod extract;
 pub mod incremental;
 pub mod parser;
+mod sink;
 
 pub use extract::{extract_scripts, extract_styles};
 pub use incremental::HtmlParser;

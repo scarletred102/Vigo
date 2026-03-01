@@ -39,14 +39,20 @@ pub fn estimate_specificity(selector: &str) -> Specificity {
                 chars.next();
                 ids += 1;
                 // Consume identifier
-                while chars.peek().is_some_and(|c| c.is_alphanumeric() || *c == '-' || *c == '_') {
+                while chars
+                    .peek()
+                    .is_some_and(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+                {
                     chars.next();
                 }
             }
             '.' => {
                 chars.next();
                 classes += 1;
-                while chars.peek().is_some_and(|c| c.is_alphanumeric() || *c == '-' || *c == '_') {
+                while chars
+                    .peek()
+                    .is_some_and(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+                {
                     chars.next();
                 }
             }
@@ -67,7 +73,10 @@ pub fn estimate_specificity(selector: &str) -> Specificity {
                     // Pseudo-class
                     classes += 1;
                 }
-                while chars.peek().is_some_and(|c| c.is_alphanumeric() || *c == '-') {
+                while chars
+                    .peek()
+                    .is_some_and(|c| c.is_alphanumeric() || *c == '-')
+                {
                     chars.next();
                 }
             }
@@ -76,7 +85,10 @@ pub fn estimate_specificity(selector: &str) -> Specificity {
             }
             _ if ch.is_alphabetic() => {
                 types += 1;
-                while chars.peek().is_some_and(|c| c.is_alphanumeric() || *c == '-' || *c == '_') {
+                while chars
+                    .peek()
+                    .is_some_and(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+                {
                     chars.next();
                 }
             }
@@ -119,7 +131,10 @@ mod tests {
 
     #[test]
     fn complex_selector() {
-        assert_eq!(estimate_specificity("div.foo > p.bar"), Specificity(0, 2, 2));
+        assert_eq!(
+            estimate_specificity("div.foo > p.bar"),
+            Specificity(0, 2, 2)
+        );
     }
 
     #[test]

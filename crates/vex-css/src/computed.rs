@@ -7,7 +7,9 @@ use vex_core::Color;
 
 use crate::values::box_model::{BorderStyle, BoxSizing, Visibility};
 use crate::values::display::Display;
-use crate::values::flex::{AlignContent, AlignItems, AlignSelf, FlexDirection, FlexWrap, JustifyContent};
+use crate::values::flex::{
+    AlignContent, AlignItems, AlignSelf, FlexDirection, FlexWrap, JustifyContent,
+};
 use crate::values::font::{FontFamily, FontStyle, FontWeight};
 use crate::values::position::Position;
 use crate::values::text::{Cursor, Overflow, TextAlign, TextDecoration, VerticalAlign, WhiteSpace};
@@ -148,7 +150,7 @@ impl Default for ComputedStyle {
             font_size: 16.0,
             font_weight: FontWeight::NORMAL,
             font_style: FontStyle::Normal,
-            line_height: 19.2,  // 1.2 * 16px
+            line_height: 19.2, // 1.2 * 16px
             text_align: TextAlign::Left,
             text_decoration: TextDecoration::None,
             white_space: WhiteSpace::Normal,

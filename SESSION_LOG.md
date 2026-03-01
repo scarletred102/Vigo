@@ -6,9 +6,9 @@
 
 ## Current State
 
-**Phase 0 ✅ — Phase 1 ✅ — Phase 2 ✅ — Phase 3 ✅ — Phase 4 (CSS) ✅ — Phase 5 (Layout) ✅ — Phase 6 (GPU Rendering) ✅**
+**Phase 0 ✅ — Phase 1 ✅ — Phase 2 ✅ — Phase 3 ✅ — Phase 4 (CSS) ✅ — Phase 5 (Layout) ✅ — Phase 6 (GPU Rendering) ✅ — Phase 7 (JavaScript) ✅**
 
-The full rendering pipeline is operational: parse HTML → build DOM → extract `<style>` → parse CSS → compute styles → lay out boxes → build display list → GPU render with text, rectangles, and borders. The app uses `include_str!("welcome.html")` to embed a styled welcome page that goes through the complete pipeline. Browser chrome (tab bar, address bar) is composited as a fixed overlay. Scroll offsets page content beneath chrome. Screenshot capture renders to offscreen textures for visual regression testing.
+The full rendering pipeline is operational: parse HTML → build DOM → extract `<style>` → parse CSS → compute styles → lay out boxes → build display list → GPU render with text, rectangles, and borders. JavaScript engine (Boa 0.19) runs inline/external/defer/async scripts with DOM manipulation, event handling, fetch API, timers, and form interaction. The app uses `include_str!("welcome.html")` to embed a styled welcome page that goes through the complete pipeline. Browser chrome (tab bar, address bar) is composited as a fixed overlay. Scroll offsets page content beneath chrome. Screenshot capture renders to offscreen textures for visual regression testing.
 
 ```bash
 cargo run -p vex-app                          # opens window + renders welcome.html via full pipeline
@@ -25,7 +25,7 @@ cd zig && zig build test                      # 22 Zig tests
 |-------|------:|-------|
 | vex-core | 39 | geometry, color, id, url, error |
 | vex-css | 89 | parser, selectors, cascade, computed styles |
-| vex-dom | 68 | arena tree, queries, serialize, iterators |
+| vex-dom | 103 | arena tree, queries, serialize, iterators, forms, text editing, form submission |
 | vex-html | 11 | html5ever parsing, fragments, malformed HTML |
 | vex-html (parse tests) | 17 | round-trip integration tests |
 | vex-html (parse bench) | 3 | 100KB, nested, attribute-heavy benchmarks |
@@ -35,8 +35,9 @@ cd zig && zig build test                      # 22 Zig tests
 | vex-net | 33 | client, cookies, dns, decompress, types |
 | vex-net (fetch) | 4 | `#[ignore]` — live HTTPS integration tests |
 | vex-privacy | 32 | tracking, adblock, HTTPS-only, headers |
-| vex-render | 47 | display list, painter, renderer, glyph atlas, image atlas, screenshot, scroll |
-| **Total** | **382 pass, 13 ignored** | 0 failures |
+| vex-render | 57 | display list, painter, renderer, glyph atlas, image atlas, screenshot, scroll, form painter |
+| vex-js | 67 | Boa context, console, timers, fetch, window, document, element, style proxy, events, GC roots, script runner, lifecycle |
+| **Total** | **~447 pass, 15 ignored** | 0 failures |
 | Zig | 22 | arena, pool, frame allocators |
 
 ---
@@ -50,13 +51,14 @@ cd zig && zig build test                      # 22 Zig tests
 | `vex-core` | **39 tests ✅** | Error types, geometry (Point/Size/Rect/Insets), Color (hex/css/named), VexId (arena index + allocator), VexUrl (url::Url wrapper) |
 | `vex-net` | **37 tests ✅** | HTTP/1.1+2 client (hyper+rustls), TLS 1.3, DNS/DoH (hickory), gzip/br/zstd decompression, cookie jar (domain/path/secure/expiry), redirect following (301-308), Request/Response/Method types |
 | `vex-privacy` | **31 tests ✅** | Tracking param stripper (50+ params), domain adblock engine (subdomain matching), HTTPS-only mode, header sanitization (X-Client-Data, Sec-Browsing-Topics, Attribution-Reporting), cross-origin referrer reduction |
-| `vex-dom` | **68 tests ✅** | Arena-allocated DOM tree (Document/Element/Text/Comment/Doctype), tree manipulation (append/insert/remove/reparent), depth-first/children/ancestor iterators, attribute map, query selectors (getElementById, getElementsByTagName/ClassName, querySelector/All), text_content, HTML serializer |
+| `vex-dom` | **103 tests ✅** | Arena-allocated DOM tree (Document/Element/Text/Comment/Doctype), tree manipulation (append/insert/remove/reparent), depth-first/children/ancestor iterators, attribute map, query selectors (getElementById, getElementsByTagName/ClassName, querySelector/All), text_content, HTML serializer, form element model (InputState/InputType/FormStateMap), text input editing (insert/delete/cursor/selection), form submission (collect data, URL-encode, build GET/POST requests) |
 | `vex-html` | **33 tests ✅** | html5ever TreeSink integration, full-document and fragment parsing, handles malformed HTML/entities/void elements/script raw text, live-page e2e test (example.com + httpbin.org), parse benchmarks (100KB, nested, attribute-heavy) |
 | `vex-css` | **89 tests ✅** | Tokenizer, parser (selectors + declarations), specificity, cascade engine, style computation (compute_styles → HashMap<VexId, ComputedStyle>), all CSS value types (length/color/display/position/overflow/flex), UA defaults, inheritance |
 | `vex-layout` | **48 tests ✅** | Block layout (width calc, margin collapsing, overflow clip), inline layout (line boxes, text-align), flex layout (grow/shrink, justify-content 6 values, align-items 5 values, wrap), text measurement (cosmic-text), positioned elements (relative/absolute/fixed), stacking contexts, layout pipeline (layout_document), debug dump, performance benchmarks |
-| `vex-render` | **47 tests ✅** | Display list (FillRect/DrawBorder/DrawText/DrawImage/PushClip/PopClip/PushOpacity/PopOpacity), painter (walks layout tree → display list, viewport culling, visibility/opacity), GPU renderer (rect + text pipelines, WGSL shaders rect/text/image, instanced drawing, batching, alpha blending), glyph atlas (shelf packing, cosmic-text rasterizer, LRU eviction), image atlas (4096×4096, shelf packing), image decoder (PNG/JPEG/WebP/GIF/BMP), screenshot (offscreen render to PNG, pixel_diff comparison), scroll state, Zig FFI (platform_ffi.rs), Window wrapper, Event enum, wgpu GPU context |
+| `vex-render` | **57 tests ✅** | Display list (FillRect/DrawBorder/DrawText/DrawImage/PushClip/PopClip/PushOpacity/PopOpacity), painter (walks layout tree → display list, viewport culling, visibility/opacity), GPU renderer (rect + text pipelines, WGSL shaders rect/text/image, instanced drawing, batching, alpha blending), glyph atlas (shelf packing, cosmic-text rasterizer, LRU eviction), image atlas (4096×4096, shelf packing), image decoder (PNG/JPEG/WebP/GIF/BMP), screenshot (offscreen render to PNG, pixel_diff comparison), scroll state, form control painter (text input, checkbox, radio, button, select, password masking), Zig FFI (platform_ffi.rs), Window wrapper, Event enum, wgpu GPU context |
 | `vex-app` | **Runs ✅** | Entry point binary. Parses embedded `welcome.html` through full pipeline (HTML→DOM→CSS→Layout→Display List), composites with browser chrome (tab bar, address bar, accent line), renders via Renderer with text + rect pipelines, scroll support, FPS counter |
-| Others | Stubs | `vex-js`, `vex-media`, `vex-storage`, `vex-security`, `vex-crypto`, `vex-sync`, `vex-browser` |
+| `vex-js` | **67 tests ✅** | Boa 0.19 JS engine (JsRuntime context, eval/execute), Console API (log/warn/error/info/debug → tracing), Timer API (setTimeout/setInterval/clearTimeout/clearInterval), Fetch API (Promise-based, delegates to vex-net), Window object (location/history/navigator/dimensions), Document proxy (getElementById/querySelector/createElement), Element proxy (getAttribute/setAttribute/appendChild/removeChild/insertBefore, textContent, innerHTML, className, style), Style proxy (getPropertyValue/setProperty/removeProperty, camelCase ↔ kebab-case), Event bridge (addEventListener/removeEventListener → DOM EventListenerMap, dispatch with JS callback invocation), GC root set (reference-counted VexId tracking), Script runner (ExecutionPlan: blocking/defer/async classification and ordered execution), Lifecycle events (DOMContentLoaded, load) |
+| Others | Stubs | `vex-media`, `vex-storage`, `vex-security`, `vex-crypto`, `vex-sync`, `vex-browser` |
 
 ### Zig Modules (5, under `zig/`)
 

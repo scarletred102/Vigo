@@ -81,7 +81,10 @@ impl<'a> selectors::Element for VexElement<'a> {
         let mut pid = self.arena.get(self.id).parent;
         while let Some(p) = pid {
             if matches!(self.arena.get(p).data, NodeData::Element(_)) {
-                return Some(Self { arena: self.arena, id: p });
+                return Some(Self {
+                    arena: self.arena,
+                    id: p,
+                });
             }
             pid = self.arena.get(p).parent;
         }
@@ -104,7 +107,10 @@ impl<'a> selectors::Element for VexElement<'a> {
         let mut sib = self.arena.get(self.id).prev_sibling;
         while let Some(s) = sib {
             if matches!(self.arena.get(s).data, NodeData::Element(_)) {
-                return Some(Self { arena: self.arena, id: s });
+                return Some(Self {
+                    arena: self.arena,
+                    id: s,
+                });
             }
             sib = self.arena.get(s).prev_sibling;
         }
@@ -115,7 +121,10 @@ impl<'a> selectors::Element for VexElement<'a> {
         let mut sib = self.arena.get(self.id).next_sibling;
         while let Some(s) = sib {
             if matches!(self.arena.get(s).data, NodeData::Element(_)) {
-                return Some(Self { arena: self.arena, id: s });
+                return Some(Self {
+                    arena: self.arena,
+                    id: s,
+                });
             }
             sib = self.arena.get(s).next_sibling;
         }
@@ -126,7 +135,10 @@ impl<'a> selectors::Element for VexElement<'a> {
         let mut child = self.arena.get(self.id).first_child;
         while let Some(c) = child {
             if matches!(self.arena.get(c).data, NodeData::Element(_)) {
-                return Some(Self { arena: self.arena, id: c });
+                return Some(Self {
+                    arena: self.arena,
+                    id: c,
+                });
             }
             child = self.arena.get(c).next_sibling;
         }
@@ -217,9 +229,10 @@ impl<'a> selectors::Element for VexElement<'a> {
     }
 
     fn has_id(&self, id: &VexIdentifier, case_sensitivity: CaseSensitivity) -> bool {
-        self.elem_data().attributes.iter().any(|a| {
-            a.name == "id" && case_sensitivity.eq(a.value.as_bytes(), id.0.as_bytes())
-        })
+        self.elem_data()
+            .attributes
+            .iter()
+            .any(|a| a.name == "id" && case_sensitivity.eq(a.value.as_bytes(), id.0.as_bytes()))
     }
 
     fn has_class(&self, name: &VexIdentifier, case_sensitivity: CaseSensitivity) -> bool {
@@ -245,12 +258,10 @@ impl<'a> selectors::Element for VexElement<'a> {
 
     fn is_empty(&self) -> bool {
         // Empty = no child elements and no non-zero-length text nodes.
-        Children::new(self.arena, self.id).all(|cid| {
-            match &self.arena.get(cid).data {
-                NodeData::Element(_) => false,
-                NodeData::Text(t) => t.is_empty(),
-                _ => true,
-            }
+        Children::new(self.arena, self.id).all(|cid| match &self.arena.get(cid).data {
+            NodeData::Element(_) => false,
+            NodeData::Text(t) => t.is_empty(),
+            _ => true,
         })
     }
 
@@ -263,8 +274,8 @@ impl<'a> selectors::Element for VexElement<'a> {
     }
 
     fn add_element_unique_hashes(&self, filter: &mut BloomFilter) -> bool {
+        use crate::selector_impl::{VexIdentifier, VexLocalName};
         use precomputed_hash::PrecomputedHash;
-        use crate::selector_impl::{VexLocalName, VexIdentifier};
 
         let el = self.elem_data();
         let name = VexLocalName(el.tag_name.clone());
@@ -364,8 +375,8 @@ pub fn query_selector(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{attributes, tree};
     use crate::node::{ElementData, Namespace, NodeData};
+    use crate::{attributes, tree};
 
     fn make_element(arena: &mut NodeArena, tag: &str) -> VexId {
         arena.alloc(NodeData::Element(ElementData {

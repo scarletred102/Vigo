@@ -14,8 +14,8 @@ use vex_core::geometry::{Insets, Point, Rect, Size};
 use vex_core::VexId;
 use vex_css::computed::ComputedStyle;
 use vex_css::values::box_model::{BorderStyle, Visibility};
-use vex_dom::Document;
 use vex_dom::node::NodeData;
+use vex_dom::Document;
 use vex_layout::LayoutBox;
 
 use crate::display_list::{DisplayCommand, DisplayList, RenderBorderStyle};
@@ -51,9 +51,7 @@ fn paint_box(
         return;
     }
 
-    let style = layout_box
-        .node_id
-        .and_then(|id| styles.get(&id));
+    let style = layout_box.node_id.and_then(|id| styles.get(&id));
 
     // Check visibility.
     if let Some(s) = style {
@@ -102,11 +100,7 @@ fn paint_box(
 }
 
 /// Paint the background color for a box.
-fn paint_background(
-    layout_box: &LayoutBox,
-    style: Option<&ComputedStyle>,
-    dl: &mut DisplayList,
-) {
+fn paint_background(layout_box: &LayoutBox, style: Option<&ComputedStyle>, dl: &mut DisplayList) {
     let bg_color = style.map_or(Color::TRANSPARENT, |s| s.background_color);
     if bg_color.a == 0 {
         return;
@@ -119,11 +113,7 @@ fn paint_background(
 }
 
 /// Paint borders if they have non-zero widths and visible styles.
-fn paint_borders(
-    layout_box: &LayoutBox,
-    style: Option<&ComputedStyle>,
-    dl: &mut DisplayList,
-) {
+fn paint_borders(layout_box: &LayoutBox, style: Option<&ComputedStyle>, dl: &mut DisplayList) {
     let s = match style {
         Some(s) => s,
         None => return,
@@ -137,11 +127,7 @@ fn paint_borders(
     );
 
     // Skip if all borders are zero.
-    if widths.top == 0.0
-        && widths.right == 0.0
-        && widths.bottom == 0.0
-        && widths.left == 0.0
-    {
+    if widths.top == 0.0 && widths.right == 0.0 && widths.bottom == 0.0 && widths.left == 0.0 {
         return;
     }
 
@@ -231,10 +217,12 @@ fn paint_children(
 /// Convert CSS border style to render border style.
 fn convert_border_style(css: BorderStyle) -> RenderBorderStyle {
     match css {
-        BorderStyle::Solid | BorderStyle::Double | BorderStyle::Groove
-        | BorderStyle::Ridge | BorderStyle::Inset | BorderStyle::Outset => {
-            RenderBorderStyle::Solid
-        }
+        BorderStyle::Solid
+        | BorderStyle::Double
+        | BorderStyle::Groove
+        | BorderStyle::Ridge
+        | BorderStyle::Inset
+        | BorderStyle::Outset => RenderBorderStyle::Solid,
         BorderStyle::Dashed => RenderBorderStyle::Dashed,
         BorderStyle::Dotted => RenderBorderStyle::Dotted,
         BorderStyle::None | BorderStyle::Hidden => RenderBorderStyle::None,
@@ -359,7 +347,10 @@ mod tests {
 
         let dl = build_display_list(&root, &styles, &doc, viewport);
         assert_eq!(dl.len(), 3); // PushOpacity + FillRect + PopOpacity
-        assert!(matches!(dl.commands()[0], DisplayCommand::PushOpacity { .. }));
+        assert!(matches!(
+            dl.commands()[0],
+            DisplayCommand::PushOpacity { .. }
+        ));
         assert!(matches!(dl.commands()[1], DisplayCommand::FillRect { .. }));
         assert!(matches!(dl.commands()[2], DisplayCommand::PopOpacity));
     }
@@ -380,7 +371,9 @@ mod tests {
 
         let dl = build_display_list(&root, &styles, &doc, viewport);
         assert!(
-            dl.commands().iter().any(|c| matches!(c, DisplayCommand::DrawBorder { .. })),
+            dl.commands()
+                .iter()
+                .any(|c| matches!(c, DisplayCommand::DrawBorder { .. })),
             "should emit DrawBorder for solid 2px border"
         );
     }

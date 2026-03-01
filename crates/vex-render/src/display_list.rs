@@ -38,10 +38,7 @@ pub enum RenderBorderStyle {
 #[derive(Debug, Clone)]
 pub enum DisplayCommand {
     /// Fill a rectangle with a solid color.
-    FillRect {
-        rect: Rect,
-        color: Color,
-    },
+    FillRect { rect: Rect, color: Color },
 
     /// Draw borders around a rectangle.
     DrawBorder {
@@ -61,23 +58,16 @@ pub enum DisplayCommand {
     },
 
     /// Draw a decoded image.
-    DrawImage {
-        rect: Rect,
-        image_id: ImageId,
-    },
+    DrawImage { rect: Rect, image_id: ImageId },
 
     /// Push a clipping rectangle (overflow: hidden).
-    PushClip {
-        rect: Rect,
-    },
+    PushClip { rect: Rect },
 
     /// Pop the most recent clipping rectangle.
     PopClip,
 
     /// Push an opacity layer.
-    PushOpacity {
-        opacity: f32,
-    },
+    PushOpacity { opacity: f32 },
 
     /// Pop the most recent opacity layer.
     PopOpacity,

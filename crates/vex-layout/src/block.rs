@@ -8,9 +8,9 @@
 use std::collections::HashMap;
 
 use vex_core::{Insets, VexId};
-use vex_css::ComputedStyle;
 use vex_css::values::box_model::BoxSizing;
 use vex_css::values::Overflow;
+use vex_css::ComputedStyle;
 
 use crate::box_model::{BoxType, LayoutBox};
 
@@ -116,19 +116,24 @@ fn calculate_block_width(
     }
 
     layout_box.dimensions.margin = Insets::new(
-        if style.margin_top.is_nan() { 0.0 } else { style.margin_top },
+        if style.margin_top.is_nan() {
+            0.0
+        } else {
+            style.margin_top
+        },
         used_mr,
-        if style.margin_bottom.is_nan() { 0.0 } else { style.margin_bottom },
+        if style.margin_bottom.is_nan() {
+            0.0
+        } else {
+            style.margin_bottom
+        },
         used_ml,
     );
     layout_box.dimensions.content.size.width = used_width;
 }
 
 /// Layout block children vertically, stacking them top-to-bottom.
-fn layout_block_children(
-    layout_box: &mut LayoutBox,
-    styles: &HashMap<VexId, ComputedStyle>,
-) {
+fn layout_block_children(layout_box: &mut LayoutBox, styles: &HashMap<VexId, ComputedStyle>) {
     let d = &layout_box.dimensions;
     let containing = ContainingBlock {
         width: d.content.size.width,
@@ -185,10 +190,7 @@ fn layout_block_children(
 }
 
 /// CSS 2.1 §10.6.3 — calculate the height of a block box.
-fn calculate_block_height(
-    layout_box: &mut LayoutBox,
-    styles: &HashMap<VexId, ComputedStyle>,
-) {
+fn calculate_block_height(layout_box: &mut LayoutBox, styles: &HashMap<VexId, ComputedStyle>) {
     let style = layout_box.node_id.and_then(|id| styles.get(&id));
 
     // Explicit height?
@@ -217,12 +219,12 @@ fn calculate_block_height(
 }
 
 /// Set a clip rect when overflow is hidden or scroll.
-fn apply_overflow_clip(
-    layout_box: &mut LayoutBox,
-    styles: &HashMap<VexId, ComputedStyle>,
-) {
+fn apply_overflow_clip(layout_box: &mut LayoutBox, styles: &HashMap<VexId, ComputedStyle>) {
     if let Some(style) = layout_box.node_id.and_then(|id| styles.get(&id)) {
-        if matches!(style.overflow, Overflow::Hidden | Overflow::Scroll | Overflow::Auto) {
+        if matches!(
+            style.overflow,
+            Overflow::Hidden | Overflow::Scroll | Overflow::Auto
+        ) {
             layout_box.clip_rect = Some(layout_box.dimensions.border_box());
         }
     }

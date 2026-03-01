@@ -23,9 +23,7 @@ fn run() {
     use vex_render::scroll::ScrollState;
     use vex_render::{Event, GpuContext, Window};
 
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     tracing::info!(
         "{} Engine v{} — Starting Vigo Browser",
@@ -130,10 +128,7 @@ fn run() {
 /// Run a full HTML → DOM → CSS → Layout → Display List pipeline on the
 /// built-in welcome page and return the resulting display list.
 #[cfg(target_os = "windows")]
-fn build_page_display_list(
-    vp_w: f32,
-    vp_h: f32,
-) -> vex_render::display_list::DisplayList {
+fn build_page_display_list(vp_w: f32, vp_h: f32) -> vex_render::display_list::DisplayList {
     use vex_core::Size;
 
     let html = include_str!("welcome.html");
@@ -236,32 +231,59 @@ fn offset_command(
 
     match cmd {
         DisplayCommand::FillRect { rect, color } => DisplayCommand::FillRect {
-            rect: Rect::new(rect.origin.x + dx, rect.origin.y + dy, rect.size.width, rect.size.height),
+            rect: Rect::new(
+                rect.origin.x + dx,
+                rect.origin.y + dy,
+                rect.size.width,
+                rect.size.height,
+            ),
             color: *color,
         },
-        DisplayCommand::DrawText { position, text, color, font_size, line_height } => {
-            DisplayCommand::DrawText {
-                position: Point::new(position.x + dx, position.y + dy),
-                text: text.clone(),
-                color: *color,
-                font_size: *font_size,
-                line_height: *line_height,
-            }
-        }
-        DisplayCommand::DrawBorder { rect, widths, colors, styles } => {
-            DisplayCommand::DrawBorder {
-                rect: Rect::new(rect.origin.x + dx, rect.origin.y + dy, rect.size.width, rect.size.height),
-                widths: *widths,
-                colors: *colors,
-                styles: *styles,
-            }
-        }
+        DisplayCommand::DrawText {
+            position,
+            text,
+            color,
+            font_size,
+            line_height,
+        } => DisplayCommand::DrawText {
+            position: Point::new(position.x + dx, position.y + dy),
+            text: text.clone(),
+            color: *color,
+            font_size: *font_size,
+            line_height: *line_height,
+        },
+        DisplayCommand::DrawBorder {
+            rect,
+            widths,
+            colors,
+            styles,
+        } => DisplayCommand::DrawBorder {
+            rect: Rect::new(
+                rect.origin.x + dx,
+                rect.origin.y + dy,
+                rect.size.width,
+                rect.size.height,
+            ),
+            widths: *widths,
+            colors: *colors,
+            styles: *styles,
+        },
         DisplayCommand::DrawImage { rect, image_id } => DisplayCommand::DrawImage {
-            rect: Rect::new(rect.origin.x + dx, rect.origin.y + dy, rect.size.width, rect.size.height),
+            rect: Rect::new(
+                rect.origin.x + dx,
+                rect.origin.y + dy,
+                rect.size.width,
+                rect.size.height,
+            ),
             image_id: *image_id,
         },
         DisplayCommand::PushClip { rect } => DisplayCommand::PushClip {
-            rect: Rect::new(rect.origin.x + dx, rect.origin.y + dy, rect.size.width, rect.size.height),
+            rect: Rect::new(
+                rect.origin.x + dx,
+                rect.origin.y + dy,
+                rect.size.width,
+                rect.size.height,
+            ),
         },
         // Commands without position stay unchanged.
         other => other.clone(),

@@ -72,11 +72,7 @@ impl Renderer {
     /// Create a new renderer for the given surface format.
     ///
     /// Loads system fonts and creates the glyph atlas GPU texture.
-    pub fn new(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        format: wgpu::TextureFormat,
-    ) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         // ── Viewport uniform (shared bind group 0) ──
         let viewport_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("viewport-uniform"),
@@ -112,7 +108,12 @@ impl Renderer {
 
         // ── Rect pipeline ──
         let rect_pipeline = create_rect_pipeline(device, &viewport_bgl, format);
-        let rect_buffer = create_instance_buffer(device, "rect-instances", INITIAL_MAX_RECTS, std::mem::size_of::<RectInstance>());
+        let rect_buffer = create_instance_buffer(
+            device,
+            "rect-instances",
+            INITIAL_MAX_RECTS,
+            std::mem::size_of::<RectInstance>(),
+        );
 
         // ── Glyph atlas + text pipeline ──
         let glyph_atlas = GlyphAtlas::new();
@@ -120,7 +121,11 @@ impl Renderer {
 
         let atlas_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("glyph-atlas"),
-            size: wgpu::Extent3d { width: aw, height: ah, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: aw,
+                height: ah,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -175,7 +180,12 @@ impl Renderer {
         });
 
         let text_pipeline = create_text_pipeline(device, &viewport_bgl, &texture_bgl, format);
-        let text_buffer = create_instance_buffer(device, "text-instances", INITIAL_MAX_GLYPHS, std::mem::size_of::<TextInstance>());
+        let text_buffer = create_instance_buffer(
+            device,
+            "text-instances",
+            INITIAL_MAX_GLYPHS,
+            std::mem::size_of::<TextInstance>(),
+        );
 
         // Upload initial (blank) glyph atlas texture.
         upload_atlas_texture(queue, &atlas_texture, &glyph_atlas);
@@ -183,7 +193,12 @@ impl Renderer {
         Self {
             viewport_buffer,
             viewport_bind_group,
-            clear_color: wgpu::Color { r: 0.08, g: 0.08, b: 0.12, a: 1.0 },
+            clear_color: wgpu::Color {
+                r: 0.08,
+                g: 0.08,
+                b: 0.12,
+                a: 1.0,
+            },
             rect_pipeline,
             rect_buffer,
             rect_capacity: INITIAL_MAX_RECTS,
@@ -227,7 +242,14 @@ impl Renderer {
         // ── Rect instances ──
         let rect_instances = collect_rect_instances(dl);
         self.rect_count = rect_instances.len() as u32;
-        upload_instances(device, queue, &rect_instances, &mut self.rect_buffer, &mut self.rect_capacity, "rect-instances");
+        upload_instances(
+            device,
+            queue,
+            &rect_instances,
+            &mut self.rect_buffer,
+            &mut self.rect_capacity,
+            "rect-instances",
+        );
 
         // ── Text instances — shape each DrawText through the glyph atlas ──
         self.glyph_atlas.begin_frame();
@@ -261,7 +283,14 @@ impl Renderer {
             }
         }
         self.text_count = text_instances.len() as u32;
-        upload_instances(device, queue, &text_instances, &mut self.text_buffer, &mut self.text_capacity, "text-instances");
+        upload_instances(
+            device,
+            queue,
+            &text_instances,
+            &mut self.text_buffer,
+            &mut self.text_capacity,
+            "text-instances",
+        );
 
         // Re-upload glyph atlas if new glyphs were rasterized.
         if self.glyph_atlas.is_dirty() {
@@ -279,11 +308,7 @@ impl Renderer {
     ///
     /// Creates a render pass, clears to the background color, draws
     /// rectangles, then text glyphs.
-    pub fn render(
-        &self,
-        encoder: &mut wgpu::CommandEncoder,
-        view: &wgpu::TextureView,
-    ) {
+    pub fn render(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("vex-render"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -338,8 +363,16 @@ fn create_rect_pipeline(
         array_stride: std::mem::size_of::<RectInstance>() as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Instance,
         attributes: &[
-            wgpu::VertexAttribute { offset: 0, shader_location: 0, format: wgpu::VertexFormat::Float32x4 },
-            wgpu::VertexAttribute { offset: 16, shader_location: 1, format: wgpu::VertexFormat::Float32x4 },
+            wgpu::VertexAttribute {
+                offset: 0,
+                shader_location: 0,
+                format: wgpu::VertexFormat::Float32x4,
+            },
+            wgpu::VertexAttribute {
+                offset: 16,
+                shader_location: 1,
+                format: wgpu::VertexFormat::Float32x4,
+            },
         ],
     };
 
@@ -394,9 +427,21 @@ fn create_text_pipeline(
         array_stride: std::mem::size_of::<TextInstance>() as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Instance,
         attributes: &[
-            wgpu::VertexAttribute { offset: 0, shader_location: 0, format: wgpu::VertexFormat::Float32x4 },
-            wgpu::VertexAttribute { offset: 16, shader_location: 1, format: wgpu::VertexFormat::Float32x4 },
-            wgpu::VertexAttribute { offset: 32, shader_location: 2, format: wgpu::VertexFormat::Float32x4 },
+            wgpu::VertexAttribute {
+                offset: 0,
+                shader_location: 0,
+                format: wgpu::VertexFormat::Float32x4,
+            },
+            wgpu::VertexAttribute {
+                offset: 16,
+                shader_location: 1,
+                format: wgpu::VertexFormat::Float32x4,
+            },
+            wgpu::VertexAttribute {
+                offset: 32,
+                shader_location: 2,
+                format: wgpu::VertexFormat::Float32x4,
+            },
         ],
     };
 
@@ -465,11 +510,7 @@ fn upload_instances<T: bytemuck::Pod>(
     queue.write_buffer(buffer, 0, bytemuck::cast_slice(data));
 }
 
-fn upload_atlas_texture(
-    queue: &wgpu::Queue,
-    texture: &wgpu::Texture,
-    atlas: &GlyphAtlas,
-) {
+fn upload_atlas_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, atlas: &GlyphAtlas) {
     let (w, h) = atlas.dimensions();
     queue.write_texture(
         wgpu::ImageCopyTexture {
@@ -484,7 +525,11 @@ fn upload_atlas_texture(
             bytes_per_row: Some(w),
             rows_per_image: Some(h),
         },
-        wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
     );
 }
 
@@ -496,7 +541,12 @@ fn collect_rect_instances(dl: &DisplayList) -> Vec<RectInstance> {
         match cmd {
             DisplayCommand::FillRect { rect, color } => {
                 instances.push(RectInstance {
-                    rect: [rect.origin.x, rect.origin.y, rect.size.width, rect.size.height],
+                    rect: [
+                        rect.origin.x,
+                        rect.origin.y,
+                        rect.size.width,
+                        rect.size.height,
+                    ],
                     color: color.to_f32_array(),
                 });
             }
@@ -641,6 +691,9 @@ mod tests {
         dl.push(DisplayCommand::PopClip);
 
         let instances = collect_rect_instances(&dl);
-        assert!(instances.is_empty(), "non-rect commands produce no instances");
+        assert!(
+            instances.is_empty(),
+            "non-rect commands produce no instances"
+        );
     }
 }

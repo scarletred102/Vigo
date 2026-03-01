@@ -18,9 +18,7 @@ pub struct NodeArena {
 
 impl NodeArena {
     pub fn new() -> Self {
-        Self {
-            nodes: Vec::new(),
-        }
+        Self { nodes: Vec::new() }
     }
 
     /// Allocate a new node and return its id.

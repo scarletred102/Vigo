@@ -565,10 +565,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P7.1.1 | **JS context** — Create `crates/vex-js/src/context.rs`. `JsRuntime` struct wrapping `boa_engine::Context`. Constructor creates context with default built-ins. Method: `execute(script: &str) -> VexResult<JsValue>` — parses and executes JS string, returns result or error. Write 3 tests: arithmetic, string concat, error handling. | `context.rs` + tests | ⬜ |
-| P7.1.2 | **Console API** — Create `crates/vex-js/src/api/console.rs`. Register `console` global object with methods: `log(...)`, `warn(...)`, `error(...)`, `info(...)`, `debug(...)`. Each formats arguments and sends to `tracing`. Register on context at construction. Write 3 tests: console.log format, multiple args, non-string args. | `console.rs` + tests | ⬜ |
-| P7.1.3 | **Timer API** — Create `crates/vex-js/src/api/timers.rs`. Register global functions: `setTimeout(callback, delay)`, `setInterval(callback, delay)`, `clearTimeout(id)`, `clearInterval(id)`. Store pending timers in a `BTreeMap<Instant, TimerEntry>`. In the event loop, check for expired timers and invoke callbacks. Write 3 tests: setTimeout fires, clearTimeout cancels, setInterval repeats. | `timers.rs` + tests | ⬜ |
-| P7.1.4 | **Fetch API** — Create `crates/vex-js/src/api/fetch.rs`. Register global `fetch(url, options?)` function that returns a Promise. Internally calls `vex-net::HttpClient::fetch()`. The Promise resolves with a `Response` object that has `.text()`, `.json()`, `.status`, `.ok`, `.headers`. Write 2 tests: fetch returns text, fetch returns JSON. | `fetch.rs` + tests | ⬜ |
+| P7.1.1 | **JS context** — Create `crates/vex-js/src/context.rs`. `JsRuntime` struct wrapping `boa_engine::Context`. Constructor creates context with default built-ins. Method: `execute(script: &str) -> VexResult<JsValue>` — parses and executes JS string, returns result or error. Write 3 tests: arithmetic, string concat, error handling. | `context.rs` + tests | ✅ |
+| P7.1.2 | **Console API** — Create `crates/vex-js/src/api/console.rs`. Register `console` global object with methods: `log(...)`, `warn(...)`, `error(...)`, `info(...)`, `debug(...)`. Each formats arguments and sends to `tracing`. Register on context at construction. Write 3 tests: console.log format, multiple args, non-string args. | `console.rs` + tests | ✅ |
+| P7.1.3 | **Timer API** — Create `crates/vex-js/src/api/timers.rs`. Register global functions: `setTimeout(callback, delay)`, `setInterval(callback, delay)`, `clearTimeout(id)`, `clearInterval(id)`. Store pending timers in a `BTreeMap<Instant, TimerEntry>`. In the event loop, check for expired timers and invoke callbacks. Write 3 tests: setTimeout fires, clearTimeout cancels, setInterval repeats. | `timers.rs` + tests | ✅ |
+| P7.1.4 | **Fetch API** — Create `crates/vex-js/src/api/fetch.rs`. Register global `fetch(url, options?)` function that returns a Promise. Internally calls `vex-net::HttpClient::fetch()`. The Promise resolves with a `Response` object that has `.text()`, `.json()`, `.status`, `.ok`, `.headers`. Write 2 tests: fetch returns text, fetch returns JSON. | `fetch.rs` + tests | ✅ |
 
 ---
 
@@ -576,12 +576,12 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P7.2.1 | **Window object** — Create `crates/vex-js/src/api/window.rs`. Register `window` global with properties: `location` (object with `href`, `origin`, `pathname`, `search`, `hash`, `assign(url)`, `reload()`), `history` (object with `back()`, `forward()`, `pushState(state, title, url)`), `navigator` (object with `userAgent`), `innerWidth`, `innerHeight`. | `window.rs` | ⬜ |
-| P7.2.2 | **Document object** — Create `crates/vex-js/src/api/document.rs`. Register `document` global with methods: `getElementById(id)`, `querySelector(sel)`, `querySelectorAll(sel)`, `createElement(tag)`, `createTextNode(text)`, `createDocumentFragment()`. Each returns a JS object proxy wrapping a `VexId`. The proxy delegates property access to the Rust DOM. | `document.rs` | ⬜ |
-| P7.2.3 | **Element proxy** — Create `crates/vex-js/src/api/element.rs`. When a DOM element is exposed to JS, create a proxy object with: properties (`tagName`, `id`, `className`, `innerHTML`, `textContent`, `children`, `parentElement`, `style`), methods (`getAttribute(name)`, `setAttribute(name, value)`, `removeAttribute(name)`, `appendChild(child)`, `removeChild(child)`, `insertBefore(newNode, refNode)`, `addEventListener(type, callback, options?)`, `removeEventListener(type, callback)`, `classList.add/remove/toggle/contains`). Each property/method reads/writes the Rust DOM via the shared `Document`. | `element.rs` | ⬜ |
-| P7.2.4 | **Style proxy** — Create `crates/vex-js/src/api/style_proxy.rs`. The `element.style` property returns an object where getting/setting properties (e.g., `el.style.color = 'red'`) reads/writes the element's inline style attribute. Triggers re-style/re-layout. | `style_proxy.rs` | ⬜ |
-| P7.2.5 | **Event bridge** — Create `crates/vex-js/src/api/events.rs`. When `addEventListener` is called from JS, store the callback as a `JsValue` (Boa GC-rooted) and register it in the DOM event listener map with a callback ID. When `dispatch_event` fires in the Rust DOM and reaches a JS callback ID, invoke the JS callback with an `Event` proxy object (containing `type`, `target`, `currentTarget`, `preventDefault()`, `stopPropagation()`). Write 3 tests: click handler fires, event properties accessible, preventDefault works. | `events.rs` + tests | ⬜ |
-| P7.2.6 | **GC rooting** — Ensure DOM nodes referenced by JS are not dropped. When a JS proxy references a `VexId`, add it to a `GcRootSet<VexId>`. The DOM arena never frees nodes in the root set. When JS GC collects the proxy, remove from root set. | GC integration | ⬜ |
+| P7.2.1 | **Window object** — Create `crates/vex-js/src/api/window.rs`. Register `window` global with properties: `location` (object with `href`, `origin`, `pathname`, `search`, `hash`, `assign(url)`, `reload()`), `history` (object with `back()`, `forward()`, `pushState(state, title, url)`), `navigator` (object with `userAgent`), `innerWidth`, `innerHeight`. | `window.rs` | ✅ |
+| P7.2.2 | **Document object** — Create `crates/vex-js/src/api/document.rs`. Register `document` global with methods: `getElementById(id)`, `querySelector(sel)`, `querySelectorAll(sel)`, `createElement(tag)`, `createTextNode(text)`, `createDocumentFragment()`. Each returns a JS object proxy wrapping a `VexId`. The proxy delegates property access to the Rust DOM. | `document.rs` | ✅ |
+| P7.2.3 | **Element proxy** — Create `crates/vex-js/src/api/element.rs`. When a DOM element is exposed to JS, create a proxy object with: properties (`tagName`, `id`, `className`, `innerHTML`, `textContent`, `children`, `parentElement`, `style`), methods (`getAttribute(name)`, `setAttribute(name, value)`, `removeAttribute(name)`, `appendChild(child)`, `removeChild(child)`, `insertBefore(newNode, refNode)`, `addEventListener(type, callback, options?)`, `removeEventListener(type, callback)`, `classList.add/remove/toggle/contains`). Each property/method reads/writes the Rust DOM via the shared `Document`. | `element.rs` | ✅ |
+| P7.2.4 | **Style proxy** — Create `crates/vex-js/src/api/style_proxy.rs`. The `element.style` property returns an object where getting/setting properties (e.g., `el.style.color = 'red'`) reads/writes the element's inline style attribute. Triggers re-style/re-layout. | `style_proxy.rs` | ✅ |
+| P7.2.5 | **Event bridge** — Create `crates/vex-js/src/api/events.rs`. When `addEventListener` is called from JS, store the callback as a `JsValue` (Boa GC-rooted) and register it in the DOM event listener map with a callback ID. When `dispatch_event` fires in the Rust DOM and reaches a JS callback ID, invoke the JS callback with an `Event` proxy object (containing `type`, `target`, `currentTarget`, `preventDefault()`, `stopPropagation()`). Write 3 tests: click handler fires, event properties accessible, preventDefault works. | `events.rs` + tests | ✅ |
+| P7.2.6 | **GC rooting** — Ensure DOM nodes referenced by JS are not dropped. When a JS proxy references a `VexId`, add it to a `GcRootSet<VexId>`. The DOM arena never frees nodes in the root set. When JS GC collects the proxy, remove from root set. | GC integration | ✅ |
 
 ---
 
@@ -589,11 +589,11 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P7.3.1 | **Script discovery** — After HTML parsing, collect all `<script>` elements. Classify: inline (has text content, no `src`) vs external (has `src` attribute). Record `defer` and `async` flags. | Script collection | ⬜ |
-| P7.3.2 | **Blocking scripts** — For inline scripts and external scripts without `defer`/`async`: fetch external source (via `vex-net`), execute synchronously (block parsing/rendering until complete). Execute in document order. | Blocking execution | ⬜ |
-| P7.3.3 | **Defer scripts** — For `<script defer>`: fetch in parallel during parsing. Execute all in document order after DOM is fully built, before `DOMContentLoaded`. | Defer execution | ⬜ |
-| P7.3.4 | **Async scripts** — For `<script async>`: fetch in parallel. Execute as soon as downloaded, regardless of document order. | Async execution | ⬜ |
-| P7.3.5 | **DOMContentLoaded & load events** — Fire `DOMContentLoaded` after DOM + all defer scripts are done. Fire `load` after all resources (images, styles, deferred scripts) are loaded. | Lifecycle events | ⬜ |
+| P7.3.1 | **Script discovery** — After HTML parsing, collect all `<script>` elements. Classify: inline (has text content, no `src`) vs external (has `src` attribute). Record `defer` and `async` flags. | Script collection | ✅ |
+| P7.3.2 | **Blocking scripts** — For inline scripts and external scripts without `defer`/`async`: fetch external source (via `vex-net`), execute synchronously (block parsing/rendering until complete). Execute in document order. | Blocking execution | ✅ |
+| P7.3.3 | **Defer scripts** — For `<script defer>`: fetch in parallel during parsing. Execute all in document order after DOM is fully built, before `DOMContentLoaded`. | Defer execution | ✅ |
+| P7.3.4 | **Async scripts** — For `<script async>`: fetch in parallel. Execute as soon as downloaded, regardless of document order. | Async execution | ✅ |
+| P7.3.5 | **DOMContentLoaded & load events** — Fire `DOMContentLoaded` after DOM + all defer scripts are done. Fire `load` after all resources (images, styles, deferred scripts) are loaded. | Lifecycle events | ✅ |
 
 ---
 
@@ -601,10 +601,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P7.4.1 | **Input element model** — Create `crates/vex-dom/src/forms.rs`. Define `InputState { value: String, selection_start: usize, selection_end: usize, checked: bool }`. Attach to `<input>`, `<textarea>`, `<select>` elements. | `forms.rs` | ⬜ |
-| P7.4.2 | **Text input editing** — Handle keyboard events on focused input: insert character at cursor, delete/backspace, arrow keys to move cursor, Ctrl+A select all, Ctrl+C/V copy/paste (via platform clipboard API). Fire `input` and `change` DOM events. | Text editing | ⬜ |
-| P7.4.3 | **Form submission** — On `<form>` submit (button click or Enter key): collect all `<input>` values within the form. Build URL-encoded body (for POST) or query string (for GET). Navigate to form `action` URL with the data. Fire `submit` DOM event (cancellable). | Form submission | ⬜ |
-| P7.4.4 | **Input rendering** — In the layout/render pipeline: `<input type="text">` renders as a box with text + cursor. `<input type="checkbox">` renders as a checkmark box. `<input type="radio">` renders as a circle. `<button>` renders as a styled box with text content. `<select>` renders as a dropdown (stub — button with popup). | Input rendering | ⬜ |
+| P7.4.1 | **Input element model** — Create `crates/vex-dom/src/forms.rs`. Define `InputState { value: String, selection_start: usize, selection_end: usize, checked: bool }`. Attach to `<input>`, `<textarea>`, `<select>` elements. | `forms.rs` | ✅ |
+| P7.4.2 | **Text input editing** — Handle keyboard events on focused input: insert character at cursor, delete/backspace, arrow keys to move cursor, Ctrl+A select all, Ctrl+C/V copy/paste (via platform clipboard API). Fire `input` and `change` DOM events. | Text editing | ✅ |
+| P7.4.3 | **Form submission** — On `<form>` submit (button click or Enter key): collect all `<input>` values within the form. Build URL-encoded body (for POST) or query string (for GET). Navigate to form `action` URL with the data. Fire `submit` DOM event (cancellable). | Form submission | ✅ |
+| P7.4.4 | **Input rendering** — In the layout/render pipeline: `<input type="text">` renders as a box with text + cursor. `<input type="checkbox">` renders as a checkmark box. `<input type="radio">` renders as a circle. `<button>` renders as a styled box with text content. `<select>` renders as a dropdown (stub — button with popup). | Input rendering | ✅ |
 
 ---
 ---

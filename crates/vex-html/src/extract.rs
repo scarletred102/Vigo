@@ -5,9 +5,9 @@
 //! from a parsed DOM tree.
 
 use vex_core::VexId;
-use vex_dom::{Document, NodeData};
 use vex_dom::attributes::get_attribute;
 use vex_dom::traversal::Descendants;
+use vex_dom::{Document, NodeData};
 
 /// Information about a `<script>` element.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,10 +30,7 @@ pub struct ScriptInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StyleInfo {
     /// An inline `<style>` element.
-    Inline {
-        node_id: VexId,
-        content: String,
-    },
+    Inline { node_id: VexId, content: String },
     /// An external `<link rel="stylesheet">`.
     External {
         node_id: VexId,
@@ -57,7 +54,11 @@ pub fn extract_scripts(doc: &Document) -> Vec<ScriptInfo> {
 
                 let inline_content = if src.is_none() {
                     let text = doc.text_content(nid);
-                    if text.is_empty() { None } else { Some(text) }
+                    if text.is_empty() {
+                        None
+                    } else {
+                        Some(text)
+                    }
                 } else {
                     None
                 };
@@ -124,7 +125,8 @@ mod tests {
 
     #[test]
     fn extract_inline_script() {
-        let doc = parse_html(r#"<html><head><script>alert("hi")</script></head><body></body></html>"#);
+        let doc =
+            parse_html(r#"<html><head><script>alert("hi")</script></head><body></body></html>"#);
         let scripts = extract_scripts(&doc);
         assert_eq!(scripts.len(), 1);
         assert!(scripts[0].src.is_none());
@@ -133,7 +135,9 @@ mod tests {
 
     #[test]
     fn extract_external_script() {
-        let doc = parse_html(r#"<html><head><script src="/app.js" defer></script></head><body></body></html>"#);
+        let doc = parse_html(
+            r#"<html><head><script src="/app.js" defer></script></head><body></body></html>"#,
+        );
         let scripts = extract_scripts(&doc);
         assert_eq!(scripts.len(), 1);
         assert_eq!(scripts[0].src.as_deref(), Some("/app.js"));
@@ -152,7 +156,9 @@ mod tests {
 
     #[test]
     fn extract_inline_style() {
-        let doc = parse_html(r#"<html><head><style>body { margin: 0; }</style></head><body></body></html>"#);
+        let doc = parse_html(
+            r#"<html><head><style>body { margin: 0; }</style></head><body></body></html>"#,
+        );
         let styles = extract_styles(&doc);
         assert_eq!(styles.len(), 1);
         match &styles[0] {
@@ -165,7 +171,9 @@ mod tests {
 
     #[test]
     fn extract_external_stylesheet() {
-        let doc = parse_html(r#"<html><head><link rel="stylesheet" href="/style.css" media="screen"></head><body></body></html>"#);
+        let doc = parse_html(
+            r#"<html><head><link rel="stylesheet" href="/style.css" media="screen"></head><body></body></html>"#,
+        );
         let styles = extract_styles(&doc);
         assert_eq!(styles.len(), 1);
         match &styles[0] {
@@ -186,7 +194,8 @@ mod tests {
 
     #[test]
     fn multiple_scripts_and_styles() {
-        let doc = parse_html(r#"
+        let doc = parse_html(
+            r#"
             <html>
             <head>
                 <script src="/a.js"></script>
@@ -197,7 +206,8 @@ mod tests {
                 <script>console.log("hi")</script>
             </body>
             </html>
-        "#);
+        "#,
+        );
         assert_eq!(extract_scripts(&doc).len(), 2);
         assert_eq!(extract_styles(&doc).len(), 2);
     }

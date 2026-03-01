@@ -88,7 +88,13 @@ impl HttpCache {
     /// Store a response in the cache.
     ///
     /// Parses Cache-Control headers. If `no-store`, the response is **not** cached.
-    pub fn store(&mut self, url: &VexUrl, status: u16, headers: &HashMap<String, String>, body: &[u8]) {
+    pub fn store(
+        &mut self,
+        url: &VexUrl,
+        status: u16,
+        headers: &HashMap<String, String>,
+        body: &[u8],
+    ) {
         let cc = headers
             .get("cache-control")
             .map(|h| parse_cache_control(h))
@@ -153,7 +159,10 @@ mod tests {
     }
 
     fn test_headers(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     #[test]
@@ -222,10 +231,7 @@ mod tests {
     fn etag_extraction() {
         let mut cache = HttpCache::new();
         let url = test_url("https://example.com/res");
-        let headers = test_headers(&[
-            ("cache-control", "max-age=60"),
-            ("etag", "\"abc123\""),
-        ]);
+        let headers = test_headers(&[("cache-control", "max-age=60"), ("etag", "\"abc123\"")]);
 
         cache.store(&url, 200, &headers, b"data");
         let entry = cache.get(&url).unwrap();

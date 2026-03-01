@@ -50,7 +50,10 @@ impl EventListenerMap {
             .or_default();
 
         // Avoid duplicates (same callback_id + capture combination)
-        if !listeners.iter().any(|l| l.callback_id == callback_id && l.capture == capture) {
+        if !listeners
+            .iter()
+            .any(|l| l.callback_id == callback_id && l.capture == capture)
+        {
             listeners.push(EventListener {
                 callback_id,
                 capture,
