@@ -6,6 +6,7 @@
 pub mod console;
 pub mod document;
 pub mod element;
+pub mod eme;
 pub mod events;
 pub mod fetch;
 pub mod style_proxy;

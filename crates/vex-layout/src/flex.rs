@@ -511,10 +511,12 @@ mod tests {
     ) -> (VexId, LayoutBox, ComputedStyle) {
         let vid = VexId::new(id);
         let b = LayoutBox::new(Some(vid), BoxType::Block);
-        let mut s = ComputedStyle::default();
-        s.flex_basis = basis;
-        s.flex_grow = grow;
-        s.flex_shrink = shrink;
+        let s = ComputedStyle {
+            flex_basis: basis,
+            flex_grow: grow,
+            flex_shrink: shrink,
+            ..Default::default()
+        };
         (vid, b, s)
     }
 

@@ -102,12 +102,9 @@ mod tests {
         ctx.eval(Source::from_bytes("var dcl_fired = false;"))
             .unwrap();
         let func_val = ctx
-            .eval(Source::from_bytes(
-                "(function(e) { dcl_fired = true; })",
-            ))
+            .eval(Source::from_bytes("(function(e) { dcl_fired = true; })"))
             .unwrap();
-        let func =
-            JsFunction::from_object(func_val.as_object().unwrap().clone()).unwrap();
+        let func = JsFunction::from_object(func_val.as_object().unwrap().clone()).unwrap();
 
         register_listener(
             &callbacks,
@@ -137,17 +134,9 @@ mod tests {
         let func_val = ctx
             .eval(Source::from_bytes("(function(e) { load_fired = true; })"))
             .unwrap();
-        let func =
-            JsFunction::from_object(func_val.as_object().unwrap().clone()).unwrap();
+        let func = JsFunction::from_object(func_val.as_object().unwrap().clone()).unwrap();
 
-        register_listener(
-            &callbacks,
-            &listeners,
-            root,
-            EventType::Load,
-            func,
-            false,
-        );
+        register_listener(&callbacks, &listeners, root, EventType::Load, func, false);
 
         let prevented = fire_load(&shared, &listeners, &callbacks, &mut ctx);
         assert!(!prevented);
@@ -170,13 +159,10 @@ mod tests {
                 "(function(e) { order.push('DOMContentLoaded'); })",
             ))
             .unwrap();
-        let dcl_func =
-            JsFunction::from_object(dcl_func_val.as_object().unwrap().clone()).unwrap();
+        let dcl_func = JsFunction::from_object(dcl_func_val.as_object().unwrap().clone()).unwrap();
 
         let load_func_val = ctx
-            .eval(Source::from_bytes(
-                "(function(e) { order.push('load'); })",
-            ))
+            .eval(Source::from_bytes("(function(e) { order.push('load'); })"))
             .unwrap();
         let load_func =
             JsFunction::from_object(load_func_val.as_object().unwrap().clone()).unwrap();

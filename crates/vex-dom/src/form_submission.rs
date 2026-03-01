@@ -182,13 +182,7 @@ pub fn collect_form_data(
 pub fn encode_form_data(entries: &[FormEntry]) -> String {
     entries
         .iter()
-        .map(|e| {
-            format!(
-                "{}={}",
-                url_encode(&e.name),
-                url_encode(&e.value),
-            )
-        })
+        .map(|e| format!("{}={}", url_encode(&e.name), url_encode(&e.value),))
         .collect::<Vec<_>>()
         .join("&")
 }

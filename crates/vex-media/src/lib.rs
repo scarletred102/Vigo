@@ -7,3 +7,13 @@
 //!
 //! Audio/video decoding (via Zig/ffmpeg FFI), DASH/HLS streaming,
 //! adaptive bitrate, A/V synchronization, picture-in-picture.
+
+pub mod abr;
+pub mod controls;
+pub mod dash;
+pub mod hls;
+pub mod media_element;
+pub mod media_loading;
+pub mod pip;
+pub mod sync;
+pub mod video_render;

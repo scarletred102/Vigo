@@ -124,9 +124,7 @@ pub fn register(doc: &SharedDocument, context: &mut Context) {
         NativeFunction::from_closure(move |_this, args, ctx| {
             let text = args
                 .first()
-                .ok_or_else(|| {
-                    JsNativeError::typ().with_message("createTextNode requires text")
-                })?
+                .ok_or_else(|| JsNativeError::typ().with_message("createTextNode requires text"))?
                 .to_string(ctx)?
                 .to_std_string_escaped();
 
@@ -138,10 +136,7 @@ pub fn register(doc: &SharedDocument, context: &mut Context) {
     // --- body (getter) ---
     let body_val = {
         let doc_ref = doc_body.borrow();
-        let body_id = doc_ref
-            .get_elements_by_tag_name("body")
-            .into_iter()
-            .next();
+        let body_id = doc_ref.get_elements_by_tag_name("body").into_iter().next();
         match body_id {
             Some(id) => {
                 drop(doc_ref);
@@ -165,7 +160,11 @@ pub fn register(doc: &SharedDocument, context: &mut Context) {
 
     let document = ObjectInitializer::new(context)
         .property(js_string!("body"), body_val, Attribute::CONFIGURABLE)
-        .property(js_string!("documentElement"), doc_el_val, Attribute::CONFIGURABLE)
+        .property(
+            js_string!("documentElement"),
+            doc_el_val,
+            Attribute::CONFIGURABLE,
+        )
         .function(get_element_by_id, js_string!("getElementById"), 1)
         .function(query_selector, js_string!("querySelector"), 1)
         .function(query_selector_all, js_string!("querySelectorAll"), 1)
@@ -225,9 +224,7 @@ mod tests {
             .eval(Source::from_bytes("document.getElementById('main')"))
             .unwrap();
         let obj = result.as_object().unwrap();
-        let tag = obj
-            .get(js_string!("tagName"), &mut ctx)
-            .unwrap();
+        let tag = obj.get(js_string!("tagName"), &mut ctx).unwrap();
         assert_eq!(tag.as_string().unwrap().to_std_string_escaped(), "DIV");
     }
 
@@ -247,9 +244,7 @@ mod tests {
             .eval(Source::from_bytes("document.querySelector('.text')"))
             .unwrap();
         let obj = result.as_object().unwrap();
-        let tag = obj
-            .get(js_string!("tagName"), &mut ctx)
-            .unwrap();
+        let tag = obj.get(js_string!("tagName"), &mut ctx).unwrap();
         assert_eq!(tag.as_string().unwrap().to_std_string_escaped(), "P");
     }
 
@@ -257,7 +252,9 @@ mod tests {
     fn query_selector_all_returns_array() {
         let (mut ctx, _doc) = setup();
         let result = ctx
-            .eval(Source::from_bytes("document.querySelectorAll('div, p').length"))
+            .eval(Source::from_bytes(
+                "document.querySelectorAll('div, p').length",
+            ))
             .unwrap();
         // div#main + p.text = 2
         assert_eq!(result.as_number().unwrap() as i32, 2);

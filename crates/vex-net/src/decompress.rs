@@ -80,8 +80,10 @@ mod tests {
     fn brotli_roundtrip() {
         let original = b"Brotli compression test data for Vex engine";
         let mut compressed = Vec::new();
-        let mut params = brotli::enc::BrotliEncoderParams::default();
-        params.quality = 4;
+        let params = brotli::enc::BrotliEncoderParams {
+            quality: 4,
+            ..Default::default()
+        };
         brotli::BrotliCompress(&mut &original[..], &mut compressed, &params).unwrap();
 
         let decompressed = decompress("br", &compressed).unwrap();

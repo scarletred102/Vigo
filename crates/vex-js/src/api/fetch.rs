@@ -17,7 +17,11 @@ use boa_engine::{js_string, Context, JsNativeError, JsResult, JsValue, NativeFun
 /// Register the global `fetch(url)` function.
 pub fn register(context: &mut Context) {
     context
-        .register_global_callable(js_string!("fetch"), 1, NativeFunction::from_fn_ptr(fetch_fn))
+        .register_global_callable(
+            js_string!("fetch"),
+            1,
+            NativeFunction::from_fn_ptr(fetch_fn),
+        )
         .expect("register fetch");
 }
 

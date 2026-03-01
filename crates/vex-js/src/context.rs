@@ -85,16 +85,14 @@ impl JsRuntime {
         let mut fired = 0u32;
         let mut reschedule: Vec<(Instant, PendingTimer)> = Vec::new();
 
-        let expired_keys: Vec<Instant> =
-            self.timer_queue.range(..=now).map(|(k, _)| *k).collect();
+        let expired_keys: Vec<Instant> = self.timer_queue.range(..=now).map(|(k, _)| *k).collect();
 
         for key in expired_keys {
             if let Some(entries) = self.timer_queue.remove(&key) {
                 for entry in entries {
-                    let _ =
-                        entry
-                            .callback
-                            .call(&JsValue::undefined(), &[], &mut self.context);
+                    let _ = entry
+                        .callback
+                        .call(&JsValue::undefined(), &[], &mut self.context);
                     fired += 1;
 
                     if let Some(interval) = entry.interval {
@@ -199,26 +197,28 @@ impl JsRuntime {
                 continue;
             };
 
-            let Ok(repeating_val) =
-                entry_obj.get(js_string!("repeating"), &mut self.context)
+            let Ok(repeating_val) = entry_obj.get(js_string!("repeating"), &mut self.context)
             else {
                 continue;
             };
             let repeating = repeating_val.to_boolean();
 
             let fire_at = Instant::now() + Duration::from_millis(u64::from(delay_ms));
-            let callback = JsFunction::from_object(cb_obj.clone())
-                .expect("callback should be a function");
+            let callback =
+                JsFunction::from_object(cb_obj.clone()).expect("callback should be a function");
 
-            self.timer_queue.entry(fire_at).or_default().push(PendingTimer {
-                id,
-                callback,
-                interval: if repeating {
-                    Some(Duration::from_millis(u64::from(delay_ms)))
-                } else {
-                    None
-                },
-            });
+            self.timer_queue
+                .entry(fire_at)
+                .or_default()
+                .push(PendingTimer {
+                    id,
+                    callback,
+                    interval: if repeating {
+                        Some(Duration::from_millis(u64::from(delay_ms)))
+                    } else {
+                        None
+                    },
+                });
         }
 
         // Clear the JS-side array

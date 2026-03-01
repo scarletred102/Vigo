@@ -75,19 +75,31 @@ pub fn register(context: &mut Context) {
         .build();
 
     context
-        .register_global_property(js_string!("console"), console, boa_engine::property::Attribute::all())
+        .register_global_property(
+            js_string!("console"),
+            console,
+            boa_engine::property::Attribute::all(),
+        )
         .expect("failed to register console global");
 }
 
 /// `console.log(...args)` → `tracing::info!`
-fn console_log(_: &JsValue, args: &[JsValue], context: &mut Context) -> boa_engine::JsResult<JsValue> {
+fn console_log(
+    _: &JsValue,
+    args: &[JsValue],
+    context: &mut Context,
+) -> boa_engine::JsResult<JsValue> {
     let msg = format_args(args, context);
     tracing::info!(target: "vex_js::console", "{msg}");
     Ok(JsValue::undefined())
 }
 
 /// `console.warn(...args)` → `tracing::warn!`
-fn console_warn(_: &JsValue, args: &[JsValue], context: &mut Context) -> boa_engine::JsResult<JsValue> {
+fn console_warn(
+    _: &JsValue,
+    args: &[JsValue],
+    context: &mut Context,
+) -> boa_engine::JsResult<JsValue> {
     let msg = format_args(args, context);
     tracing::warn!(target: "vex_js::console", "{msg}");
     Ok(JsValue::undefined())
@@ -105,7 +117,11 @@ fn console_error(
 }
 
 /// `console.info(...args)` → `tracing::info!`
-fn console_info(_: &JsValue, args: &[JsValue], context: &mut Context) -> boa_engine::JsResult<JsValue> {
+fn console_info(
+    _: &JsValue,
+    args: &[JsValue],
+    context: &mut Context,
+) -> boa_engine::JsResult<JsValue> {
     let msg = format_args(args, context);
     tracing::info!(target: "vex_js::console", "{msg}");
     Ok(JsValue::undefined())

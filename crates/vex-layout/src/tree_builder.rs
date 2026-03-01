@@ -200,7 +200,7 @@ mod tests {
         }
         let total = count_visible(&tree);
         // With or without inline style parsing, we should have a reasonable tree
-        assert!(total >= 3 && total <= 8, "Expected 3-8 boxes, got {total}");
+        assert!((3..=8).contains(&total), "Expected 3-8 boxes, got {total}");
     }
 
     #[test]

@@ -10,5 +10,6 @@ rust-version.workspace = true
 [dependencies]
 vex-core = { path = "../vex-core" }
 vex-render = { path = "../vex-render" }
+thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

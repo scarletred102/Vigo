@@ -163,8 +163,8 @@ pub fn build_style_proxy(node_id: VexId, doc: &SharedDocument, context: &mut Con
 /// Read a single CSS property from the element's `style` attribute.
 fn get_style_property(doc: &SharedDocument, node_id: VexId, property: &str) -> String {
     let doc_ref = doc.borrow();
-    let style_str = vex_dom::attributes::get_attribute(doc_ref.arena(), node_id, "style")
-        .unwrap_or("");
+    let style_str =
+        vex_dom::attributes::get_attribute(doc_ref.arena(), node_id, "style").unwrap_or("");
     parse_inline_value(style_str, property)
 }
 
@@ -276,7 +276,12 @@ mod tests {
         let root = doc.root();
         let div = doc.create_element("div", vex_dom::Namespace::Html);
         doc.append_child(root, div);
-        vex_dom::attributes::set_attribute(doc.arena_mut(), div, "style", "color: red; font-size: 16px");
+        vex_dom::attributes::set_attribute(
+            doc.arena_mut(),
+            div,
+            "style",
+            "color: red; font-size: 16px",
+        );
 
         let shared = crate::dom_bridge::shared_document(doc);
         let mut ctx = Context::default();
@@ -315,7 +320,10 @@ mod tests {
 
         let doc_ref = shared.borrow();
         let style = vex_dom::attributes::get_attribute(doc_ref.arena(), div, "style").unwrap();
-        assert!(style.contains("blue"), "style should contain blue: got {style}");
+        assert!(
+            style.contains("blue"),
+            "style should contain blue: got {style}"
+        );
     }
 
     #[test]

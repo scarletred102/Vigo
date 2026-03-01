@@ -128,7 +128,11 @@ fn schedule_timer(args: &[JsValue], context: &mut Context, repeating: bool) -> J
 
     // Create timer descriptor: { id, callback, delay, repeating }
     let descriptor = boa_engine::object::ObjectInitializer::new(context)
-        .property(js_string!("id"), JsValue::from(id), boa_engine::property::Attribute::all())
+        .property(
+            js_string!("id"),
+            JsValue::from(id),
+            boa_engine::property::Attribute::all(),
+        )
         .property(
             js_string!("callback"),
             JsValue::from(callback),
@@ -192,12 +196,7 @@ fn clear_timer_by_id(id: u32, context: &mut Context) {
         };
         if entry_id == id {
             // Mark as cancelled by setting callback to undefined
-            let _ = entry_obj.set(
-                js_string!("callback"),
-                JsValue::undefined(),
-                false,
-                context,
-            );
+            let _ = entry_obj.set(js_string!("callback"), JsValue::undefined(), false, context);
         }
     }
 }
@@ -223,9 +222,7 @@ mod tests {
         register(rt.context_mut());
 
         // Clear a timer — should not error
-        let result = rt.eval(
-            "var id = setTimeout(function() {}, 100); clearTimeout(id);",
-        );
+        let result = rt.eval("var id = setTimeout(function() {}, 100); clearTimeout(id);");
         assert!(result.is_ok());
     }
 

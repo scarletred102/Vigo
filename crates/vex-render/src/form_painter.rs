@@ -35,12 +35,7 @@ const INPUT_PADDING: f32 = 4.0;
 /// Paint a form control into the display list based on its state.
 ///
 /// The `rect` is the layout box content area for the form element.
-pub fn paint_form_control(
-    state: &InputState,
-    rect: Rect,
-    focused: bool,
-    dl: &mut DisplayList,
-) {
+pub fn paint_form_control(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayList) {
     match state.kind {
         FormElementKind::Input(input_type) => {
             paint_input(state, input_type, rect, focused, dl);
@@ -257,8 +252,7 @@ fn paint_button(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayL
         &state.value
     };
 
-    let text_y = rect.origin.y + (rect.size.height + INPUT_FONT_SIZE) / 2.0
-        - INPUT_FONT_SIZE * 0.2;
+    let text_y = rect.origin.y + (rect.size.height + INPUT_FONT_SIZE) / 2.0 - INPUT_FONT_SIZE * 0.2;
     dl.push(DisplayCommand::DrawText {
         position: Point::new(rect.origin.x + INPUT_PADDING, text_y),
         text: label.to_string(),
@@ -300,8 +294,8 @@ fn paint_select(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayL
     };
 
     if !text.is_empty() {
-        let text_y = rect.origin.y + (rect.size.height + INPUT_FONT_SIZE) / 2.0
-            - INPUT_FONT_SIZE * 0.2;
+        let text_y =
+            rect.origin.y + (rect.size.height + INPUT_FONT_SIZE) / 2.0 - INPUT_FONT_SIZE * 0.2;
         dl.push(DisplayCommand::DrawText {
             position: Point::new(rect.origin.x + INPUT_PADDING, text_y),
             text: text.to_string(),
@@ -313,8 +307,8 @@ fn paint_select(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayL
 
     // Dropdown arrow (small triangle approximated as ▼ text).
     let arrow_x = rect.origin.x + rect.size.width - 16.0;
-    let arrow_y = rect.origin.y + (rect.size.height + INPUT_FONT_SIZE) / 2.0
-        - INPUT_FONT_SIZE * 0.2;
+    let arrow_y =
+        rect.origin.y + (rect.size.height + INPUT_FONT_SIZE) / 2.0 - INPUT_FONT_SIZE * 0.2;
     dl.push(DisplayCommand::DrawText {
         position: Point::new(arrow_x, arrow_y),
         text: "▾".to_string(),
@@ -529,6 +523,8 @@ mod tests {
                 }
             })
             .collect();
-        assert!(text_cmds.iter().any(|(t, c)| t == "Enter text..." && *c == PLACEHOLDER_COLOR));
+        assert!(text_cmds
+            .iter()
+            .any(|(t, c)| t == "Enter text..." && *c == PLACEHOLDER_COLOR));
     }
 }

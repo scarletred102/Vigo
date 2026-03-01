@@ -1,0 +1,206 @@
+// Copyright (c) Vigo Contributors
+// SPDX-License-Identifier: MPL-2.0
+
+//! Tab bar rendering — draws the tab strip at the top of the browser window.
+
+use vex_core::color::Color;
+use vex_core::geometry::{Point, Rect};
+use vex_render::display_list::{DisplayCommand, DisplayList};
+
+use crate::tab::Tab;
+
+/// Colors for the tab bar.
+const TAB_BAR_BG: Color = Color::rgb(38, 38, 46);
+const ACTIVE_TAB_BG: Color = Color::rgb(52, 52, 64);
+const INACTIVE_TAB_BG: Color = Color::rgb(42, 42, 52);
+const TAB_TEXT_COLOR: Color = Color::rgb(210, 210, 220);
+const INACTIVE_TAB_TEXT: Color = Color::rgb(140, 140, 160);
+const CLOSE_BTN_COLOR: Color = Color::rgb(120, 120, 140);
+const NEW_TAB_BTN_COLOR: Color = Color::rgb(100, 100, 120);
+
+/// Maximum tab width in pixels.
+const MAX_TAB_WIDTH: f32 = 220.0;
+/// Minimum tab width before text is hidden.
+const MIN_TAB_WIDTH: f32 = 60.0;
+/// Padding between tabs.
+const TAB_GAP: f32 = 2.0;
+/// Tab height.
+const TAB_HEIGHT: f32 = 32.0;
+/// Top offset for tabs within the tab bar.
+const TAB_TOP: f32 = 4.0;
+/// Width of the new-tab (+) button.
+const NEW_TAB_BTN_WIDTH: f32 = 32.0;
+
+/// Render the tab bar into a display list.
+pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, tab_bar_rect: Rect) {
+    // Background.
+    dl.push(DisplayCommand::FillRect {
+        rect: tab_bar_rect,
+        color: TAB_BAR_BG,
+    });
+
+    let available_width = tab_bar_rect.size.width - NEW_TAB_BTN_WIDTH - 8.0;
+    let tab_count = tabs.len().max(1) as f32;
+    let tab_width =
+        ((available_width - TAB_GAP * tab_count) / tab_count).clamp(MIN_TAB_WIDTH, MAX_TAB_WIDTH);
+
+    for (i, tab) in tabs.iter().enumerate() {
+        let is_active = i == active_index;
+        let x = tab_bar_rect.origin.x + 4.0 + (tab_width + TAB_GAP) * i as f32;
+        let y = tab_bar_rect.origin.y + TAB_TOP;
+
+        // Tab background.
+        dl.push(DisplayCommand::FillRect {
+            rect: Rect::new(x, y, tab_width, TAB_HEIGHT),
+            color: if is_active {
+                ACTIVE_TAB_BG
+            } else {
+                INACTIVE_TAB_BG
+            },
+        });
+
+        // Tab title (truncated).
+        let max_text_width = tab_width - 30.0; // leave room for close button
+        let title = truncate_title(&tab.title, max_text_width);
+        dl.push(DisplayCommand::DrawText {
+            position: Point::new(x + 10.0, y + 8.0),
+            text: title,
+            color: if is_active {
+                TAB_TEXT_COLOR
+            } else {
+                INACTIVE_TAB_TEXT
+            },
+            font_size: 12.0,
+            line_height: 16.0,
+        });
+
+        // Close button (×).
+        dl.push(DisplayCommand::DrawText {
+            position: Point::new(x + tab_width - 18.0, y + 7.0),
+            text: "×".into(),
+            color: CLOSE_BTN_COLOR,
+            font_size: 14.0,
+            line_height: 18.0,
+        });
+    }
+
+    // New tab (+) button.
+    let plus_x = tab_bar_rect.origin.x + 4.0 + (tab_width + TAB_GAP) * tabs.len() as f32 + 4.0;
+    let plus_y = tab_bar_rect.origin.y + TAB_TOP;
+    dl.push(DisplayCommand::FillRect {
+        rect: Rect::new(plus_x, plus_y, NEW_TAB_BTN_WIDTH, TAB_HEIGHT),
+        color: INACTIVE_TAB_BG,
+    });
+    dl.push(DisplayCommand::DrawText {
+        position: Point::new(plus_x + 10.0, plus_y + 7.0),
+        text: "+".into(),
+        color: NEW_TAB_BTN_COLOR,
+        font_size: 16.0,
+        line_height: 18.0,
+    });
+}
+
+/// Hit-test a click position against tab bar elements.
+/// Returns the action to take.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TabBarAction {
+    /// Switch to this tab index.
+    SwitchTab(usize),
+    /// Close this tab index.
+    CloseTab(usize),
+    /// Create a new tab.
+    NewTab,
+    /// Not in the tab bar.
+    None,
+}
+
+/// Determine what was clicked in the tab bar.
+pub fn hit_test_tab_bar(x: f32, y: f32, tab_count: usize, tab_bar_rect: Rect) -> TabBarAction {
+    // Check if click is within the tab bar.
+    if y < tab_bar_rect.origin.y || y > tab_bar_rect.origin.y + tab_bar_rect.size.height {
+        return TabBarAction::None;
+    }
+
+    let available_width = tab_bar_rect.size.width - NEW_TAB_BTN_WIDTH - 8.0;
+    let count = tab_count.max(1) as f32;
+    let tab_width =
+        ((available_width - TAB_GAP * count) / count).clamp(MIN_TAB_WIDTH, MAX_TAB_WIDTH);
+
+    for i in 0..tab_count {
+        let tab_x = tab_bar_rect.origin.x + 4.0 + (tab_width + TAB_GAP) * i as f32;
+        let tab_y = tab_bar_rect.origin.y + TAB_TOP;
+
+        if x >= tab_x && x <= tab_x + tab_width && y >= tab_y && y <= tab_y + TAB_HEIGHT {
+            // Check if close button was clicked (rightmost 20px).
+            if x >= tab_x + tab_width - 20.0 {
+                return TabBarAction::CloseTab(i);
+            }
+            return TabBarAction::SwitchTab(i);
+        }
+    }
+
+    // Check new-tab button.
+    let plus_x = tab_bar_rect.origin.x + 4.0 + (tab_width + TAB_GAP) * tab_count as f32 + 4.0;
+    let plus_y = tab_bar_rect.origin.y + TAB_TOP;
+    if x >= plus_x && x <= plus_x + NEW_TAB_BTN_WIDTH && y >= plus_y && y <= plus_y + TAB_HEIGHT {
+        return TabBarAction::NewTab;
+    }
+
+    TabBarAction::None
+}
+
+/// Truncate a title to approximately fit within `max_width` pixels.
+/// Uses a rough estimate of 7 pixels per character.
+fn truncate_title(title: &str, max_width: f32) -> String {
+    let max_chars = (max_width / 7.0).max(3.0) as usize;
+    if title.len() <= max_chars {
+        title.to_string()
+    } else {
+        format!("{}…", &title[..max_chars.saturating_sub(1)])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_tab_bar_produces_commands() {
+        let mut dl = DisplayList::new();
+        let tab = Tab::blank(crate::TabId::new(1));
+        let rect = Rect::new(0.0, 0.0, 1280.0, 36.0);
+        render_tab_bar(&mut dl, &[tab], 0, rect);
+        // Should have: bg + tab bg + tab text + close btn + plus bg + plus text >= 6
+        assert!(dl.len() >= 6);
+    }
+
+    #[test]
+    fn hit_test_switch_tab() {
+        let rect = Rect::new(0.0, 0.0, 1280.0, 36.0);
+        let action = hit_test_tab_bar(20.0, 15.0, 2, rect);
+        assert_eq!(action, TabBarAction::SwitchTab(0));
+    }
+
+    #[test]
+    fn hit_test_new_tab_button() {
+        let rect = Rect::new(0.0, 0.0, 1280.0, 36.0);
+        // With 1 tab of width ~220, the plus button starts around x=230.
+        let action = hit_test_tab_bar(240.0, 15.0, 1, rect);
+        assert_eq!(action, TabBarAction::NewTab);
+    }
+
+    #[test]
+    fn hit_test_outside_returns_none() {
+        let rect = Rect::new(0.0, 0.0, 1280.0, 36.0);
+        let action = hit_test_tab_bar(50.0, 100.0, 1, rect);
+        assert_eq!(action, TabBarAction::None);
+    }
+
+    #[test]
+    fn truncate_long_title() {
+        let title = "This is a very long page title that should be truncated";
+        let truncated = truncate_title(title, 100.0);
+        assert!(truncated.len() < title.len());
+        assert!(truncated.ends_with('…'));
+    }
+}

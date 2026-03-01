@@ -8,3 +8,37 @@
 //! Tab management, navigation history, bookmarks, browsing history,
 //! find-in-page, downloads, zoom, settings, keyboard shortcuts,
 //! and the full page-load pipeline.
+
+pub mod bookmarks;
+pub mod downloads;
+pub mod drm_overlay;
+pub mod error_pages;
+pub mod find;
+pub mod history;
+pub mod links;
+pub mod navigation;
+pub mod session;
+pub mod settings;
+pub mod tab;
+pub mod tab_manager;
+pub mod ui;
+pub mod webview_fallback;
+pub mod zoom;
+
+pub use bookmarks::{Bookmark, BookmarkId, BookmarkManager};
+pub use downloads::{DownloadManager, DownloadState};
+pub use drm_overlay::OverlayManager;
+pub use find::FindState;
+pub use history::BrowsingHistory;
+pub use links::LinkAction;
+pub use navigation::{HistoryEntry, NavigationHistory};
+pub use session::SessionState;
+pub use settings::BrowserSettings;
+pub use tab::{LoadingState, Tab, TabId};
+pub use tab_manager::TabManager;
+pub use ui::chrome::ChromeLayout;
+pub use ui::nav_bar::NavBarAction;
+pub use ui::shortcuts::{BrowserAction, Key, Shortcut};
+pub use ui::tab_bar::TabBarAction;
+pub use webview_fallback::{WebViewFallback, WebViewState};
+pub use zoom::ZoomState;

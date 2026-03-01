@@ -285,9 +285,10 @@ mod tests {
     use vex_core::Rect;
 
     fn style_with_width(w: f32) -> ComputedStyle {
-        let mut s = ComputedStyle::default();
-        s.width = w;
-        s
+        ComputedStyle {
+            width: w,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -370,8 +371,10 @@ mod tests {
     fn explicit_height_respected() {
         let id = VexId::new(1);
         let mut styles = HashMap::new();
-        let mut s = ComputedStyle::default();
-        s.height = 300.0;
+        let s = ComputedStyle {
+            height: 300.0,
+            ..Default::default()
+        };
         styles.insert(id, s);
 
         let mut b = LayoutBox::new(Some(id), BoxType::Block);
@@ -390,8 +393,10 @@ mod tests {
     fn overflow_hidden_sets_clip() {
         let id = VexId::new(1);
         let mut styles = HashMap::new();
-        let mut s = ComputedStyle::default();
-        s.overflow = Overflow::Hidden;
+        let s = ComputedStyle {
+            overflow: Overflow::Hidden,
+            ..Default::default()
+        };
         styles.insert(id, s);
 
         let mut b = LayoutBox::new(Some(id), BoxType::Block);

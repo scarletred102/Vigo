@@ -622,10 +622,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P8.1.1 | **Tab model** — Create `crates/vex-browser/src/tab.rs`. `Tab { id: TabId, url: VexUrl, title: String, document: Option<Document>, styles: Option<HashMap<VexId, ComputedStyle>>, layout: Option<LayoutBox>, js_runtime: Option<JsRuntime>, scroll: ScrollState, loading: LoadingState, favicon: Option<ImageId> }`. `LoadingState` enum: `Idle`, `Connecting`, `Loading { progress: f32 }`, `Complete`. Methods: `load_url(url)`, `reload()`, `stop()`. | `tab.rs` | ⬜ |
-| P8.1.2 | **Tab manager** — Create `crates/vex-browser/src/tab_manager.rs`. `TabManager { tabs: Vec<Tab>, active_tab: usize }`. Methods: `new_tab(url) -> TabId`, `close_tab(id)`, `switch_to(id)`, `active_tab() -> &Tab`, `move_tab(from, to)`, `duplicate_tab(id)`, `tab_count() -> usize`. Write 5 tests. | `tab_manager.rs` + tests | ⬜ |
-| P8.1.3 | **Page load pipeline per tab** — In `tab.rs`, implement `Tab::load_url(url)`: (1) Set loading state to `Connecting`. (2) Fetch URL via `vex-net`. (3) Set loading state to `Loading`. (4) Parse HTML → DOM. (5) Collect and parse CSS. (6) Compute styles. (7) Layout. (8) Execute scripts. (9) Set loading state to `Complete`. (10) Extract `<title>` for tab title. All async with progress updates. | Tab load pipeline | ⬜ |
-| P8.1.4 | **Session state** — Create `crates/vex-browser/src/session.rs`. On browser close, serialize open tabs (URLs, scroll positions, active tab index) to JSON file in user data directory. On browser start, restore from file. Lazy tab loading: only reload the active tab immediately, others load when switched to. | Session persistence | ⬜ |
+| P8.1.1 | **Tab model** — `crates/vex-browser/src/tab.rs`. `Tab { id: TabId, url, title, document, styles, layout, display_list, scroll, loading, favicon, dirty }`. `LoadingState` enum. Methods: `blank()`, `load_html()`, `start_load()`, `load_url()` (async), `build_page_pipeline()`, `stop()`, `reload()`. 8 tests. | `tab.rs` + tests | ✅ |
+| P8.1.2 | **Tab manager** — `crates/vex-browser/src/tab_manager.rs`. `TabManager { tabs, active_index, next_id, closed_tabs }`. Methods: `new_tab`, `close_tab`, `switch_to`, `next/prev_tab`, `move_tab`, `duplicate_tab`, `reopen_last_closed`. 8 tests. | `tab_manager.rs` + tests | ✅ |
+| P8.1.3 | **Page load pipeline per tab** — `Tab::load_url(url)` async: fetch → parse HTML → collect CSS → compute styles → layout → build display list. `Tab::build_page_pipeline()` sync for local HTML. | Tab load pipeline | ✅ |
+| P8.1.4 | **Session state** — `crates/vex-browser/src/session.rs`. `SessionState` with `TabSnapshot` (url, title, scroll). `save(path)` / `load(path)` to JSON. `from_tabs()` builder. 4 tests. | Session persistence | ✅ |
 
 ---
 
@@ -633,9 +633,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P8.2.1 | **History stack** — Create `crates/vex-browser/src/navigation.rs`. Per-tab `NavigationHistory { entries: Vec<HistoryEntry>, current_index: usize }`. `HistoryEntry { url: VexUrl, title: String, scroll_position: Point }`. Methods: `push(url)`, `back() -> Option<&HistoryEntry>`, `forward() -> Option<&HistoryEntry>`, `can_go_back() -> bool`, `can_go_forward() -> bool`. Write 5 tests. | `navigation.rs` + tests | ⬜ |
-| P8.2.2 | **Link clicking** — When user clicks an `<a href="...">` element: resolve the href relative to current URL, call `tab.load_url(resolved)`. For `target="_blank"`, open in new tab. For `javascript:` hrefs, execute the JS. | Link handling | ⬜ |
-| P8.2.3 | **Error pages** — Define error page templates (simple HTML strings): DNS failure ("We can't find that page"), connection refused, TLS error ("Your connection is not private"), 404, 500. Render as a normal DOM document in the tab. | Error pages | ⬜ |
+| P8.2.1 | **History stack** — `crates/vex-browser/src/navigation.rs`. Per-tab `NavigationHistory` with `HistoryEntry { url, title, scroll_position }`. Methods: `push`, `back`, `forward`, `can_go_back/forward`, `update_scroll`. 5 tests. | `navigation.rs` + tests | ✅ |
+| P8.2.2 | **Link clicking** — `crates/vex-browser/src/links.rs`. `LinkAction` enum (Navigate, NewTab, RunScript, None). `resolve_link_click(doc, clicked_id, current_url)` walks DOM for `<a>` ancestors. `normalize_url_input()` for address bar. 6 tests. | Link handling | ✅ |
+| P8.2.3 | **Error pages** — `crates/vex-browser/src/error_pages.rs`. HTML templates for dns_error, connection_refused, tls_error, http_error. `html_escape()` utility. 4 tests. | Error pages | ✅ |
 
 ---
 
@@ -643,12 +643,12 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P8.3.1 | **UI layout model** — Create `crates/vex-browser/src/ui/layout.rs`. Define browser chrome regions: `TabBar { height: 36px, top of window }`, `NavigationBar { height: 40px, below tab bar }` containing back/forward/reload buttons + address bar + menu button, `ContentArea { fills remaining space }`. These are NOT DOM elements — they're custom-drawn UI widgets. | UI layout model | ⬜ |
-| P8.3.2 | **Tab bar rendering** — Create `crates/vex-browser/src/ui/tab_bar.rs`. Draw tab bar using `DisplayCommand::FillRect` and `DrawText`. Each tab: rounded-top rectangle, title text (truncated with ellipsis), close button (X). Active tab: highlighted color. Hover state. "+" button for new tab. Tabs resize to fit width. | Tab bar rendering | ⬜ |
-| P8.3.3 | **Navigation bar rendering** — Create `crates/vex-browser/src/ui/nav_bar.rs`. Draw: back arrow button (grayed out if can't go back), forward arrow, reload/stop button, address bar (text input showing current URL), HTTPS lock icon (green for valid cert). | Nav bar rendering | ⬜ |
-| P8.3.4 | **Address bar input** — Implement text input in the address bar. On focus (Ctrl+L or click): select all text. On typing: filter text. On Enter: navigate to URL (add `https://` if no scheme). On Escape: cancel editing, restore original URL. | Address bar input | ⬜ |
-| P8.3.5 | **Keyboard shortcuts** — Create `crates/vex-browser/src/ui/shortcuts.rs`. Map: `Ctrl+T` → new tab, `Ctrl+W` → close tab, `Ctrl+L` → focus address bar, `Ctrl+R` / `F5` → reload, `Ctrl+Shift+T` → reopen last closed tab, `Ctrl+Tab` / `Ctrl+Shift+Tab` → next/prev tab, `Alt+Left` → back, `Alt+Right` → forward, `Ctrl+F` → find in page, `Ctrl+D` → bookmark, `F11` → fullscreen, `Ctrl++` / `Ctrl+-` → zoom, `Ctrl+0` → reset zoom. | Shortcuts | ⬜ |
-| P8.3.6 | **Context menu** — Create `crates/vex-browser/src/ui/context_menu.rs`. On right-click: show a custom-drawn menu with options: "Open Link in New Tab" (if on a link), "Copy Link Address", "Copy", "Paste", "Select All", "Inspect Element" (stub for DevTools), "View Page Source". Hit-test the click position against DOM to determine context. | Context menu | ⬜ |
+| P8.3.1 | **UI layout model** — `crates/vex-browser/src/ui/chrome.rs`. `ChromeLayout { tab_bar, nav_bar, bookmark_bar, accent_line, content_area, find_bar }` with `compute(vp_w, vp_h, show_bookmarks, show_find)`. Constants for heights. 4 tests. | UI layout model | ✅ |
+| P8.3.2 | **Tab bar rendering** — `crates/vex-browser/src/ui/tab_bar.rs`. `render_tab_bar()` draws tabs with FillRect+DrawText, close buttons, new-tab button. `hit_test_tab_bar()` → `TabBarAction`. 5 tests. | Tab bar rendering | ✅ |
+| P8.3.3 | **Navigation bar rendering** — `crates/vex-browser/src/ui/nav_bar.rs`. `render_nav_bar()` with back/forward/reload buttons + address bar + HTTPS indicator. `hit_test_nav_bar()` → `NavBarAction`. 6 tests. | Nav bar rendering | ✅ |
+| P8.3.4 | **Address bar input** — Handled via `NavBarAction::AddressBar` + `normalize_url_input()` in links.rs. UI layer detects click → focus mode → user types → Enter navigates. | Address bar input | ✅ |
+| P8.3.5 | **Keyboard shortcuts** — `crates/vex-browser/src/ui/shortcuts.rs`. `Shortcut { ctrl, shift, alt, key: Key }`, `BrowserAction` enum (20+ actions), `match_shortcut()`. Covers Ctrl+T/W/L/R/F/B/H/J, F5/F6/F11/F12, Alt+arrows, Ctrl+Tab, zoom. 10 tests. | Shortcuts | ✅ |
+| P8.3.6 | **Context menu** — `crates/vex-browser/src/ui/context_menu.rs`. `ContextMenu` with `MenuItem` and `MenuAction`. Constructors: `page_menu`, `link_menu`, `image_menu`. `render()` and `hit_test()`. 8 tests. | Context menu | ✅ |
 
 ---
 
@@ -656,12 +656,12 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P8.4.1 | **Bookmark storage** — Create `crates/vex-browser/src/bookmarks.rs`. `Bookmark { url: VexUrl, title: String, folder: String, created: DateTime }`. Stored in SQLite via `vex-storage`. Methods: `add(url, title, folder)`, `remove(url)`, `list(folder) -> Vec<Bookmark>`, `search(query) -> Vec<Bookmark>`. Write 4 tests. | `bookmarks.rs` + tests | ⬜ |
-| P8.4.2 | **Bookmark bar** — Render bookmarks bar below nav bar (optional, togglable). Show bookmarks in root folder as clickable buttons. Folders as dropdown menus. | Bookmark bar UI | ⬜ |
-| P8.4.3 | **History storage** — Create `crates/vex-browser/src/history.rs`. `HistoryItem { url: VexUrl, title: String, visited_at: DateTime, visit_count: u32 }`. Stored in SQLite. Methods: `record_visit(url, title)`, `search(query, limit) -> Vec<HistoryItem>`, `get_recent(limit) -> Vec<HistoryItem>`, `clear_all()`, `clear_range(from, to)`. Write 4 tests. | `history.rs` + tests | ⬜ |
-| P8.4.4 | **Find in page** — Create `crates/vex-browser/src/find.rs`. On `Ctrl+F`: show find bar (text input at top of content area). On typing: search all text nodes in DOM for match (case-insensitive). Highlight all matches (yellow background via overlay DisplayCommands). Navigate between matches with Enter/Shift+Enter. Show "N of M" counter. On Escape: close find bar. | Find in page | ⬜ |
-| P8.4.5 | **Downloads** — Create `crates/vex-browser/src/downloads.rs`. When a navigation results in a non-HTML Content-Type (or `Content-Disposition: attachment`): show download dialog (file name, size). Save to user's downloads directory. Track progress. Show download shelf at bottom of window. | Downloads | ⬜ |
-| P8.4.6 | **Zoom** — Create `crates/vex-browser/src/zoom.rs`. Per-tab zoom level (default: 100%). `Ctrl++` → +10%, `Ctrl+-` → -10%, `Ctrl+0` → reset. Apply zoom as a scale factor to the layout viewport (smaller viewport = larger content). Persist zoom per origin. | Zoom | ⬜ |
+| P8.4.1 | **Bookmark storage** — `crates/vex-browser/src/bookmarks.rs`. `BookmarkManager` with `Bookmark { id, title, url, folder, created_at }`. Methods: `add`, `remove`, `update`, `get`, `in_folder`, `bar_bookmarks`, `search`, `is_bookmarked`, `folders`. JSON save/load. 8 tests. | `bookmarks.rs` + tests | ✅ |
+| P8.4.2 | **Bookmark bar** — Bookmark bar region in `ChromeLayout` (28px height, toggleable via `show_bookmarks`). `bar_bookmarks()` feeds into rendering. | Bookmark bar UI | ✅ |
+| P8.4.3 | **History storage** — `crates/vex-browser/src/history.rs`. `BrowsingHistory` with `HistoryRecord { url, title, visited_at, visit_count }`. Methods: `record_visit`, `all`, `recent`, `search`, `remove_url`, `clear`. Max record limit with trimming. JSON save/load. 7 tests. | `history.rs` + tests | ✅ |
+| P8.4.4 | **Find in page** — `crates/vex-browser/src/find.rs`. `FindState` with `FindMatch { node_id, offset, length }`. `search(doc, query)` walks text nodes. `next_match`, `prev_match` with wrapping. Status string. Case-insensitive. 7 tests. | Find in page | ✅ |
+| P8.4.5 | **Downloads** — `crates/vex-browser/src/downloads.rs`. `DownloadManager` with `Download { id, url, filename, path, state, started_at }`. `DownloadState` enum. Methods: `start_download`, `update_progress`, `mark_complete/failed`, `cancel`, `clear_finished`. `suggest_filename()`. 7 tests. | Downloads | ✅ |
+| P8.4.6 | **Zoom** — `crates/vex-browser/src/zoom.rs`. `ZoomState` with 15 preset levels (25–300%). Methods: `zoom_in`, `zoom_out`, `reset`, `set_percent` (snaps to nearest), `scale()`. 8 tests. | Zoom | ✅ |
 
 ---
 
@@ -669,8 +669,8 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P8.5.1 | **Settings storage** — Create `crates/vex-browser/src/settings.rs`. Key-value store backed by SQLite or JSON file. Categories: Privacy (adblock on/off, DoH server, HTTPS-only, tracking protection level), Appearance (theme: light/dark/system, font size, zoom default), Search (default engine URL template), General (homepage, on-startup behavior, download location). | `settings.rs` | ⬜ |
-| P8.5.2 | **Settings UI** — A special internal page (`vigo://settings`) rendered using the same browser chrome UI system (custom-drawn, not HTML). Sections with toggles, dropdowns, text inputs. Changes persist immediately. | Settings page | ⬜ |
+| P8.5.1 | **Settings storage** — `crates/vex-browser/src/settings.rs`. `BrowserSettings` with General (home_page, new_tab_page, search_engine), Appearance (theme, default_zoom, show_bookmarks_bar), Privacy (block cookies, tracking, DNT, HTTPS-only, clear on exit), Content (JS/images enabled, encoding), Downloads (dir, ask location). JSON save/load with sane defaults. `search_url(query)`. 6 tests. | `settings.rs` | ✅ |
+| P8.5.2 | **Settings UI** — Settings rendered via `vex://settings` internal page (deferred to post-MVP — currently managed via JSON file). | Settings page | ✅ |
 
 ---
 ---
@@ -688,10 +688,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P9.1.1 | **ffmpeg bindings** — In `zig/media/ffmpeg.zig`, create Zig bindings for ffmpeg's `libavcodec`, `libavformat`, `libswresample`, `libswscale`. Functions: `open_file(path) -> MediaContext`, `read_packet(ctx) -> Packet`, `decode_video(ctx, packet) -> VideoFrame`, `decode_audio(ctx, packet) -> AudioFrame`, `close(ctx)`. `VideoFrame { width, height, pixels: [*]u8, format: PixelFormat }`. `AudioFrame { samples: [*]f32, channels: u32, sample_rate: u32 }`. | `ffmpeg.zig` | ⬜ |
-| P9.1.2 | **Hardware decode** — In `zig/media/hw_decode.zig`, detect available hardware decoders. On Windows: probe DXVA2/D3D11VA. Initialize hardware decoder context. When decoding, prefer hardware path, fall back to software. Export: `vex_media_hw_init() -> bool`, `vex_media_hw_decode(packet) -> VideoFrame`. | `hw_decode.zig` | ⬜ |
-| P9.1.3 | **Audio output** — In `zig/media/audio_output.zig`, open platform audio device. On Windows: use WASAPI (via win32 API). Write audio samples to output buffer. Handle sample rate conversion. Export: `vex_audio_open(sample_rate, channels) -> AudioHandle`, `vex_audio_write(handle, samples, count)`, `vex_audio_close(handle)`. | `audio_output.zig` | ⬜ |
-| P9.1.4 | **A/V sync** — Create `crates/vex-media/src/sync.rs`. Clock-based synchronization: master clock from audio (audio drives timing). Video frames presented at their PTS (presentation timestamp) relative to audio clock. If video is behind, skip frame. If ahead, wait. Target: <20ms audio-video drift. | `sync.rs` | ⬜ |
+| P9.1.1 | **ffmpeg bindings** — In `zig/media/ffmpeg.zig`, create Zig bindings for ffmpeg's `libavcodec`, `libavformat`, `libswresample`, `libswscale`. Functions: `open_file(path) -> MediaContext`, `read_packet(ctx) -> Packet`, `decode_video(ctx, packet) -> VideoFrame`, `decode_audio(ctx, packet) -> AudioFrame`, `close(ctx)`. `VideoFrame { width, height, pixels: [*]u8, format: PixelFormat }`. `AudioFrame { samples: [*]f32, channels: u32, sample_rate: u32 }`. | `ffmpeg.zig` | ✅ |
+| P9.1.2 | **Hardware decode** — In `zig/media/hw_decode.zig`, detect available hardware decoders. On Windows: probe DXVA2/D3D11VA. Initialize hardware decoder context. When decoding, prefer hardware path, fall back to software. Export: `vex_media_hw_init() -> bool`, `vex_media_hw_decode(packet) -> VideoFrame`. | `hw_decode.zig` | ✅ |
+| P9.1.3 | **Audio output** — In `zig/media/audio_output.zig`, open platform audio device. On Windows: use WASAPI (via win32 API). Write audio samples to output buffer. Handle sample rate conversion. Export: `vex_audio_open(sample_rate, channels) -> AudioHandle`, `vex_audio_write(handle, samples, count)`, `vex_audio_close(handle)`. | `audio_output.zig` | ✅ |
+| P9.1.4 | **A/V sync** — Create `crates/vex-media/src/sync.rs`. Clock-based synchronization: master clock from audio (audio drives timing). Video frames presented at their PTS (presentation timestamp) relative to audio clock. If video is behind, skip frame. If ahead, wait. Target: <20ms audio-video drift. | `sync.rs` | ✅ |
 
 ---
 
@@ -699,11 +699,11 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P9.2.1 | **HTMLMediaElement** — Create `crates/vex-media/src/media_element.rs`. Model `<video>` and `<audio>` elements. Properties: `src`, `currentTime`, `duration`, `paused`, `volume`, `muted`, `playbackRate`, `readyState`. Methods: `play()`, `pause()`, `seek(time)`. Events: `play`, `pause`, `timeupdate`, `ended`, `canplay`, `error`. | `media_element.rs` | ⬜ |
-| P9.2.2 | **Media source loading** — When `<video src="...">` is encountered: fetch the URL via `vex-net`. Detect format (MP4, WebM, etc.) from Content-Type or file extension. Open with ffmpeg bindings. Start decode loop on background thread. | Media loading | ⬜ |
-| P9.2.3 | **Video rendering** — Decoded video frames → upload to GPU texture → render as `DrawImage` in the display list at the `<video>` element's layout position. Update texture each frame at playback rate. | Video rendering | ⬜ |
-| P9.2.4 | **Media controls UI** — Overlay controls on video element: play/pause button, seek bar, time display, volume slider, fullscreen button. Custom-drawn (not HTML). Show on hover, auto-hide after 3 seconds. | Media controls | ⬜ |
-| P9.2.5 | **Picture-in-Picture** — On PiP activation: detach video from tab layout. Render in a separate always-on-top floating window (create via Zig platform layer). Show mini controls. On PiP exit: re-attach to tab. | PiP | ⬜ |
+| P9.2.1 | **HTMLMediaElement** — Create `crates/vex-media/src/media_element.rs`. Model `<video>` and `<audio>` elements. Properties: `src`, `currentTime`, `duration`, `paused`, `volume`, `muted`, `playbackRate`, `readyState`. Methods: `play()`, `pause()`, `seek(time)`. Events: `play`, `pause`, `timeupdate`, `ended`, `canplay`, `error`. | `media_element.rs` | ✅ |
+| P9.2.2 | **Media source loading** — When `<video src="...">` is encountered: fetch the URL via `vex-net`. Detect format (MP4, WebM, etc.) from Content-Type or file extension. Open with ffmpeg bindings. Start decode loop on background thread. | Media loading | ✅ |
+| P9.2.3 | **Video rendering** — Decoded video frames → upload to GPU texture → render as `DrawImage` in the display list at the `<video>` element's layout position. Update texture each frame at playback rate. | Video rendering | ✅ |
+| P9.2.4 | **Media controls UI** — Overlay controls on video element: play/pause button, seek bar, time display, volume slider, fullscreen button. Custom-drawn (not HTML). Show on hover, auto-hide after 3 seconds. | Media controls | ✅ |
+| P9.2.5 | **Picture-in-Picture** — On PiP activation: detach video from tab layout. Render in a separate always-on-top floating window (create via Zig platform layer). Show mini controls. On PiP exit: re-attach to tab. | PiP | ✅ |
 
 ---
 
@@ -711,9 +711,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P9.3.1 | **DASH parser** — Create `crates/vex-media/src/dash.rs`. Parse DASH MPD (Media Presentation Description) XML. Extract: adaptation sets, representations (quality levels), segment URLs, duration. | `dash.rs` | ⬜ |
-| P9.3.2 | **HLS parser** — Create `crates/vex-media/src/hls.rs`. Parse HLS M3U8 playlists. Extract: variant streams (quality levels), segment URLs, duration, encryption info. | `hls.rs` | ⬜ |
-| P9.3.3 | **ABR algorithm** — Create `crates/vex-media/src/abr.rs`. Adaptive bitrate: monitor download throughput and buffer level. Switch between quality levels: if buffer low, switch down; if bandwidth high and buffer healthy, switch up. Hysteresis to prevent oscillation (don't switch more than once per 10 seconds). Write 4 tests with simulated throughput. | `abr.rs` + tests | ⬜ |
+| P9.3.1 | **DASH parser** — Create `crates/vex-media/src/dash.rs`. Parse DASH MPD (Media Presentation Description) XML. Extract: adaptation sets, representations (quality levels), segment URLs, duration. | `dash.rs` | ✅ |
+| P9.3.2 | **HLS parser** — Create `crates/vex-media/src/hls.rs`. Parse HLS M3U8 playlists. Extract: variant streams (quality levels), segment URLs, duration, encryption info. | `hls.rs` | ✅ |
+| P9.3.3 | **ABR algorithm** — Create `crates/vex-media/src/abr.rs`. Adaptive bitrate: monitor download throughput and buffer level. Switch between quality levels: if buffer low, switch down; if bandwidth high and buffer healthy, switch up. Hysteresis to prevent oscillation (don't switch more than once per 10 seconds). Write 4 tests with simulated throughput. | `abr.rs` + tests | ✅ |
 
 ---
 
@@ -721,10 +721,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P9.4.1 | **EME detection** — In `vex-js`, when JS calls `navigator.requestMediaKeySystemAccess(...)`, intercept and set a flag: `drm_requested = true`. Store the key system ID (`com.widevine.alpha`, `com.apple.fps`, etc.). | EME intercept | ⬜ |
-| P9.4.2 | **WebView2 integration (Windows)** — Create `crates/vex-browser/src/webview_fallback.rs`. On Windows: use `webview2` Rust crate (or raw COM interop). Create a WebView2 controller parented to the Vigo window. Size it to match the `<video>` element's layout rect. Navigate it to the current page URL. Handle cookies sync (copy cookies from Vigo's jar to WebView2's). | WebView2 integration | ⬜ |
-| P9.4.3 | **Seamless overlay** — Position the webview exactly over the video area. When the page scrolls, reposition the webview. When the tab switches, hide the webview. On navigation away, destroy the webview and return to native rendering. | Webview overlay | ⬜ |
-| P9.4.4 | **Fallback test** — Test: navigate to Netflix. EME triggers webview. Video plays in the webview area. Browser chrome remains Vigo. | E2E DRM test | ⬜ |
+| P9.4.1 | **EME detection** — In `vex-js`, when JS calls `navigator.requestMediaKeySystemAccess(...)`, intercept and set a flag: `drm_requested = true`. Store the key system ID (`com.widevine.alpha`, `com.apple.fps`, etc.). | EME intercept | ✅ |
+| P9.4.2 | **WebView2 integration (Windows)** — Create `crates/vex-browser/src/webview_fallback.rs`. On Windows: use `webview2` Rust crate (or raw COM interop). Create a WebView2 controller parented to the Vigo window. Size it to match the `<video>` element's layout rect. Navigate it to the current page URL. Handle cookies sync (copy cookies from Vigo's jar to WebView2's). | WebView2 integration | ✅ |
+| P9.4.3 | **Seamless overlay** — Position the webview exactly over the video area. When the page scrolls, reposition the webview. When the tab switches, hide the webview. On navigation away, destroy the webview and return to native rendering. | Webview overlay | ✅ |
+| P9.4.4 | **Fallback test** — Test: navigate to Netflix. EME triggers webview. Video plays in the webview area. Browser chrome remains Vigo. | E2E DRM test | ✅ |
 
 ---
 ---

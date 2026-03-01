@@ -152,11 +152,12 @@ mod tests {
     use crate::box_model::BoxType;
 
     fn style_positioned(position: Position, top: f32, left: f32) -> ComputedStyle {
-        let mut s = ComputedStyle::default();
-        s.position = position;
-        s.top = top;
-        s.left = left;
-        s
+        ComputedStyle {
+            position,
+            top,
+            left,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -225,10 +226,12 @@ mod tests {
     #[test]
     fn relative_right_bottom_offsets() {
         let id = VexId::new(1);
-        let mut s = ComputedStyle::default();
-        s.position = Position::Relative;
-        s.right = 15.0;
-        s.bottom = 25.0;
+        let s = ComputedStyle {
+            position: Position::Relative,
+            right: 15.0,
+            bottom: 25.0,
+            ..Default::default()
+        };
         // left and top are NAN (auto)
         let mut styles = HashMap::new();
         styles.insert(id, s);

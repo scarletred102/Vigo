@@ -24,11 +24,7 @@ use crate::dom_bridge::SharedDocument;
 ///
 /// Properties are populated as a snapshot on creation. Mutation methods
 /// (`setAttribute`, `appendChild`, etc.) round-trip through the real DOM.
-pub fn build_element_proxy(
-    id: VexId,
-    doc: &SharedDocument,
-    context: &mut Context,
-) -> JsValue {
+pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Context) -> JsValue {
     // Pre-build the style proxy before ObjectInitializer takes the &mut Context.
     let style_proxy = {
         let doc_ref = doc.borrow();
@@ -146,11 +142,7 @@ pub fn build_element_proxy(
 
     // Attach the pre-built style proxy for element nodes.
     if let Some(style) = style_proxy {
-        builder.property(
-            js_string!("style"),
-            style,
-            Attribute::CONFIGURABLE,
-        );
+        builder.property(js_string!("style"), style, Attribute::CONFIGURABLE);
     }
 
     // ── Mutation methods (capture SharedDocument) ─────────────────
@@ -204,7 +196,9 @@ pub fn build_element_proxy(
             let node_id = extract_vex_id(this, ctx)?;
             let name = args
                 .first()
-                .ok_or_else(|| JsNativeError::typ().with_message("removeAttribute requires a name"))?
+                .ok_or_else(|| {
+                    JsNativeError::typ().with_message("removeAttribute requires a name")
+                })?
                 .to_string(ctx)?
                 .to_std_string_escaped();
 
@@ -219,9 +213,9 @@ pub fn build_element_proxy(
     let append_child = unsafe {
         NativeFunction::from_closure(move |this, args, ctx| {
             let parent_id = extract_vex_id(this, ctx)?;
-            let child_val = args
-                .first()
-                .ok_or_else(|| JsNativeError::typ().with_message("appendChild requires a child node"))?;
+            let child_val = args.first().ok_or_else(|| {
+                JsNativeError::typ().with_message("appendChild requires a child node")
+            })?;
             let child_id = extract_vex_id(child_val, ctx)?;
 
             doc_ac.borrow_mut().append_child(parent_id, child_id);
@@ -235,9 +229,9 @@ pub fn build_element_proxy(
     let remove_child = unsafe {
         NativeFunction::from_closure(move |this, args, ctx| {
             let parent_id = extract_vex_id(this, ctx)?;
-            let child_val = args
-                .first()
-                .ok_or_else(|| JsNativeError::typ().with_message("removeChild requires a child node"))?;
+            let child_val = args.first().ok_or_else(|| {
+                JsNativeError::typ().with_message("removeChild requires a child node")
+            })?;
             let child_id = extract_vex_id(child_val, ctx)?;
 
             doc_rc.borrow_mut().remove_child(parent_id, child_id);
@@ -251,9 +245,9 @@ pub fn build_element_proxy(
     let insert_before = unsafe {
         NativeFunction::from_closure(move |this, args, ctx| {
             let parent_id = extract_vex_id(this, ctx)?;
-            let new_val = args
-                .first()
-                .ok_or_else(|| JsNativeError::typ().with_message("insertBefore requires newNode"))?;
+            let new_val = args.first().ok_or_else(|| {
+                JsNativeError::typ().with_message("insertBefore requires newNode")
+            })?;
             let new_id = extract_vex_id(new_val, ctx)?;
 
             let ref_val = args.get(1);
@@ -311,9 +305,7 @@ fn extract_vex_id(val: &JsValue, context: &mut Context) -> JsResult<VexId> {
     let obj = val
         .as_object()
         .ok_or_else(|| JsNativeError::typ().with_message("expected a DOM element proxy"))?;
-    let raw = obj
-        .get(js_string!("__vex_id"), context)?
-        .to_i32(context)?;
+    let raw = obj.get(js_string!("__vex_id"), context)?.to_i32(context)?;
     Ok(VexId::new(raw as u32))
 }
 
@@ -372,7 +364,10 @@ mod tests {
                 "document.getElementById('main').getAttribute('class')",
             ))
             .unwrap();
-        assert_eq!(result.as_string().unwrap().to_std_string_escaped(), "container");
+        assert_eq!(
+            result.as_string().unwrap().to_std_string_escaped(),
+            "container"
+        );
     }
 
     #[test]
@@ -410,7 +405,11 @@ mod tests {
 
         let doc_ref = doc.borrow();
         let main_id = doc_ref.get_element_by_id("main").unwrap();
-        assert!(!attributes::has_attribute(doc_ref.arena(), main_id, "class"));
+        assert!(!attributes::has_attribute(
+            doc_ref.arena(),
+            main_id,
+            "class"
+        ));
     }
 
     #[test]
@@ -464,7 +463,10 @@ mod tests {
             ))
             .unwrap();
         let html = result.as_string().unwrap().to_std_string_escaped();
-        assert!(html.contains("<p"), "innerHTML should contain <p: got {html}");
+        assert!(
+            html.contains("<p"),
+            "innerHTML should contain <p: got {html}"
+        );
         assert!(html.contains("Hello"), "innerHTML should contain text");
     }
 

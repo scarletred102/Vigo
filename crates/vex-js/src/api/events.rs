@@ -238,7 +238,10 @@ mod tests {
         dispatch_js_event(&shared, &listeners, &callbacks, &mut event, &mut ctx);
 
         let evt_type = ctx.eval(Source::from_bytes("evtType")).unwrap();
-        assert_eq!(evt_type.as_string().unwrap().to_std_string_escaped(), "click");
+        assert_eq!(
+            evt_type.as_string().unwrap().to_std_string_escaped(),
+            "click"
+        );
     }
 
     #[test]

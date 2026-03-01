@@ -6,13 +6,13 @@
 
 ## Current State
 
-**Phase 0 ✅ — Phase 1 ✅ — Phase 2 ✅ — Phase 3 ✅ — Phase 4 (CSS) ✅ — Phase 5 (Layout) ✅ — Phase 6 (GPU Rendering) ✅ — Phase 7 (JavaScript) ✅**
+**Phase 0 ✅ — Phase 1 ✅ — Phase 2 ✅ — Phase 3 ✅ — Phase 4 (CSS) ✅ — Phase 5 (Layout) ✅ — Phase 6 (GPU Rendering) ✅ — Phase 7 (JavaScript) ✅ — Phase 8 (Browser Chrome) ✅**
 
-The full rendering pipeline is operational: parse HTML → build DOM → extract `<style>` → parse CSS → compute styles → lay out boxes → build display list → GPU render with text, rectangles, and borders. JavaScript engine (Boa 0.19) runs inline/external/defer/async scripts with DOM manipulation, event handling, fetch API, timers, and form interaction. The app uses `include_str!("welcome.html")` to embed a styled welcome page that goes through the complete pipeline. Browser chrome (tab bar, address bar) is composited as a fixed overlay. Scroll offsets page content beneath chrome. Screenshot capture renders to offscreen textures for visual regression testing.
+The full rendering pipeline is operational: parse HTML → build DOM → extract `<style>` → parse CSS → compute styles → lay out boxes → build display list → GPU render with text, rectangles, and borders. JavaScript engine (Boa 0.19) runs inline/external/defer/async scripts with DOM manipulation, event handling, fetch API, timers, and form interaction. Browser chrome layer provides tab management, navigation history, bookmarks, browsing history, find-in-page, downloads, zoom, keyboard shortcuts, context menus, and settings. The app uses `include_str!("welcome.html")` to embed a styled welcome page that goes through the complete pipeline.
 
 ```bash
 cargo run -p vex-app                          # opens window + renders welcome.html via full pipeline
-cargo test --workspace                        # 382 tests (13 ignored)
+cargo test --workspace                        # 607 tests (16 ignored)
 cargo clippy --workspace --all-targets        # 0 warnings
 cd zig && zig build test                      # 22 Zig tests
 ```
@@ -37,7 +37,8 @@ cd zig && zig build test                      # 22 Zig tests
 | vex-privacy | 32 | tracking, adblock, HTTPS-only, headers |
 | vex-render | 57 | display list, painter, renderer, glyph atlas, image atlas, screenshot, scroll, form painter |
 | vex-js | 67 | Boa context, console, timers, fetch, window, document, element, style proxy, events, GC roots, script runner, lifecycle |
-| **Total** | **~447 pass, 15 ignored** | 0 failures |
+| vex-browser | 112 | tabs, tab manager, navigation, session, error pages, links, chrome layout, tab bar, nav bar, shortcuts, context menu, bookmarks, history, find-in-page, downloads, zoom, settings |
+| **Total** | **~607 pass, 16 ignored** | 0 failures |
 | Zig | 22 | arena, pool, frame allocators |
 
 ---
@@ -58,7 +59,8 @@ cd zig && zig build test                      # 22 Zig tests
 | `vex-render` | **57 tests ✅** | Display list (FillRect/DrawBorder/DrawText/DrawImage/PushClip/PopClip/PushOpacity/PopOpacity), painter (walks layout tree → display list, viewport culling, visibility/opacity), GPU renderer (rect + text pipelines, WGSL shaders rect/text/image, instanced drawing, batching, alpha blending), glyph atlas (shelf packing, cosmic-text rasterizer, LRU eviction), image atlas (4096×4096, shelf packing), image decoder (PNG/JPEG/WebP/GIF/BMP), screenshot (offscreen render to PNG, pixel_diff comparison), scroll state, form control painter (text input, checkbox, radio, button, select, password masking), Zig FFI (platform_ffi.rs), Window wrapper, Event enum, wgpu GPU context |
 | `vex-app` | **Runs ✅** | Entry point binary. Parses embedded `welcome.html` through full pipeline (HTML→DOM→CSS→Layout→Display List), composites with browser chrome (tab bar, address bar, accent line), renders via Renderer with text + rect pipelines, scroll support, FPS counter |
 | `vex-js` | **67 tests ✅** | Boa 0.19 JS engine (JsRuntime context, eval/execute), Console API (log/warn/error/info/debug → tracing), Timer API (setTimeout/setInterval/clearTimeout/clearInterval), Fetch API (Promise-based, delegates to vex-net), Window object (location/history/navigator/dimensions), Document proxy (getElementById/querySelector/createElement), Element proxy (getAttribute/setAttribute/appendChild/removeChild/insertBefore, textContent, innerHTML, className, style), Style proxy (getPropertyValue/setProperty/removeProperty, camelCase ↔ kebab-case), Event bridge (addEventListener/removeEventListener → DOM EventListenerMap, dispatch with JS callback invocation), GC root set (reference-counted VexId tracking), Script runner (ExecutionPlan: blocking/defer/async classification and ordered execution), Lifecycle events (DOMContentLoaded, load) |
-| Others | Stubs | `vex-media`, `vex-storage`, `vex-security`, `vex-crypto`, `vex-sync`, `vex-browser` |
+| `vex-browser` | **112 tests ✅** | Tab model (Tab/TabId/LoadingState, load_html/load_url/build_page_pipeline), Tab manager (new/close/switch/move/duplicate/reopen), Navigation history (per-tab back/forward stack), Session state (save/load to JSON), Error pages (DNS/TLS/connection/HTTP templates), Link handling (resolve_link_click, normalize_url_input), UI chrome layout (ChromeLayout with tab_bar/nav_bar/bookmark_bar/content_area regions), Tab bar rendering (render_tab_bar/hit_test_tab_bar → TabBarAction), Nav bar rendering (back/forward/reload/address bar/HTTPS indicator), Keyboard shortcuts (20+ browser actions, Ctrl+T/W/L/R/F, F5/F6/F11/F12), Context menu (page/link/image menus with hit testing), Bookmarks (add/remove/update/search/folders, JSON persistence), Browsing history (record_visit/search/recent, dedup, max records), Find in page (DOM text search, match navigation, case-insensitive), Downloads (start/progress/complete/cancel/clear_finished), Zoom (15 preset levels 25-300%, snap-to-nearest), Settings (general/appearance/privacy/content/downloads, JSON persistence) |
+| Others | Stubs | `vex-media`, `vex-storage`, `vex-security`, `vex-crypto`, `vex-sync` |
 
 ### Zig Modules (5, under `zig/`)
 
@@ -178,6 +180,14 @@ crates/vex-render/src/                  — display_list, painter, renderer, gpu
 crates/vex-render/src/shaders/rect.wgsl — WGSL rect shader (instanced quads)
 crates/vex-app/src/main.rs              — Entry point (window + GPU renderer + demo display list)
 
+crates/vex-js/src/api/eme.rs            — EME detection (P9.4.1)
+crates/vex-media/src/                   — sync, media_element, media_loading, video_render, controls, pip, dash, hls, abr
+crates/vex-browser/src/webview_fallback.rs — WebView2 DRM fallback (P9.4.2)
+crates/vex-browser/src/drm_overlay.rs   — WebView overlay positioning (P9.4.3)
+zig/media/ffmpeg.zig                    — FFmpeg runtime bindings (P9.1.1)
+zig/media/hw_decode.zig                 — Hardware decode probing (P9.1.2)
+zig/media/audio_output.zig              — WASAPI audio output (P9.1.3)
+
 crates/vex-html/tests/live_page_test.rs — P3.7.1 e2e (network, #[ignore])
 crates/vex-html/tests/parse_bench.rs    — P3.7.2 parse benchmarks
 crates/vex-layout/tests/layout_bench.rs — P5.6.2 layout benchmarks
@@ -185,22 +195,79 @@ crates/vex-layout/tests/layout_bench.rs — P5.6.2 layout benchmarks
 
 ---
 
-## What's Next — Phase 6: GPU Rendering Pipeline (continued)
+## What's Next — Phase 10: Browser Chrome & Extensions
+
+### Planned
+- **P10.1 — Extension Platform**: Extension manifest parsing, content scripts, background pages
+- **P10.2 — DevTools**: Basic inspector, console panel, network panel
+- **P10.3 — Settings**: Preferences UI, about:settings page
+- **P10.4 — History/Bookmarks**: Full history store, bookmark manager
 
 ### Completed ✅
 - **P6.1 — Display List Generation**: `display_list.rs` (8 command types), `painter.rs` (walks layout tree, emits FillRect/DrawBorder/DrawText, viewport culling, opacity/clip layers)
-- **P6.2 — GPU Backend (partial)**: `renderer.rs` (wgpu pipeline, instanced rect rendering, batching, alpha blending), `shaders/rect.wgsl` (vertex quad generation, pixel→NDC transform, per-instance color)
-- **App integration**: `main.rs` renders a demo mock browser chrome (10+ colored rectangles)
+- **P6.2 — GPU Backend**: `renderer.rs` (wgpu pipeline, instanced rect + text + image rendering, batching, alpha blending), `shaders/rect.wgsl`, `shaders/text.wgsl`, `shaders/image.wgsl`
+- **P6.3 — Glyph Atlas**: 2048×2048 R8Unorm, shelf packing, cosmic-text rasterization, LRU eviction
+- **P6.4 — Image Pipeline**: Decode PNG/JPEG/WebP/GIF/BMP, 4096×4096 RGBA atlas, shelf packing
+- **P6.5 — Scroll State**: `ScrollState` with clamped offsets, mouse wheel integration
+- **P6.6 — Full Pipeline**: `welcome.html` embedded, parsed through HTML→DOM→CSS→Layout→DisplayList→GPU
+- **App integration**: Browser chrome (tab bar + address bar), FPS counter, screenshot support
 
-### Remaining
-- **P6.2.3** Text shader (text.wgsl) — glyph atlas sampling, subpixel AA
-- **P6.2.4** Image shader (image.wgsl) — texture sampling
-- **P6.3** Glyph atlas — rasterize glyphs into GPU texture, shelf-based packing, LRU eviction
-- **P6.4** Image pipeline — decode PNG/JPEG/WebP/SVG, async loading, GPU upload
-- **P6.5** Scroll state — smooth scrolling, event integration
-- **P6.6** Full pipeline test — wire HTML→DOM→CSS→Layout→Render for real pages
+---
 
-**Target:** Render `https://example.com` visually in the window. 60fps scrolling.
+## Phase 7 — JavaScript Engine (Boa) ✅
+
+### Completed
+- **P7.1 — JS Context**: Boa 0.19 engine integration, `JsEngine` wrapper with execution timeout, `JsValue` conversion (string/number/bool/null/undefined/object/array)
+- **P7.2 — Console API**: `console.log/warn/error/info/debug/assert/count/time/timeEnd/clear/dir/table` — all captured in `ConsoleOutput` buffer
+- **P7.3 — Timer API**: `setTimeout/clearTimeout/setInterval/clearInterval` — timer registry with elapsed tracking
+- **P7.4 — Fetch API**: `fetch()` returns `Promise<Response>` — request/response types, JSON/text body
+- **P7.5 — DOM Bindings**: `window`, `document`, `navigator` globals. `document.getElementById/querySelector/createElement/createTextNode`. Element property access (innerHTML, textContent, style, className, id, tagName). `Node.appendChild/removeChild`
+- **P7.6 — Script Execution**: Inline `<script>` execution, defer/async flags, script extraction from DOM
+- **P7.7 — Form Handling**: Input element value get/set, form `elements` collection, submit event handling
+
+**Tests:** 75 vex-js tests passing, 1 ignored (network)
+
+---
+
+## Phase 8 — Storage & Security ✅
+
+### Completed
+- **P8.1 — Storage APIs**: `localStorage/sessionStorage` with get/set/remove/clear/key/length, 5MB per-origin quota enforcement, `StorageArea` persistence
+- **P8.2 — IndexedDB**: Object store model, key-value operations (put/get/delete/clear), cursor iteration, transaction support (readonly/readwrite)
+- **P8.3 — Cookie Storage**: Persistent cookie jar with secure/httpOnly/sameSite flags, expiry handling, domain/path matching
+- **P8.4 — Content Security Policy**: CSP header parsing, directive evaluation (script-src, style-src, img-src, connect-src, default-src), nonce/hash source matching, violation reporting
+- **P8.5 — CORS**: Preflight request generation, Access-Control-* header parsing, origin matching, simple vs preflighted request classification
+- **P8.6 — Subresource Integrity**: SHA-256/384/512 hash computation, `integrity` attribute verification, multi-hash support
+
+**Tests:** 57 vex-storage tests, 32 vex-security tests passing
+
+---
+
+## Phase 9 — Media Pipeline + DRM Hybrid ✅
+
+### Completed
+- **P9.1 — Audio/Video Decode (Zig)**:
+  - `zig/media/ffmpeg.zig` — Runtime-loaded ffmpeg bindings (`FfmpegLib`, `MediaContext`, `VideoFrame`, `AudioFrame`), exported C API (`vex_media_open/read_packet/decode_video/decode_audio/close`)
+  - `zig/media/hw_decode.zig` — DXVA2/D3D11VA hardware decode probing (`HwDecoderType`, `HwDecodeContext`), exported C API (`vex_media_hw_init/probe/decode`)
+  - `zig/media/audio_output.zig` — WASAPI audio output (`AudioHandle`, ring buffer, `AudioFormat`), exported C API (`vex_audio_open/write/pause/resume/close/get_latency`)
+  - `crates/vex-media/src/sync.rs` — Clock-based A/V synchronization (`MediaClock`, `SyncDecision`, `FrameSynchroniser`, 20ms drift threshold)
+- **P9.2 — Media Element Integration**:
+  - `media_element.rs` — `MediaElement` state machine (`ReadyState`, `MediaEvent`, play/pause/seek/volume/mute/playbackRate)
+  - `media_loading.rs` — Media source loading pipeline (`MediaFormat` detection from magic bytes, `MediaLoader`, `LoadState`)
+  - `video_render.rs` — Video frame → GPU texture upload → display list (`DecodedFrame`, `VideoSurface`, letterbox/pillarbox computation)
+  - `controls.rs` — Media player overlay controls (play/pause, seek bar, volume, fullscreen, auto-hide 3s, hit testing)
+  - `pip.rs` — Picture-in-Picture mode (`PipState`, `PipGeometry`, drag support)
+- **P9.3 — Streaming Protocols**:
+  - `dash.rs` — DASH MPD XML parser (`DashManifest`, `AdaptationSet`, `Representation`, ISO 8601 duration parsing)
+  - `hls.rs` — HLS M3U8 parser (`MasterPlaylist`, `VariantStream`, `MediaPlaylist`, `MediaSegment`, encryption info)
+  - `abr.rs` — Adaptive bitrate selection (`AbrController`, EWMA throughput estimation, 10s hysteresis, buffer-based switching)
+- **P9.4 — DRM WebView Fallback**:
+  - `crates/vex-js/src/api/eme.rs` — EME detection (`EmeState`, `KeySystem` enum, `navigator.requestMediaKeySystemAccess()` interception)
+  - `crates/vex-browser/src/webview_fallback.rs` — WebView2 DRM fallback (`WebViewFallback`, `WebViewConfig`, `WebViewState`, `CookieSync`)
+  - `crates/vex-browser/src/drm_overlay.rs` — Seamless WebView2 overlay positioning (`DrmOverlayManager`, scroll offset, tab visibility)
+  - `crates/vex-browser/tests/drm_fallback_test.rs` — Integration test (EME trigger → WebView2 creation → overlay → cleanup)
+
+**Tests:** 102 vex-media, 75 vex-js (+7 EME), 131 vex-browser (+4 DRM fallback) — all passing
 
 ---
 

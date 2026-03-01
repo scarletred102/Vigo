@@ -193,8 +193,14 @@ fn delete_selection(state: &mut InputState) {
         return;
     }
 
-    let start = state.selection_start.min(state.selection_end).min(state.value.len());
-    let end = state.selection_start.max(state.selection_end).min(state.value.len());
+    let start = state
+        .selection_start
+        .min(state.selection_end)
+        .min(state.value.len());
+    let end = state
+        .selection_start
+        .max(state.selection_end)
+        .min(state.value.len());
     state.value.drain(start..end);
     state.set_cursor(start);
 }

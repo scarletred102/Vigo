@@ -138,10 +138,7 @@ impl ExecutionPlan {
     /// Execute a single async script.
     ///
     /// Called when the script has been fetched and is ready.
-    pub fn execute_async_script(
-        runtime: &mut JsRuntime,
-        source: &str,
-    ) -> VexResult<()> {
+    pub fn execute_async_script(runtime: &mut JsRuntime, source: &str) -> VexResult<()> {
         runtime.execute(source)
     }
 
@@ -213,8 +210,8 @@ mod tests {
         ];
 
         let plan = ExecutionPlan::from_scripts(&scripts);
-        assert_eq!(plan.blocking.len(), 2);     // inline + external
-        assert_eq!(plan.deferred.len(), 1);      // defer
+        assert_eq!(plan.blocking.len(), 2); // inline + external
+        assert_eq!(plan.deferred.len(), 1); // defer
         assert_eq!(plan.async_scripts.len(), 1); // async
         assert_eq!(plan.total(), 4);
     }
@@ -225,9 +222,8 @@ mod tests {
         let plan = ExecutionPlan::from_scripts(&scripts);
 
         let mut runtime = JsRuntime::new();
-        let mut no_fetch = |_url: &str| -> VexResult<String> {
-            Err(VexError::Js("no fetch in test".into()))
-        };
+        let mut no_fetch =
+            |_url: &str| -> VexResult<String> { Err(VexError::Js("no fetch in test".into())) };
 
         let results = plan.execute_blocking(&mut runtime, &mut no_fetch);
         assert!(results[0].is_ok());
@@ -242,9 +238,8 @@ mod tests {
         let plan = ExecutionPlan::from_scripts(&scripts);
 
         let mut runtime = JsRuntime::new();
-        let mut mock_fetch = |_url: &str| -> VexResult<String> {
-            Ok("var fetched = true;".to_string())
-        };
+        let mut mock_fetch =
+            |_url: &str| -> VexResult<String> { Ok("var fetched = true;".to_string()) };
 
         let results = plan.execute_blocking(&mut runtime, &mut mock_fetch);
         assert!(results[0].is_ok());
@@ -270,10 +265,7 @@ mod tests {
 
     #[test]
     fn deferred_scripts_execute_in_order() {
-        let scripts = vec![
-            defer_script("first.js"),
-            defer_script("second.js"),
-        ];
+        let scripts = vec![defer_script("first.js"), defer_script("second.js")];
         let plan = ExecutionPlan::from_scripts(&scripts);
 
         let mut runtime = JsRuntime::new();

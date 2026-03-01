@@ -102,19 +102,25 @@ mod tests {
     fn positive_z_index_sorts_after_zero() {
         let styles = {
             let mut m = HashMap::new();
-            let mut s1 = ComputedStyle::default();
-            s1.position = Position::Relative;
-            s1.z_index = 0;
+            let s1 = ComputedStyle {
+                position: Position::Relative,
+                z_index: 0,
+                ..Default::default()
+            };
             m.insert(VexId::new(1), s1);
 
-            let mut s2 = ComputedStyle::default();
-            s2.position = Position::Relative;
-            s2.z_index = 5;
+            let s2 = ComputedStyle {
+                position: Position::Relative,
+                z_index: 5,
+                ..Default::default()
+            };
             m.insert(VexId::new(2), s2);
 
-            let mut s3 = ComputedStyle::default();
-            s3.position = Position::Relative;
-            s3.z_index = -1;
+            let s3 = ComputedStyle {
+                position: Position::Relative,
+                z_index: -1,
+                ..Default::default()
+            };
             m.insert(VexId::new(3), s3);
             m
         };
@@ -151,8 +157,10 @@ mod tests {
     #[test]
     fn opacity_creates_stacking_context() {
         let mut styles = HashMap::new();
-        let mut s = ComputedStyle::default();
-        s.opacity = 0.5;
+        let s = ComputedStyle {
+            opacity: 0.5,
+            ..Default::default()
+        };
         styles.insert(VexId::new(1), s);
 
         let root = LayoutBox::new(Some(VexId::new(1)), BoxType::Block);
