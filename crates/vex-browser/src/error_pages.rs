@@ -3,6 +3,8 @@
 
 //! Error page templates — simple HTML strings rendered in-tab when navigation fails.
 
+use crate::tab::TabId;
+
 /// Build an error page HTML document.
 pub fn build_error_page(title: &str, message: &str) -> String {
     format!(
@@ -91,6 +93,18 @@ fn html_escape(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+/// Build a "this page has crashed" error page for a renderer crash.
+pub fn crash_error_page(tab_id: TabId, reason: &str) -> String {
+    build_error_page(
+        "This Page Has Crashed",
+        &format!(
+            "The renderer for tab {} crashed: {}. Click reload to try again.",
+            tab_id.0,
+            html_escape(reason),
+        ),
+    )
 }
 
 #[cfg(test)]

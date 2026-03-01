@@ -10,6 +10,7 @@
 //! and the full page-load pipeline.
 
 pub mod bookmarks;
+pub mod crash_recovery;
 pub mod downloads;
 pub mod drm_overlay;
 pub mod error_pages;
@@ -17,12 +18,15 @@ pub mod find;
 pub mod history;
 pub mod links;
 pub mod navigation;
+pub mod process;
+pub mod sandbox;
 pub mod session;
 pub mod settings;
 pub mod tab;
 pub mod tab_manager;
 pub mod ui;
 pub mod webview_fallback;
+pub mod wpt;
 pub mod zoom;
 
 pub use bookmarks::{Bookmark, BookmarkId, BookmarkManager};
@@ -32,6 +36,8 @@ pub use find::FindState;
 pub use history::BrowsingHistory;
 pub use links::LinkAction;
 pub use navigation::{HistoryEntry, NavigationHistory};
+pub use process::{IpcMessage, ProcessId, ProcessManager, ProcessRole, ProcessStatus};
+pub use sandbox::SandboxPolicy;
 pub use session::SessionState;
 pub use settings::BrowserSettings;
 pub use tab::{LoadingState, Tab, TabId};
@@ -41,4 +47,5 @@ pub use ui::nav_bar::NavBarAction;
 pub use ui::shortcuts::{BrowserAction, Key, Shortcut};
 pub use ui::tab_bar::TabBarAction;
 pub use webview_fallback::{WebViewFallback, WebViewState};
+pub use wpt::{WptReport, WptRunner};
 pub use zoom::ZoomState;

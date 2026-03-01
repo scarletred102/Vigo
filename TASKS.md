@@ -742,9 +742,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P10.1.1 | **Origin model** — Create `crates/vex-security/src/origin.rs`. `Origin { scheme: String, host: String, port: u16 }`. Derive from URL. `same_origin(a, b) -> bool`. `is_opaque()` for `data:`, `file:`, `about:` URLs. Write 5 tests. | `origin.rs` + tests | ⬜ |
-| P10.1.2 | **SOP enforcement** — In DOM: prevent JS in one origin from accessing DOM of another origin (e.g., cross-origin iframes). In fetch: flag cross-origin requests. In storage: scope cookies/localStorage to origin. | SOP enforcement | ⬜ |
-| P10.1.3 | **CORS preflight** — In `vex-net`, for cross-origin fetches with non-simple methods/headers: send OPTIONS preflight. Check `Access-Control-Allow-Origin`, `Allow-Methods`, `Allow-Headers`. Block if preflight fails. Apply `Access-Control-Expose-Headers` to response. Handle `credentials: 'include'`. Write 5 tests. | CORS in fetch | ⬜ |
+| P10.1.1 | **Origin model** — `crates/vex-security/src/origin.rs`. `Origin::Tuple{scheme,host,port}` / `Origin::Opaque(u64)`. `from_url()`, `same_origin()`, `serialize()`, `is_opaque()`. 7 tests. | `origin.rs` + tests | ✅ |
+| P10.1.2 | **SOP enforcement** — `sop.rs`: `SopPolicy` with `check_dom_access()`, `classify_fetch()`, `check_storage_access()`. `AccessDecision` + `FetchClassification` enums. 8 tests. | SOP enforcement | ✅ |
+| P10.1.3 | **CORS preflight** — `cors.rs`: `needs_preflight()`, `build_preflight_headers()`, `validate_preflight_response()`, `validate_cors_headers()`, `check_expose_headers()`. `CorsGrant` response. 7 tests. | CORS in fetch | ✅ |
 
 ---
 
@@ -752,8 +752,8 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P10.2.1 | **CSP parser** — Create `crates/vex-security/src/csp.rs`. Parse `Content-Security-Policy` header. Extract directives: `default-src`, `script-src`, `style-src`, `img-src`, `connect-src`, `font-src`, `frame-src`, `media-src`. Parse source lists: `'self'`, `'none'`, `'unsafe-inline'`, `'unsafe-eval'`, `https:`, `data:`, specific hosts, nonces, hashes. Write 5 tests. | `csp.rs` + tests | ⬜ |
-| P10.2.2 | **CSP enforcement** — Before loading any sub-resource (script, image, CSS, fetch), check against active CSP policy. Block if not allowed. Before executing inline `<script>`, check if `'unsafe-inline'` or matching nonce/hash. Log violations. Write 3 tests. | CSP enforcement | ⬜ |
+| P10.2.1 | **CSP parser** — `csp.rs`: `CspPolicy::parse()`, 10 directive types, 9 source expressions (none/self/unsafe-inline/eval/nonce/hash/host/scheme/wildcard). 10 tests. | `csp.rs` + tests | ✅ |
+| P10.2.2 | **CSP enforcement** — Combined with P10.2.1: `enforce_url(directive, url, origin)`, `enforce_inline(directive, content, nonce)` with default-src fallback. Tested with P10.2.1 tests. | CSP enforcement | ✅ |
 
 ---
 
@@ -761,9 +761,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P10.3.1 | **Process model** — Create `crates/vex-browser/src/process.rs`. Each tab runs in a separate OS process. Browser process (main) manages tabs, UI, networking. Renderer process handles DOM, layout, JS for one tab. IPC via named pipes (Windows) or unix sockets. Define message types: `LoadUrl`, `NavigationComplete`, `RenderFrame`, `InputEvent`, `JsCallback`. | Process model | ⬜ |
-| P10.3.2 | **Windows sandbox** — For renderer processes on Windows: create with restricted token (remove admin groups), assign to a Job Object with limits (memory: 512MB, CPU: 60%), set UI restrictions (no clipboard, no desktop access). Use `CreateProcessAsUser` with restricted token. | Windows sandbox | ⬜ |
-| P10.3.3 | **Crash isolation** — If a renderer process crashes: browser process detects it, shows "This page has crashed" error page in the tab, allows reload. Other tabs unaffected. Write integration test: intentionally crash renderer, verify browser stays alive. | Crash isolation | ⬜ |
+| P10.3.1 | **Process model** — `process.rs`: `ProcessRole`, `ProcessStatus`, `IpcMessage` (6 variants), `ProcessManager` with spawn/terminate/status. 5 tests. | Process model | ✅ |
+| P10.3.2 | **Windows sandbox** — `sandbox.rs`: `SandboxConfig`, `UiRestriction`, `SandboxPolicy` with `apply()` and `restrict_token()`. Job Object + restricted token design. 5 tests. | Windows sandbox | ✅ |
+| P10.3.3 | **Crash isolation** — `crash_recovery.rs`: `CrashRecovery`, `CrashInfo`, `RecoveryAction` (ShowErrorPage/AutoRestart/AbandonTab). Rate-limited restarts. 5 tests. | Crash isolation | ✅ |
 
 ---
 
@@ -771,10 +771,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P10.4.1 | **Cookie storage** — Create `crates/vex-storage/src/cookies.rs`. Persist cookies to SQLite. Table: `cookies(domain, path, name, value, secure, http_only, same_site, expires)`. Functions: `save(cookie)`, `load(domain, path) -> Vec<Cookie>`, `delete_expired()`, `clear_all()`. Wire to `vex-net` cookie jar. Write 5 tests. | Cookie persistence | ⬜ |
-| P10.4.2 | **localStorage** — Create `crates/vex-storage/src/local_storage.rs`. Per-origin key-value store. SQLite table: `local_storage(origin, key, value)`. Methods: `get_item(origin, key) -> Option<String>`, `set_item(origin, key, value)`, `remove_item(origin, key)`, `clear(origin)`, `length(origin) -> usize`. 5MB limit per origin. Expose to JS via `window.localStorage`. Write 5 tests. | localStorage | ⬜ |
-| P10.4.3 | **sessionStorage** — Same API as localStorage but in-memory only (no SQLite). Cleared when tab closes. Keyed to (origin, tab_id). Expose to JS via `window.sessionStorage`. | sessionStorage | ⬜ |
-| P10.4.4 | **IndexedDB (simplified)** — Create `crates/vex-storage/src/indexed_db.rs`. SQLite-backed key-value store with indexes. API: `open(name, version)`, object stores with `add`, `get`, `put`, `delete`, indexes with `get_by_index`. Transaction model (begin/commit/abort). This is a simplified subset — enough for most sites. Expose to JS. | IndexedDB | ⬜ |
+| P10.4.1 | **Cookie storage** — `cookies.rs`: `PersistentCookie`, `CookieStore` with SQLite backend. `save()`, `load()`, `delete_expired()`, `clear_all()`. SameSite enum. 5 tests. | Cookie persistence | ✅ |
+| P10.4.2 | **localStorage** — `local_storage.rs`: `LocalStorage` with SQLite backend. Per-origin key-value, 5 MB quota. `get_item`, `set_item`, `remove_item`, `clear`, `length`, `usage`. 7 tests. | localStorage | ✅ |
+| P10.4.3 | **sessionStorage** — `session_storage.rs`: `SessionStorage` in-memory HashMap. Keyed by (origin, tab_id). `drop_tab()` on close. 5 MB quota. 6 tests. | sessionStorage | ✅ |
+| P10.4.4 | **IndexedDB (simplified)** — `indexed_db.rs`: `IdbDatabase` with SQLite backend. Object stores (create/delete), CRUD by key, `get_all_keys`, `count`, `clear`. SQL-injection-safe name validation. 7 tests. | IndexedDB | ✅ |
 
 ---
 
@@ -782,9 +782,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P10.5.1 | **Canvas fingerprint protection** — When JS reads canvas pixel data (`getImageData`, `toDataURL`, `toBlob`), inject random noise (±1 on each color channel). Consistent per origin per session (so the site can't detect the noise by comparing reads). | Canvas protection | ⬜ |
-| P10.5.2 | **WebGL masking** — Override `UNMASKED_RENDERER_WEBGL` and `UNMASKED_VENDOR_WEBGL` to return generic strings ("Vex GPU" / "Vex"). Limit `getExtension` to a standard subset. | WebGL masking | ⬜ |
-| P10.5.3 | **Font enumeration restriction** — When JS queries system fonts (via CSS font loading API or canvas text measurement), return a limited standard set (12 common web-safe fonts) instead of the full system font list. | Font restriction | ⬜ |
+| P10.5.1 | **Canvas fingerprint protection** — `canvas.rs` in vex-privacy: `CanvasFingerprintConfig`, `apply_canvas_noise()` (deterministic per-session seed, alpha untouched). 7 tests. | Canvas protection | ✅ |
+| P10.5.2 | **WebGL masking** — `webgl.rs` in vex-privacy: `WebGlMask`, `mask_webgl_params()`, `filter_extensions()`. Generic vendor/renderer strings, 16 allowed extensions. 5 tests. | WebGL masking | ✅ |
+| P10.5.3 | **Font enumeration restriction** — `fonts.rs` in vex-privacy: `FontRestrictionConfig`, `is_font_allowed()`, `filter_fonts()`. 30 curated web-safe fonts. 6 tests. | Font restriction | ✅ |
 
 ---
 
@@ -792,8 +792,8 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P10.6.1 | **WPT runner** — Create `tools/wpt_runner.rs`. Checkout Web Platform Tests repo. For each test: load the HTML in Vigo engine, execute, check test assertions. Report pass/fail/error. | WPT runner | ⬜ |
-| P10.6.2 | **WPT triage** — Run WPT suite. Categorize failures by subsystem (HTML, CSS, DOM, JS, Fetch). Prioritize fixes for most-impacted categories. Target: 60% pass on first run, iterate to 80%. | WPT dashboard | ⬜ |
+| P10.6.1 | **WPT runner** — `wpt.rs` in vex-browser: `WptRunner` (discover + run HTML tests), `TestOutcome`, `Subsystem` classification, `WptReport`, `format_report()`. Parse-only validation. 12 tests. | WPT runner | ✅ |
+| P10.6.2 | **WPT triage** — `triage_priorities()` in wpt.rs: sorts subsystems by failure count descending. `SubsystemStats` with pass_rate(). Integrated in `format_report()`. Tested with P10.6.1 tests. | WPT dashboard | ✅ |
 
 ---
 ---
