@@ -50,7 +50,10 @@ impl CookieJar {
             return;
         };
         let key = format!("{}:{}:{}", cookie.domain, cookie.path, cookie.name);
-        let mut store = self.store.write().expect("cookie lock poisoned");
+        let mut store = match self.store.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         store.insert(key, cookie);
     }
 
@@ -61,7 +64,10 @@ impl CookieJar {
         let secure = url.is_https();
         let now = SystemTime::now();
 
-        let store = self.store.read().expect("cookie lock poisoned");
+        let store = match self.store.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
         let pairs: Vec<String> = store
             .values()
@@ -85,7 +91,10 @@ impl CookieJar {
     /// Remove expired cookies.
     pub fn cleanup(&self) {
         let now = SystemTime::now();
-        let mut store = self.store.write().expect("cookie lock poisoned");
+        let mut store = match self.store.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         store.retain(|_, c| c.expires.map_or(true, |exp| exp > now));
     }
 }

@@ -204,8 +204,9 @@ impl JsRuntime {
             let repeating = repeating_val.to_boolean();
 
             let fire_at = Instant::now() + Duration::from_millis(u64::from(delay_ms));
-            let callback =
-                JsFunction::from_object(cb_obj.clone()).expect("callback should be a function");
+            let Some(callback) = JsFunction::from_object(cb_obj.clone()) else {
+                continue;
+            };
 
             self.timer_queue
                 .entry(fire_at)

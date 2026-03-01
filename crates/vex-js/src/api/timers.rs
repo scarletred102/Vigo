@@ -17,37 +17,37 @@ use boa_engine::{js_string, Context, JsResult, JsValue, NativeFunction};
 /// [`JsRuntime::run_pending_timers`](crate::JsRuntime::run_pending_timers)
 /// each frame to fire expired callbacks.
 pub fn register(context: &mut Context) {
-    context
-        .register_global_callable(
-            js_string!("setTimeout"),
-            2,
-            NativeFunction::from_fn_ptr(set_timeout),
-        )
-        .expect("register setTimeout");
+    if let Err(error) = context.register_global_callable(
+        js_string!("setTimeout"),
+        2,
+        NativeFunction::from_fn_ptr(set_timeout),
+    ) {
+        tracing::error!(target: "vex_js::timers", "failed to register setTimeout: {error}");
+    }
 
-    context
-        .register_global_callable(
-            js_string!("setInterval"),
-            2,
-            NativeFunction::from_fn_ptr(set_interval),
-        )
-        .expect("register setInterval");
+    if let Err(error) = context.register_global_callable(
+        js_string!("setInterval"),
+        2,
+        NativeFunction::from_fn_ptr(set_interval),
+    ) {
+        tracing::error!(target: "vex_js::timers", "failed to register setInterval: {error}");
+    }
 
-    context
-        .register_global_callable(
-            js_string!("clearTimeout"),
-            1,
-            NativeFunction::from_fn_ptr(clear_timeout),
-        )
-        .expect("register clearTimeout");
+    if let Err(error) = context.register_global_callable(
+        js_string!("clearTimeout"),
+        1,
+        NativeFunction::from_fn_ptr(clear_timeout),
+    ) {
+        tracing::error!(target: "vex_js::timers", "failed to register clearTimeout: {error}");
+    }
 
-    context
-        .register_global_callable(
-            js_string!("clearInterval"),
-            1,
-            NativeFunction::from_fn_ptr(clear_interval),
-        )
-        .expect("register clearInterval");
+    if let Err(error) = context.register_global_callable(
+        js_string!("clearInterval"),
+        1,
+        NativeFunction::from_fn_ptr(clear_interval),
+    ) {
+        tracing::error!(target: "vex_js::timers", "failed to register clearInterval: {error}");
+    }
 }
 
 // ---------------------------------------------------------------------------

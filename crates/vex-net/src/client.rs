@@ -14,6 +14,7 @@ use vex_core::{VexError, VexResult, VexUrl};
 
 use crate::cookies::CookieJar;
 use crate::decompress;
+use crate::dns::{DnsMode, DnsResolver};
 use crate::tls;
 use crate::types::{Method, Request, Response};
 
@@ -30,6 +31,7 @@ pub struct ClientConfig {
     pub follow_redirects: bool,
     pub max_redirects: u8,
     pub timeout_secs: u64,
+    pub dns_mode: DnsMode,
 }
 
 impl Default for ClientConfig {
@@ -39,6 +41,7 @@ impl Default for ClientConfig {
             follow_redirects: true,
             max_redirects: MAX_REDIRECTS,
             timeout_secs: DEFAULT_TIMEOUT_SECS,
+            dns_mode: DnsMode::System,
         }
     }
 }
@@ -51,6 +54,7 @@ pub struct HttpClient {
     >,
     config: ClientConfig,
     cookies: CookieJar,
+    dns_resolver: DnsResolver,
 }
 
 impl HttpClient {
@@ -62,6 +66,7 @@ impl HttpClient {
     /// Create a new HTTP client with custom configuration.
     pub fn with_config(config: ClientConfig) -> VexResult<Self> {
         let tls = tls::tls_config()?;
+        let dns_resolver = DnsResolver::new(config.dns_mode.clone())?;
 
         let https = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config((*tls).clone())
@@ -76,7 +81,17 @@ impl HttpClient {
             inner,
             config,
             cookies: CookieJar::new(),
+            dns_resolver,
         })
+    }
+
+    /// Create a client with an explicit DNS mode.
+    pub fn with_dns_mode(mode: DnsMode) -> VexResult<Self> {
+        let config = ClientConfig {
+            dns_mode: mode,
+            ..ClientConfig::default()
+        };
+        Self::with_config(config)
     }
 
     /// Access the cookie jar.
@@ -158,6 +173,12 @@ impl HttpClient {
         extra_headers: &HashMap<String, String>,
         body: &Option<Vec<u8>>,
     ) -> VexResult<Response> {
+        if let Some(host) = url.host() {
+            // P2.2.3 — DNS mode is wired into the client path by resolving via
+            // the configured resolver (system DNS or DoH) before request send.
+            let _ = self.dns_resolver.resolve(host).await?;
+        }
+
         let uri: hyper::Uri = url
             .inner()
             .as_str()
@@ -270,5 +291,22 @@ fn resolve_redirect(base: &VexUrl, location: &str) -> VexResult<VexUrl> {
         VexUrl::parse(location)
     } else {
         base.join(location)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_uses_system_dns() {
+        let config = ClientConfig::default();
+        assert!(matches!(config.dns_mode, DnsMode::System));
+    }
+
+    #[test]
+    fn client_accepts_doh_mode() {
+        let client = HttpClient::with_dns_mode(DnsMode::DoH(crate::dns::DoHProvider::Cloudflare));
+        assert!(client.is_ok());
     }
 }

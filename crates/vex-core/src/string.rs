@@ -31,7 +31,10 @@ impl VexString {
     /// Intern a string. If the same content was already interned, returns
     /// a handle that shares the same allocation.
     pub fn new(s: &str) -> Self {
-        let mut table = intern_table().lock().expect("intern table poisoned");
+        let mut table = match intern_table().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         if let Some(existing) = table.get(s) {
             VexString(existing.clone())
         } else {

@@ -64,18 +64,16 @@ fn paint_box(
 
     // Opacity layer.
     let needs_opacity = style.is_some_and(|s| s.opacity < 1.0);
-    if needs_opacity {
+    if let Some(style) = style.filter(|s| s.opacity < 1.0) {
         dl.push(DisplayCommand::PushOpacity {
-            opacity: style.unwrap().opacity,
+            opacity: style.opacity,
         });
     }
 
     // Clip region for overflow: hidden.
-    let needs_clip = layout_box.clip_rect.is_some();
-    if needs_clip {
-        dl.push(DisplayCommand::PushClip {
-            rect: layout_box.clip_rect.unwrap(),
-        });
+    let needs_clip = layout_box.clip_rect;
+    if let Some(rect) = needs_clip {
+        dl.push(DisplayCommand::PushClip { rect });
     }
 
     // 1. Background color.
@@ -91,7 +89,7 @@ fn paint_box(
     paint_children(layout_box, styles, document, viewport, dl);
 
     // Close clip/opacity in reverse order.
-    if needs_clip {
+    if needs_clip.is_some() {
         dl.push(DisplayCommand::PopClip);
     }
     if needs_opacity {

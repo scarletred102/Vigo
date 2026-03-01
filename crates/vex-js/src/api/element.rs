@@ -149,6 +149,8 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
 
     // getAttribute(name) -> string | null
     let doc_ga = doc.clone();
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let get_attribute = unsafe {
         NativeFunction::from_closure(move |this, args, ctx| {
             let node_id = extract_vex_id(this, ctx)?;
@@ -169,6 +171,8 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
 
     // setAttribute(name, value)
     let doc_sa = doc.clone();
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let set_attribute = unsafe {
         NativeFunction::from_closure(move |this, args, ctx| {
             let node_id = extract_vex_id(this, ctx)?;
@@ -191,6 +195,8 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
 
     // removeAttribute(name)
     let doc_ra = doc.clone();
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let remove_attribute = unsafe {
         NativeFunction::from_closure(move |this, args, ctx| {
             let node_id = extract_vex_id(this, ctx)?;
@@ -210,6 +216,8 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
 
     // appendChild(child) — child proxy must have __vex_id
     let doc_ac = doc.clone();
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let append_child = unsafe {
         NativeFunction::from_closure(move |this, args, ctx| {
             let parent_id = extract_vex_id(this, ctx)?;
@@ -226,6 +234,8 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
 
     // removeChild(child)
     let doc_rc = doc.clone();
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let remove_child = unsafe {
         NativeFunction::from_closure(move |this, args, ctx| {
             let parent_id = extract_vex_id(this, ctx)?;
@@ -242,6 +252,8 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
 
     // insertBefore(newNode, refNode)
     let doc_ib = doc.clone();
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let insert_before = unsafe {
         NativeFunction::from_closure(move |this, args, ctx| {
             let parent_id = extract_vex_id(this, ctx)?;
@@ -267,6 +279,8 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
 
     // children (getter — returns array of child element proxies)
     let doc_ch = doc.clone();
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let get_children = unsafe {
         NativeFunction::from_closure(move |this, _args, ctx| {
             let node_id = extract_vex_id(this, ctx)?;

@@ -348,7 +348,7 @@ mod tests {
 
     #[test]
     fn sort_scripts_by_time() {
-        let scripts = vec![
+        let scripts = [
             ContentScript {
                 extension_id: "idle".to_owned(),
                 patterns: vec![MatchPattern::parse("<all_urls>").unwrap()],

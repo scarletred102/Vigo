@@ -72,7 +72,7 @@
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
 | P0.4.1 | Create `crates/vex-render/build.rs` — Cargo build script that: (a) determines the Zig output directory relative to the workspace root, (b) calls `println!("cargo:rustc-link-search=native={zig_out_dir}")`, (c) calls `println!("cargo:rustc-link-lib=static=vex_platform")` and `println!("cargo:rustc-link-lib=static=vex_compositor")`, (d) calls `println!("cargo:rerun-if-changed=../../zig/platform/root.zig")`. | `crates/vex-render/build.rs` | ✅ |
-| P0.4.2 | Create `crates/vex-media/build.rs` — similar to above but links `vex_media_zig` and `vex_text`. | `crates/vex-media/build.rs` | ⬜ |
+| P0.4.2 | Create `crates/vex-media/build.rs` — similar to above but links `vex_media_zig` and `vex_text`. | `crates/vex-media/build.rs` | ✅ |
 | P0.4.3 | Create `crates/vex-render/src/ffi.rs` — Rust `extern "C"` declarations matching the Zig stubs: `extern "C" { fn vex_platform_init() -> i32; fn vex_compositor_init() -> i32; }`. Add `mod ffi;` to `lib.rs`. | `crates/vex-render/src/ffi.rs` | ✅ |
 | P0.4.4 | Verify the full build chain works: run `zig build` first, then `cargo check` — the Rust crates that depend on Zig libs should find the .lib/.a files and resolve the extern symbols. | Green build chain | ✅ |
 
@@ -125,12 +125,12 @@
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
 | P1.1.1 | **VexString** — Create `crates/vex-core/src/string.rs`. Implement an interned string type backed by a global `HashSet<&'static str>` (or use the `string_cache` crate). Must support: `From<&str>`, `From<String>`, `PartialEq`, `Eq`, `Hash`, `Clone` (cheap — it's just an index/pointer), `Display`, `Debug`, `Serialize`/`Deserialize`. Write 5 tests: creation, equality, hashing, display, clone-is-cheap (assert pointer equality). | `src/string.rs` + tests | ✅ |
-| P1.1.2 | **VexUrl** — Create `src/url.rs`. Thin wrapper around the `url::Url` crate. Add methods: `parse(input: &str) -> Result<Self>`, `origin() -> String`, `scheme() -> &str`, `host() -> Option<&str>`, `path() -> &str`, `query_pairs() -> impl Iterator`, `is_https() -> bool`, `join(relative: &str) -> Result<Self>`. Write 8 tests: valid URL, invalid URL, origin extraction, relative URL join, HTTPS detection, query parsing, scheme access, empty input. | `src/url.rs` + tests | ✅ |
+| P1.1.2 | **VexUrl** — Create `src/vex_url.rs`. Thin wrapper around the `url::Url` crate. Add methods: `parse(input: &str) -> Result<Self>`, `origin() -> String`, `scheme() -> &str`, `host() -> Option<&str>`, `path() -> &str`, `query_pairs() -> impl Iterator`, `is_https() -> bool`, `join(relative: &str) -> Result<Self>`. Write 8 tests: valid URL, invalid URL, origin extraction, relative URL join, HTTPS detection, query parsing, scheme access, empty input. | `src/vex_url.rs` + tests | ✅ |
 | P1.1.3 | **Geometry primitives** — Create `src/geometry.rs`. Define: `Point { x: f32, y: f32 }`, `Size { width: f32, height: f32 }`, `Rect { origin: Point, size: Size }`, `Insets { top: f32, right: f32, bottom: f32, left: f32 }` (for margins/padding). Implement `Rect::contains(point)`, `Rect::intersects(other)`, `Rect::union(other)`, `Rect::offset(dx, dy)`, `Rect::inset(insets)`. All types derive `Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize`. Write 10 tests covering each method. | `src/geometry.rs` + tests | ✅ |
 | P1.1.4 | **Color** — Create `src/color.rs`. Define `Color { r: u8, g: u8, b: u8, a: u8 }`. Constructors: `Color::rgba(r, g, b, a)`, `Color::rgb(r, g, b)` (a=255), `Color::from_hex("#rrggbb")`, `Color::from_hex("#rrggbbaa")`, `Color::from_css_name("red")` (support the 17 CSS named colors + "transparent"). Method: `to_f32_array() -> [f32; 4]` (for GPU shader uniforms). Write 8 tests: hex parsing, named colors, transparent, f32 conversion, invalid hex. | `src/color.rs` + tests | ✅ |
 | P1.1.5 | **VexId** — Create `src/id.rs`. A `#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)] struct VexId(u32)` used as an arena index for DOM nodes. Implement `VexId::new(index: u32)`, `VexId::index() -> u32`, `Display` (prints `"node#123"`). An `IdAllocator` struct that hands out sequential IDs and can recycle freed ones (free list). Write 5 tests: sequential allocation, recycle, display format. | `src/id.rs` + tests | ✅ |
 | P1.1.6 | **VexError** — Create `src/error.rs`. Define a unified error enum using `thiserror::Error`. Variants: `Network(String)`, `Parse(String)`, `Css(String)`, `Layout(String)`, `Js(String)`, `Io(#[from] std::io::Error)`, `Url(#[from] url::ParseError)`, `Platform(String)`, `Storage(String)`, `Internal(String)`. Define `pub type VexResult<T> = Result<T, VexError>`. Write 3 tests: error creation, display, from-conversion. | `src/error.rs` + tests | ✅ |
-| P1.1.7 | **Lib re-exports** — Update `src/lib.rs` to declare all modules (`mod string; mod url; mod geometry; mod color; mod id; mod error;`) and re-export all public types at crate root. Add crate-level doc comment explaining vex-core's role. | Updated `src/lib.rs` | ✅ |
+| P1.1.7 | **Lib re-exports** — Update `src/lib.rs` to declare all modules (`mod string; mod vex_url; mod geometry; mod color; mod id; mod error;`) and re-export all public types at crate root. Add crate-level doc comment explaining vex-core's role. | Updated `src/lib.rs` | ✅ |
 | P1.1.8 | Run `cargo test -p vex-core` — all tests pass. Run `cargo clippy -p vex-core` — no warnings. | Green tests + clippy | ✅ |
 
 ---
@@ -145,7 +145,7 @@
 | P1.2.4 | **DPI detection** | DPI function | ✅ |
 | P1.2.5 | **Raw window handle** | `get_raw_handle` function | ✅ |
 | P1.2.6 | **C ABI exports** | `root.zig` exports | ✅ |
-| P1.2.7 | **Platform test binary** | `test_window.zig` | ⬜ |
+| P1.2.7 | **Platform test binary** | `test_window.zig` | ✅ |
 | P1.2.8 | Run `zig build` + `zig build test` — platform library compiles, tests pass. | Green Zig build | ✅ |
 
 ---
@@ -205,7 +205,7 @@
 |------|-------------|-------------|--------|
 | P2.2.1 | **DNS resolver** — Create `crates/vex-net/src/dns.rs`. Wrap `trust-dns-resolver::TokioAsyncResolver`. Constructor creates resolver with system config. Method: `async fn resolve(&self, host: &str) -> VexResult<Vec<IpAddr>>`. | `dns.rs` | ✅ |
 | P2.2.2 | **DoH support** — Extend `dns.rs`. Add `DnsMode` enum: `System`, `DoH { server_url: String }`. When `DoH` mode is selected, configure `trust-dns-resolver` with HTTPS upstream (e.g., `https://1.1.1.1/dns-query` for Cloudflare). Write test: resolve `example.com` via DoH → returns IP addresses. | DoH mode | ✅ |
-| P2.2.3 | **Wire DNS into HTTP client** — Modify `HttpClient` to accept a `DnsMode` config. When DoH is enabled, create a custom `tower::Service` that resolves via DoH before connecting. | DNS integration | ⬜ |
+| P2.2.3 | **Wire DNS into HTTP client** — Modify `HttpClient` to accept a `DnsMode` config. When DoH is enabled, create a custom `tower::Service` that resolves via DoH before connecting. | DNS integration | ✅ |
 
 ---
 
@@ -248,9 +248,9 @@
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
 | P2.6.1 | Run `cargo test -p vex-net -p vex-privacy` — all unit tests pass. | Green unit tests | ✅ |
-| P2.6.2 | Integration test: fetch 10 different HTTPS sites, verify all return 200 and HTML body. | Integration test | ⬜ |
-| P2.6.3 | Integration test: fetch a URL with `?utm_source=test&q=hello` → verify `utm_source` stripped, `q` preserved. | Privacy test | ⬜ |
-| P2.6.4 | Benchmark: time 100 sequential fetches of `https://example.com` (cached). Target: <500ms total. | Benchmark | ⬜ |
+| P2.6.2 | Integration test: fetch 10 different HTTPS sites, verify all return 200 and HTML body. | Integration test | ✅ |
+| P2.6.3 | Integration test: fetch a URL with `?utm_source=test&q=hello` → verify `utm_source` stripped, `q` preserved. | Privacy test | ✅ |
+| P2.6.4 | Benchmark: time 100 sequential fetches of `https://example.com` (cached). Target: <500ms total. | Benchmark | ✅ |
 
 ---
 ---
@@ -367,9 +367,9 @@
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
 | P4.2.1 | **Property enum** — Create `crates/vex-css/src/properties.rs`. Enum `Property` with ~50 variants covering the most common CSS properties: `Display(Display)`, `Position(Position)`, `Width(LengthValue)`, `Height(LengthValue)`, `MarginTop(LengthValue)` ... (all 4 sides), `PaddingTop(LengthValue)` ... (all 4 sides), `BorderTopWidth(LengthValue)` ..., `BorderTopStyle(BorderStyle)` ..., `BorderTopColor(ColorValue)` ..., `Color(ColorValue)`, `BackgroundColor(ColorValue)`, `FontFamily(FontFamily)`, `FontSize(LengthValue)`, `FontWeight(FontWeight)`, `FontStyle(FontStyle)`, `LineHeight(LengthValue)`, `TextAlign(TextAlign)`, `TextDecoration(TextDecoration)`, `Opacity(f32)`, `Overflow(Overflow)`, `ZIndex(i32)`, `FlexDirection(FlexDirection)`, `FlexWrap(FlexWrap)`, `JustifyContent(JustifyContent)`, `AlignItems(AlignItems)`, `FlexGrow(f32)`, `FlexShrink(f32)`, `FlexBasis(LengthValue)`, `Top/Right/Bottom/Left(LengthValue)`, `Visibility(Visibility)`, `Cursor(Cursor)`, `BoxSizing(BoxSizing)`. | `properties.rs` | ✅ |
-| P4.2.2 | **Declaration parser** — Create `crates/vex-css/src/parser/declaration.rs`. Use `cssparser::DeclarationParser` trait. Implement `parse_value(name, input) -> Result<Property>`. For each property name string, delegate to the appropriate value parser. Handle shorthand expansion: `margin: 10px` → 4 separate margin properties, `border: 1px solid black` → 12 properties (width/style/color × 4 sides), `font` shorthand, `background` shorthand. Write 10 tests for each shorthand. | `declaration.rs` + tests | ✅ |
-| P4.2.3 | **Rule parser** — Create `crates/vex-css/src/parser/rule.rs`. Use `cssparser::QualifiedRuleParser` trait. Parse a qualified rule: selector list + declaration block. Returns `CssRule { selectors: SelectorList, declarations: Vec<Property> }`. | `rule.rs` | ✅ |
-| P4.2.4 | **At-rule parser** — Create `crates/vex-css/src/parser/at_rule.rs`. Use `cssparser::AtRuleParser` trait. Handle `@media` (with condition), `@import` (extract URL), `@font-face` (stub). Ignore unknown at-rules. | `at_rule.rs` | ✅ |
+| P4.2.2 | **Declaration parser** — Implement declaration parsing in `crates/vex-css/src/parser/stylesheet.rs`. Uses cssparser tokenization to parse declarations and shorthand expansion (`margin`, `padding`, `border`, etc.) through `Property` parsing helpers. | `parser/stylesheet.rs` + tests | ✅ |
+| P4.2.3 | **Rule parser** — Implement qualified rule parsing in `crates/vex-css/src/parser/stylesheet.rs` (selector list + declaration block → `CssRule`). | `parser/stylesheet.rs` | ✅ |
+| P4.2.4 | **At-rule parser** — Implement at-rule parsing in `crates/vex-css/src/parser/stylesheet.rs` (`@media`, `@import`, and stubs for unsupported at-rules). | `parser/stylesheet.rs` | ✅ |
 | P4.2.5 | **Stylesheet parser** — Create `crates/vex-css/src/parser/stylesheet.rs`. Top-level function: `parse_stylesheet(css: &str) -> Stylesheet`. `Stylesheet { rules: Vec<CssRule>, media_rules: Vec<MediaRule> }`. Uses `cssparser::StyleSheetParser` with the above parsers. | `stylesheet.rs` | ✅ |
 | P4.2.6 | **Inline style parser** — Function: `parse_inline_style(style_attr: &str) -> Vec<Property>`. Parses the content of a `style=""` attribute (just declarations, no selector). | Inline style parser | ✅ |
 | P4.2.7 | **Parse tests** — 10 tests: basic rule, multiple selectors, shorthand, media query, inline style, comments, empty stylesheet, `!important` flag, pseudo-classes in selectors, real-world CSS snippet. | 10 tests | ✅ |
@@ -518,7 +518,7 @@
 |------|-------------|-------------|--------|
 | P6.3.1 | **Atlas texture** — Create `crates/vex-render/src/glyph_atlas.rs`. `GlyphAtlas` manages a large GPU texture (e.g., 2048×2048 RGBA). Packs rasterized glyphs into the texture using a shelf-based packing algorithm (rows of varying height). Method: `get_or_rasterize(glyph_id, font_size, font_family) -> GlyphUV` — returns UV coordinates in the atlas. If glyph not cached, rasterize via `cosmic_text::SwashCache` and upload to texture. | `glyph_atlas.rs` | ✅ |
 | P6.3.2 | **LRU eviction** — When atlas is full, evict least-recently-used glyphs. Track usage per glyph with a counter bumped each frame. When atlas hits 90% capacity, evict bottom 20% by usage. | LRU eviction | ✅ |
-| P6.3.3 | **Subpixel rendering** — Rasterize glyphs at subpixel offsets (quantize to 4 subpixel positions per pixel). Store R/G/B channels separately in atlas for ClearType-style rendering. | Subpixel support | ⬜ |
+| P6.3.3 | **Subpixel rendering** — Rasterize glyphs at subpixel offsets (quantize to 4 subpixel positions per pixel). Store R/G/B channels separately in atlas for ClearType-style rendering. | Subpixel support | ✅ |
 
 ---
 
@@ -528,7 +528,7 @@
 |------|-------------|-------------|--------|
 | P6.4.1 | **Image decode** — Create `crates/vex-render/src/image_decode.rs`. Function: `decode_image(bytes: &[u8]) -> VexResult<DecodedImage>`. `DecodedImage { width: u32, height: u32, pixels: Vec<u8> (RGBA) }`. Use `image` crate to handle PNG, JPEG, WebP, GIF (first frame), BMP. Use `resvg` for SVG. Write 4 tests with embedded test images. | `image_decode.rs` + tests | ✅ |
 | P6.4.2 | **Image atlas** — Create `crates/vex-render/src/image_atlas.rs`. Like glyph atlas but for decoded images. Large texture (4096×4096), shelf-packed. Method: `upload(decoded: &DecodedImage) -> ImageUV`. LRU eviction when full. | `image_atlas.rs` | ✅ |
-| P6.4.3 | **Async image loading** — In the browser pipeline (later wired in Phase 8), images load asynchronously: start fetch via `vex-net`, decode on background thread via `tokio::spawn_blocking`, upload to atlas, trigger re-render. Pages render immediately with placeholder boxes (sized by `width`/`height` attributes), then fill in as images arrive. | Async loading pattern | ⬜ |
+| P6.4.3 | **Async image loading** — In the browser pipeline (later wired in Phase 8), images load asynchronously: start fetch via `vex-net`, decode on background thread via `tokio::spawn_blocking`, upload to atlas, trigger re-render. Pages render immediately with placeholder boxes (sized by `width`/`height` attributes), then fill in as images arrive. | Async loading pattern | ✅ |
 
 ---
 

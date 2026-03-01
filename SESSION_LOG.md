@@ -8,6 +8,8 @@
 
 **Phase 0 ✅ — Phase 1 ✅ — Phase 2 ✅ — Phase 3 ✅ — Phase 4 (CSS) ✅ — Phase 5 (Layout) ✅ — Phase 6 (GPU Rendering) ✅ — Phase 7 (JavaScript) ✅ — Phase 8 (Browser Chrome) ✅ — Phase 9 (Media) ✅ — Phase 10 (Security, Storage & Web Compat) ✅**
 
+> Validation (2026-03-02): `just ci` passes clean and `TASKS.md` currently has 0 incomplete rows.
+
 The full rendering pipeline is operational: parse HTML → build DOM → extract `<style>` → parse CSS → compute styles → lay out boxes → build display list → GPU render with text, rectangles, and borders. JavaScript engine (Boa 0.19) runs inline/external/defer/async scripts with DOM manipulation, event handling, fetch API, timers, and form interaction. Browser chrome layer provides tab management, navigation history, bookmarks, browsing history, find-in-page, downloads, zoom, keyboard shortcuts, context menus, and settings. Security layer enforces Same-Origin Policy, CORS preflight, CSP Level 2. Storage layer provides persistent cookies, localStorage, sessionStorage, and simplified IndexedDB — all SQLite-backed. Privacy hardening includes canvas fingerprint noise, WebGL parameter masking, and font enumeration restriction. WPT runner framework classifies and triages test results by subsystem.
 
 ```bash

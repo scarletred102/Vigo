@@ -92,8 +92,12 @@ pub fn strip_tracking_params(url: &VexUrl) -> VexUrl {
         } // drop query_pairs to release the mutable borrow on new_url
     }
 
-    // Re-parse to create a VexUrl (infallible since we started from a valid URL)
-    VexUrl::parse(new_url.as_str()).expect("URL was already valid")
+    // Re-parse to create a VexUrl. If reparsing somehow fails, keep the
+    // original input URL rather than panicking in library code.
+    match VexUrl::parse(new_url.as_str()) {
+        Ok(parsed) => parsed,
+        Err(_) => url.clone(),
+    }
 }
 
 #[cfg(test)]

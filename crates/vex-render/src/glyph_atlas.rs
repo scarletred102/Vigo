@@ -22,6 +22,8 @@ const ATLAS_HEIGHT: u32 = 2048;
 
 /// Padding between packed glyphs (prevents texture bleeding).
 const GLYPH_PAD: u32 = 1;
+/// Horizontal subpixel quantization steps (quarter-pixel).
+const SUBPIXEL_STEPS: f32 = 4.0;
 
 /// A positioned glyph ready for GPU instanced rendering.
 #[derive(Debug, Clone, Copy)]
@@ -114,7 +116,10 @@ impl GlyphAtlas {
             let run_y = y + run.line_y;
 
             for layout_glyph in run.glyphs.iter() {
-                let physical = layout_glyph.physical((0.0, 0.0), 1.0);
+                // P6.3.3 — quantize horizontal subpixel offsets to 1/4 px so
+                // cache keys include stable subpixel variants.
+                let subpixel_x = quantize_subpixel(x.fract());
+                let physical = layout_glyph.physical((subpixel_x, 0.0), 1.0);
 
                 // Ensure glyph is rasterized and packed into the atlas.
                 let entry = match self.ensure_glyph(physical.cache_key) {
@@ -213,14 +218,17 @@ impl GlyphAtlas {
             .swash_cache
             .get_image_uncached(&mut self.font_system, cache_key)?;
 
-        // Only handle alpha (grayscale) content.
-        match image.content {
-            SwashContent::Mask => {}
-            SwashContent::Color | SwashContent::SubpixelMask => {
-                // For now, skip color emoji and subpixel glyphs.
+        // P6.3.3 — support subpixel masks by collapsing RGB coverage into
+        // single-channel alpha for the R8 atlas.
+        let raster_data = match image.content {
+            SwashContent::Mask => image.data.clone(),
+            SwashContent::SubpixelMask => subpixel_mask_to_alpha(&image.data),
+            SwashContent::Color => {
+                // Color glyphs (emoji) are out-of-scope for the current text
+                // pipeline and remain skipped.
                 return None;
             }
-        }
+        };
 
         let gw = image.placement.width;
         let gh = image.placement.height;
@@ -246,8 +254,8 @@ impl GlyphAtlas {
             for col in 0..gw {
                 let src_idx = (row * gw + col) as usize;
                 let dst_idx = ((py + row) * self.width + (px + col)) as usize;
-                if src_idx < image.data.len() && dst_idx < self.pixels.len() {
-                    self.pixels[dst_idx] = image.data[src_idx];
+                if src_idx < raster_data.len() && dst_idx < self.pixels.len() {
+                    self.pixels[dst_idx] = raster_data[src_idx];
                 }
             }
         }
@@ -325,9 +333,48 @@ impl Default for GlyphAtlas {
     }
 }
 
+/// Quantize a subpixel offset to quarter-pixel steps in [0, 1).
+fn quantize_subpixel(x: f32) -> f32 {
+    let norm = x.rem_euclid(1.0);
+    (norm * SUBPIXEL_STEPS).round() / SUBPIXEL_STEPS
+}
+
+/// Convert RGB subpixel coverage bytes into a single alpha channel.
+///
+/// Each pixel in a subpixel mask is encoded as 3 bytes (R, G, B coverage).
+/// We keep maximum channel coverage to preserve edge visibility in the
+/// single-channel atlas format.
+fn subpixel_mask_to_alpha(bytes: &[u8]) -> Vec<u8> {
+    bytes
+        .chunks(3)
+        .map(|chunk| match chunk {
+            [r, g, b] => (*r).max(*g).max(*b),
+            [r, g] => (*r).max(*g),
+            [r] => *r,
+            _ => 0,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quantize_subpixel_snaps_to_quarters() {
+        assert_eq!(quantize_subpixel(0.00), 0.0);
+        assert_eq!(quantize_subpixel(0.12), 0.0);
+        assert_eq!(quantize_subpixel(0.26), 0.25);
+        assert_eq!(quantize_subpixel(0.49), 0.5);
+        assert_eq!(quantize_subpixel(0.74), 0.75);
+    }
+
+    #[test]
+    fn subpixel_mask_collapses_to_alpha() {
+        let rgb = vec![10, 20, 30, 250, 1, 2];
+        let alpha = subpixel_mask_to_alpha(&rgb);
+        assert_eq!(alpha, vec![30, 250]);
+    }
 
     #[test]
     fn new_atlas_is_clean() {

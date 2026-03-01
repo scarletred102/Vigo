@@ -94,10 +94,15 @@ impl Tab {
 
     /// Create a blank tab (no URL loaded yet).
     pub fn blank(id: TabId) -> Self {
-        let url = VexUrl::parse("vex://newtab").unwrap_or_else(|_| {
-            // Fallback — should never happen since the scheme is valid.
-            VexUrl::parse("about:blank").expect("about:blank is always valid")
-        });
+        let url = match VexUrl::parse("vex://newtab") {
+            Ok(url) => url,
+            Err(_) => match VexUrl::parse("about:blank") {
+                Ok(url) => url,
+                Err(error) => {
+                    panic!("failed to parse built-in blank tab URL: {error}");
+                }
+            },
+        };
         Self::new(id, url)
     }
 

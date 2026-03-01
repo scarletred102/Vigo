@@ -124,9 +124,10 @@ impl TreeSink for VexSink {
 
     fn elem_name<'a>(&'a self, target: &'a VexId) -> VexElemName {
         let names = self.names.borrow();
-        let qn = names
-            .get(&target.index())
-            .expect("elem_name called on a node without a recorded QualName");
+        let qn = match names.get(&target.index()) {
+            Some(qn) => qn,
+            None => panic!("elem_name called on a node without a recorded QualName"),
+        };
         VexElemName {
             local: qn.local.clone(),
             ns: qn.ns.clone(),
@@ -215,8 +216,10 @@ impl TreeSink for VexSink {
     fn get_template_contents(&self, target: &VexId) -> VexId {
         let doc = self.doc.borrow();
         if let NodeData::Element(ref el) = doc.arena().get(*target).data {
-            el.template_contents
-                .expect("get_template_contents on non-template element")
+            match el.template_contents {
+                Some(contents) => contents,
+                None => panic!("get_template_contents on non-template element"),
+            }
         } else {
             panic!("get_template_contents called on a non-element node");
         }
@@ -232,11 +235,10 @@ impl TreeSink for VexSink {
 
     fn append_before_sibling(&self, sibling: &VexId, new_node: NodeOrText<VexId>) {
         let mut doc = self.doc.borrow_mut();
-        let parent = doc
-            .arena()
-            .get(*sibling)
-            .parent
-            .expect("append_before_sibling: sibling has no parent");
+        let parent = match doc.arena().get(*sibling).parent {
+            Some(parent) => parent,
+            None => panic!("append_before_sibling: sibling has no parent"),
+        };
 
         match new_node {
             NodeOrText::AppendNode(id) => {

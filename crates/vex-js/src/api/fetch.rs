@@ -16,13 +16,13 @@ use boa_engine::{js_string, Context, JsNativeError, JsResult, JsValue, NativeFun
 
 /// Register the global `fetch(url)` function.
 pub fn register(context: &mut Context) {
-    context
-        .register_global_callable(
-            js_string!("fetch"),
-            1,
-            NativeFunction::from_fn_ptr(fetch_fn),
-        )
-        .expect("register fetch");
+    if let Err(error) = context.register_global_callable(
+        js_string!("fetch"),
+        1,
+        NativeFunction::from_fn_ptr(fetch_fn),
+    ) {
+        tracing::error!(target: "vex_js::fetch", "failed to register fetch: {error}");
+    }
 }
 
 /// `fetch(url)` → `Promise<Response>`

@@ -89,6 +89,8 @@ pub fn build_style_proxy(node_id: VexId, doc: &SharedDocument, context: &mut Con
 
     // setProperty(name, value) — generic setter
     let doc_sp = doc.clone();
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let set_property = unsafe {
         NativeFunction::from_closure(move |_this, args, ctx| {
             let prop = args
@@ -112,6 +114,8 @@ pub fn build_style_proxy(node_id: VexId, doc: &SharedDocument, context: &mut Con
 
     // getPropertyValue(name) — generic getter
     let doc_gp = doc.clone();
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let get_property_value = unsafe {
         NativeFunction::from_closure(move |_this, args, ctx| {
             let prop = args
@@ -129,6 +133,8 @@ pub fn build_style_proxy(node_id: VexId, doc: &SharedDocument, context: &mut Con
 
     // removeProperty(name)
     let doc_rp = doc.clone();
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let remove_property = unsafe {
         NativeFunction::from_closure(move |_this, args, ctx| {
             let prop = args

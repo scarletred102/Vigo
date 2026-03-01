@@ -29,16 +29,19 @@ async fn render_to_pixels_async(dl: &DisplayList, width: u32, height: u32) -> Ve
         ..Default::default()
     });
 
-    let adapter = instance
+    let adapter = match instance
         .request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: None,
             force_fallback_adapter: false,
         })
         .await
-        .expect("no GPU adapter for offscreen rendering");
+    {
+        Some(adapter) => adapter,
+        None => panic!("no GPU adapter for offscreen rendering"),
+    };
 
-    let (device, queue) = adapter
+    let (device, queue) = match adapter
         .request_device(
             &wgpu::DeviceDescriptor {
                 label: Some("vex-screenshot-device"),
@@ -47,7 +50,10 @@ async fn render_to_pixels_async(dl: &DisplayList, width: u32, height: u32) -> Ve
             None,
         )
         .await
-        .expect("failed to create device for screenshot");
+    {
+        Ok(pair) => pair,
+        Err(error) => panic!("failed to create device for screenshot: {error}"),
+    };
 
     let format = wgpu::TextureFormat::Rgba8UnormSrgb;
 
@@ -122,9 +128,13 @@ async fn render_to_pixels_async(dl: &DisplayList, width: u32, height: u32) -> Ve
         tx.send(result).ok();
     });
     device.poll(wgpu::Maintain::Wait);
-    rx.recv()
-        .expect("map_async channel closed")
-        .expect("map_async failed");
+    let map_result = match rx.recv() {
+        Ok(result) => result,
+        Err(error) => panic!("map_async channel closed: {error}"),
+    };
+    if let Err(error) = map_result {
+        panic!("map_async failed: {error:?}");
+    }
 
     let mapped = slice.get_mapped_range();
 

@@ -63,57 +63,57 @@ fn register_inner(eme_state: Option<&super::eme::EmeState>, context: &mut Contex
         .build();
 
     // Register `window` as a global property.
-    context
-        .register_global_property(
-            js_string!("window"),
-            window.clone(),
-            Attribute::WRITABLE | Attribute::CONFIGURABLE,
-        )
-        .expect("failed to register window global");
+    if let Err(error) = context.register_global_property(
+        js_string!("window"),
+        window.clone(),
+        Attribute::WRITABLE | Attribute::CONFIGURABLE,
+    ) {
+        tracing::error!(target: "vex_js::window", "failed to register window global: {error}");
+    }
 
     // `self` === `window` in browsers.
-    context
-        .register_global_property(
-            js_string!("self"),
-            window,
-            Attribute::WRITABLE | Attribute::CONFIGURABLE,
-        )
-        .expect("failed to register self global");
+    if let Err(error) = context.register_global_property(
+        js_string!("self"),
+        window,
+        Attribute::WRITABLE | Attribute::CONFIGURABLE,
+    ) {
+        tracing::error!(target: "vex_js::window", "failed to register self global: {error}");
+    }
 
     // Also register top-level `innerWidth` / `innerHeight` on the global
     // so `innerWidth` works without `window.` prefix.
-    context
-        .register_global_property(
-            js_string!("innerWidth"),
-            JsValue::from(DEFAULT_WIDTH),
-            Attribute::WRITABLE | Attribute::CONFIGURABLE,
-        )
-        .expect("failed to register innerWidth");
-    context
-        .register_global_property(
-            js_string!("innerHeight"),
-            JsValue::from(DEFAULT_HEIGHT),
-            Attribute::WRITABLE | Attribute::CONFIGURABLE,
-        )
-        .expect("failed to register innerHeight");
+    if let Err(error) = context.register_global_property(
+        js_string!("innerWidth"),
+        JsValue::from(DEFAULT_WIDTH),
+        Attribute::WRITABLE | Attribute::CONFIGURABLE,
+    ) {
+        tracing::error!(target: "vex_js::window", "failed to register innerWidth: {error}");
+    }
+    if let Err(error) = context.register_global_property(
+        js_string!("innerHeight"),
+        JsValue::from(DEFAULT_HEIGHT),
+        Attribute::WRITABLE | Attribute::CONFIGURABLE,
+    ) {
+        tracing::error!(target: "vex_js::window", "failed to register innerHeight: {error}");
+    }
 
     // Top-level `alert()`.
-    context
-        .register_global_callable(
-            js_string!("alert"),
-            1,
-            NativeFunction::from_fn_ptr(alert_fn),
-        )
-        .expect("failed to register alert");
+    if let Err(error) = context.register_global_callable(
+        js_string!("alert"),
+        1,
+        NativeFunction::from_fn_ptr(alert_fn),
+    ) {
+        tracing::error!(target: "vex_js::window", "failed to register alert: {error}");
+    }
 
     // Top-level `navigator` so `navigator.userAgent` works without `window.` prefix.
-    context
-        .register_global_property(
-            js_string!("navigator"),
-            navigator_clone,
-            Attribute::WRITABLE | Attribute::CONFIGURABLE,
-        )
-        .expect("failed to register navigator");
+    if let Err(error) = context.register_global_property(
+        js_string!("navigator"),
+        navigator_clone,
+        Attribute::WRITABLE | Attribute::CONFIGURABLE,
+    ) {
+        tracing::error!(target: "vex_js::window", "failed to register navigator: {error}");
+    }
 }
 
 // ── location ──────────────────────────────────────────────────────────

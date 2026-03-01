@@ -74,13 +74,13 @@ pub fn register(context: &mut Context) {
         )
         .build();
 
-    context
-        .register_global_property(
-            js_string!("console"),
-            console,
-            boa_engine::property::Attribute::all(),
-        )
-        .expect("failed to register console global");
+    if let Err(error) = context.register_global_property(
+        js_string!("console"),
+        console,
+        boa_engine::property::Attribute::all(),
+    ) {
+        tracing::error!(target: "vex_js::console", "failed to register console global: {error}");
+    }
 }
 
 /// `console.log(...args)` → `tracing::info!`

@@ -53,6 +53,8 @@ pub fn register(doc: &SharedDocument, context: &mut Context) {
     };
 
     // --- querySelector ---
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let query_selector = unsafe {
         NativeFunction::from_closure(move |_this, args, ctx| {
             let sel = args
@@ -76,6 +78,8 @@ pub fn register(doc: &SharedDocument, context: &mut Context) {
     };
 
     // --- querySelectorAll ---
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let query_selector_all = unsafe {
         NativeFunction::from_closure(move |_this, args, ctx| {
             let sel = args
@@ -103,6 +107,8 @@ pub fn register(doc: &SharedDocument, context: &mut Context) {
     };
 
     // --- createElement ---
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let create_element = unsafe {
         NativeFunction::from_closure(move |_this, args, ctx| {
             let tag = args
@@ -120,6 +126,8 @@ pub fn register(doc: &SharedDocument, context: &mut Context) {
     };
 
     // --- createTextNode ---
+    // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
+    // invoked by Boa on the same thread as the owning JS context.
     let create_text_node = unsafe {
         NativeFunction::from_closure(move |_this, args, ctx| {
             let text = args
@@ -172,13 +180,13 @@ pub fn register(doc: &SharedDocument, context: &mut Context) {
         .function(create_text_node, js_string!("createTextNode"), 1)
         .build();
 
-    context
-        .register_global_property(
-            js_string!("document"),
-            document,
-            Attribute::WRITABLE | Attribute::CONFIGURABLE,
-        )
-        .expect("failed to register document global");
+    if let Err(error) = context.register_global_property(
+        js_string!("document"),
+        document,
+        Attribute::WRITABLE | Attribute::CONFIGURABLE,
+    ) {
+        tracing::error!(target: "vex_js::document", "failed to register document global: {error}");
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────

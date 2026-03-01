@@ -6,6 +6,7 @@
 //! Requires network access — run with `cargo test -p vex-net --test fetch_test`.
 
 use vex_net::{HttpClient, Request};
+use vex_privacy::PrivacyLayer;
 
 #[tokio::test]
 #[ignore = "requires network access"]
@@ -64,4 +65,93 @@ async fn fetch_gzip_decompression() {
         "expected gzip response: {}",
         &body[..100.min(body.len())]
     );
+}
+
+#[tokio::test]
+#[ignore = "requires network access"]
+async fn fetch_ten_https_sites() {
+    let client = HttpClient::new().expect("client should init");
+
+    let urls = [
+        "https://example.com/",
+        "https://httpbin.org/html",
+        "https://www.rust-lang.org/",
+        "https://www.mozilla.org/",
+        "https://www.wikipedia.org/",
+        "https://www.github.com/",
+        "https://docs.rs/",
+        "https://crates.io/",
+        "https://www.cloudflare.com/",
+        "https://www.gnu.org/",
+    ];
+
+    for url in urls {
+        let request = Request::get(url).expect("URL should parse");
+        let response = client.fetch(request).await.expect("fetch should succeed");
+        assert!(
+            response.is_success(),
+            "expected success for {url}, got {}",
+            response.status
+        );
+
+        let body = response.text().expect("body should be UTF-8");
+        assert!(
+            body.contains('<') && body.contains('>'),
+            "expected HTML-ish body for {url}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires network access"]
+async fn fetch_filtered_strips_tracking_params() {
+    let client = HttpClient::new().expect("client should init");
+    let privacy = PrivacyLayer::new();
+
+    let request =
+        Request::get("https://httpbin.org/get?utm_source=test&q=hello").expect("URL should parse");
+
+    let response = client
+        .fetch_filtered(request, |req| privacy.process_request(req))
+        .await
+        .expect("fetch should succeed");
+
+    assert_eq!(response.status, 200);
+    let body = response.text().expect("body should be UTF-8");
+
+    assert!(
+        body.contains("\"q\": \"hello\""),
+        "expected q param in echo body"
+    );
+    assert!(
+        !body.contains("utm_source"),
+        "expected utm_source to be stripped from request URL"
+    );
+}
+
+#[tokio::test]
+#[ignore = "benchmark: requires network and is timing-sensitive"]
+async fn benchmark_100_sequential_fetches() {
+    use std::time::{Duration, Instant};
+
+    let client = HttpClient::new().expect("client should init");
+    let request = Request::get("https://example.com/").expect("URL should parse");
+
+    let start = Instant::now();
+    for _ in 0..100 {
+        let response = client
+            .fetch(request.clone())
+            .await
+            .expect("fetch should succeed");
+        assert!(response.is_success());
+    }
+    let elapsed = start.elapsed();
+
+    println!("100 sequential fetches elapsed: {elapsed:?}");
+
+    // Soft target from Phase 2 planning notes.
+    let soft_target = Duration::from_millis(500);
+    if elapsed > soft_target {
+        println!("benchmark target missed (soft): elapsed={elapsed:?}, target={soft_target:?}");
+    }
 }
