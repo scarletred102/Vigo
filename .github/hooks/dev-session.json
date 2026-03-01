@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "bash .github/hooks/scripts/dev-context.sh",
+        "windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .github\\hooks\\scripts\\dev-context.ps1",
+        "timeout": 15
+      }
+    ]
+  }
+}
