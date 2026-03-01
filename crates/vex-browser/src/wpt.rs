@@ -398,10 +398,12 @@ mod tests {
 
     #[test]
     fn subsystem_stats_pass_rate() {
-        let mut stats = SubsystemStats::default();
-        stats.pass = 3;
-        stats.fail = 1;
-        stats.error = 1;
+        let stats = SubsystemStats {
+            pass: 3,
+            fail: 1,
+            error: 1,
+            ..Default::default()
+        };
         assert!((stats.pass_rate() - 0.6).abs() < 0.001);
     }
 

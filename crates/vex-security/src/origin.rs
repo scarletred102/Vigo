@@ -35,10 +35,7 @@ impl Origin {
         match scheme {
             "http" | "https" | "ftp" | "ws" | "wss" => {
                 if let Some(host) = url.host() {
-                    let port = url
-                        .inner()
-                        .port_or_known_default()
-                        .unwrap_or(0);
+                    let port = url.inner().port_or_known_default().unwrap_or(0);
                     Self::Tuple {
                         scheme: scheme.to_owned(),
                         host: host.to_owned(),
@@ -91,11 +88,7 @@ impl Origin {
     /// the default for the scheme). Opaque origins produce `"null"`.
     pub fn serialize(&self) -> String {
         match self {
-            Self::Tuple {
-                scheme,
-                host,
-                port,
-            } => {
+            Self::Tuple { scheme, host, port } => {
                 let default_port = default_port_for_scheme(scheme);
                 if Some(*port) == default_port {
                     format!("{scheme}://{host}")

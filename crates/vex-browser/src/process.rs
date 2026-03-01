@@ -56,12 +56,8 @@ impl fmt::Display for ProcessId {
 #[derive(Debug, Clone)]
 pub enum IpcMessage {
     // ── Browser → Renderer ──
-
     /// Navigate the tab to a URL.
-    LoadUrl {
-        tab_id: TabId,
-        url: VexUrl,
-    },
+    LoadUrl { tab_id: TabId, url: VexUrl },
 
     /// Forward a user input event to the renderer.
     InputEvent {
@@ -70,15 +66,12 @@ pub enum IpcMessage {
     },
 
     /// Request the renderer to produce a new display list / frame.
-    RequestFrame {
-        tab_id: TabId,
-    },
+    RequestFrame { tab_id: TabId },
 
     /// Tell the renderer to shut down gracefully.
     Shutdown,
 
     // ── Renderer → Browser ──
-
     /// The renderer finished loading a page.
     NavigationComplete {
         tab_id: TabId,
@@ -96,16 +89,10 @@ pub enum IpcMessage {
 
     /// JavaScript initiated a callback / DOM event that the browser
     /// process needs to know about (e.g. `window.close()`, title change).
-    JsCallback {
-        tab_id: TabId,
-        kind: JsCallbackKind,
-    },
+    JsCallback { tab_id: TabId, kind: JsCallbackKind },
 
     /// The renderer encountered a fatal error or crash.
-    RendererCrashed {
-        tab_id: TabId,
-        reason: String,
-    },
+    RendererCrashed { tab_id: TabId, reason: String },
 }
 
 /// Simplified input event data for IPC serialisation.
@@ -307,7 +294,7 @@ mod tests {
         let url = VexUrl::parse("https://example.com").unwrap();
         let tid = make_tab_id(1);
 
-        let msgs = vec![
+        let msgs = [
             IpcMessage::LoadUrl {
                 tab_id: tid,
                 url: url.clone(),

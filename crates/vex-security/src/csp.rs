@@ -376,12 +376,13 @@ mod tests {
 
     #[test]
     fn parse_nonce_and_hash() {
-        let policy =
-            CspPolicy::parse("script-src 'nonce-abc123' 'sha256-abcdef' 'unsafe-inline'");
+        let policy = CspPolicy::parse("script-src 'nonce-abc123' 'sha256-abcdef' 'unsafe-inline'");
         let sources = &policy.directives[&Directive::ScriptSrc];
         assert_eq!(sources.len(), 3);
         assert!(matches!(&sources[0], CspSource::Nonce(n) if n == "abc123"));
-        assert!(matches!(&sources[1], CspSource::Hash { algo, value } if algo == "sha256" && value == "abcdef"));
+        assert!(
+            matches!(&sources[1], CspSource::Hash { algo, value } if algo == "sha256" && value == "abcdef")
+        );
         assert_eq!(sources[2], CspSource::UnsafeInline);
     }
 

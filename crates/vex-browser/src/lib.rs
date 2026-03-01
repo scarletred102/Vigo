@@ -11,6 +11,7 @@
 
 pub mod bookmarks;
 pub mod crash_recovery;
+pub mod devtools;
 pub mod downloads;
 pub mod drm_overlay;
 pub mod error_pages;
@@ -29,7 +30,10 @@ pub mod webview_fallback;
 pub mod wpt;
 pub mod zoom;
 
+pub mod extensions;
+
 pub use bookmarks::{Bookmark, BookmarkId, BookmarkManager};
+pub use devtools::{DevToolsAction, DevToolsLayout, DevToolsPanel, DevToolsState, DockPosition};
 pub use downloads::{DownloadManager, DownloadState};
 pub use drm_overlay::OverlayManager;
 pub use find::FindState;
@@ -49,3 +53,9 @@ pub use ui::tab_bar::TabBarAction;
 pub use webview_fallback::{WebViewFallback, WebViewState};
 pub use wpt::{WptReport, WptRunner};
 pub use zoom::ZoomState;
+
+pub use extensions::action::{ActionBar, ActionClick, BrowserAction as ExtBrowserAction};
+pub use extensions::content::{ContentScript, InjectionTime, MatchPattern};
+pub use extensions::loader::ExtensionLoader;
+pub use extensions::manifest::ExtensionManifest;
+pub use extensions::permissions::{Permission, PermissionSet};

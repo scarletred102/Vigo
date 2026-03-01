@@ -15,10 +15,7 @@ use crate::tab::TabId;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CrashRecoveryAction {
     /// Show a crash error page in the tab.
-    ShowCrashPage {
-        tab_id: TabId,
-        html: String,
-    },
+    ShowCrashPage { tab_id: TabId, html: String },
     /// The tab was already gone — no action needed.
     TabNotFound,
 }

@@ -208,6 +208,12 @@ pub fn match_shortcut(shortcut: &Shortcut) -> Option<BrowserAction> {
             shift: false,
             alt: false,
             key: F(12),
+        }
+        | Shortcut {
+            ctrl: true,
+            shift: true,
+            alt: false,
+            key: Char('I'),
         } => Some(DevTools),
         // F11 — fullscreen.
         Shortcut {

@@ -43,9 +43,9 @@ impl LocalStorage {
 
     /// Get a value by origin and key.
     pub fn get_item(&self, origin: &str, key: &str) -> StorageResult<Option<String>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT value FROM local_storage WHERE origin = ?1 AND key = ?2",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT value FROM local_storage WHERE origin = ?1 AND key = ?2")?;
         let mut rows = stmt.query_map(params![origin, key], |row| row.get(0))?;
         match rows.next() {
             Some(row) => Ok(Some(row?)),

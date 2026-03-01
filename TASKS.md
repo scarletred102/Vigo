@@ -811,10 +811,10 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P11.1.1 | **DevTools window** — Create `crates/vex-browser/src/devtools/mod.rs`. Open DevTools as a panel docked to bottom or right of content area (or undocked in separate window). Toggle via `F12` or `Ctrl+Shift+I`. Custom-rendered UI (not HTML). | DevTools framework | ⬜ |
-| P11.1.2 | **DOM tree view** — Render DOM as collapsible tree. Each element shows `<tag class="..." id="...">`. Click to select. Selected element highlighted on page (overlay blue box). Expand/collapse children. | DOM tree | ⬜ |
-| P11.1.3 | **Computed styles panel** — When an element is selected in DOM tree, show its computed styles in a side panel. Group by category (Box Model visual, then Dimensions, Margin, Padding, Border, Typography, Colors, Layout). Show inherited-from indicators. | Styles panel | ⬜ |
-| P11.1.4 | **Box model visualizer** — When hovering over an element in DOM tree or page: show colored overlay (margin = orange, border = yellow, padding = green, content = blue) on the page. | Box model overlay | ⬜ |
+| P11.1.1 | **DevTools window** — Create `crates/vex-browser/src/devtools/mod.rs`. Open DevTools as a panel docked to bottom or right of content area (or undocked in separate window). Toggle via `F12` or `Ctrl+Shift+I`. Custom-rendered UI (not HTML). | DevTools framework | ✅ |
+| P11.1.2 | **DOM tree view** — Render DOM as collapsible tree. Each element shows `<tag class="..." id="...">`. Click to select. Selected element highlighted on page (overlay blue box). Expand/collapse children. | DOM tree | ✅ |
+| P11.1.3 | **Computed styles panel** — When an element is selected in DOM tree, show its computed styles in a side panel. Group by category (Box Model visual, then Dimensions, Margin, Padding, Border, Typography, Colors, Layout). Show inherited-from indicators. | Styles panel | ✅ |
+| P11.1.4 | **Box model visualizer** — When hovering over an element in DOM tree or page: show colored overlay (margin = orange, border = yellow, padding = green, content = blue) on the page. | Box model overlay | ✅ |
 
 ---
 
@@ -822,9 +822,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P11.2.1 | **Console panel** — Scrollable list of log messages. Each message: timestamp, level (log/warn/error), formatted content. Capture output from `console.log/warn/error` calls. | Console log | ⬜ |
-| P11.2.2 | **REPL** — Text input at bottom of console. On Enter: execute as JS in page context via `vex-js`. Display result. Support multi-line input (Shift+Enter). Up/down arrow for history. | REPL | ⬜ |
-| P11.2.3 | **Object inspector** — When a JS object is logged or returned, show expandable tree view of properties. For DOM nodes, show as `<tag>` link (click to select in Elements). For arrays, show length + indices. | Object inspector | ⬜ |
+| P11.2.1 | **Console panel** — Scrollable list of log messages. Each message: timestamp, level (log/warn/error), formatted content. Capture output from `console.log/warn/error` calls. | Console log | ✅ |
+| P11.2.2 | **REPL** — Text input at bottom of console. On Enter: execute as JS in page context via `vex-js`. Display result. Support multi-line input (Shift+Enter). Up/down arrow for history. | REPL | ✅ |
+| P11.2.3 | **Object inspector** — When a JS object is logged or returned, show expandable tree view of properties. For DOM nodes, show as `<tag>` link (click to select in Elements). For arrays, show length + indices. | Object inspector | ✅ |
 
 ---
 
@@ -832,9 +832,9 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P11.3.1 | **Request log** — Capture all network requests made by the page. Store: URL, method, status, content-type, size, timing (DNS, connect, TLS, first byte, download). Display as sortable table. | Request log | ⬜ |
-| P11.3.2 | **Request detail** — Click a request: show headers (request + response), body (formatted: JSON pretty-print, HTML syntax highlight), timing waterfall bar. | Request detail | ⬜ |
-| P11.3.3 | **Filtering** — Filter by: type (XHR, JS, CSS, Image, Font, Media), status (2xx, 3xx, 4xx, 5xx), search text. Clear button. | Filtering | ⬜ |
+| P11.3.1 | **Request log** — Capture all network requests made by the page. Store: URL, method, status, content-type, size, timing (DNS, connect, TLS, first byte, download). Display as sortable table. | Request log | ✅ |
+| P11.3.2 | **Request detail** — Click a request: show headers (request + response), body (formatted: JSON pretty-print, HTML syntax highlight), timing waterfall bar. | Request detail | ✅ |
+| P11.3.3 | **Filtering** — Filter by: type (XHR, JS, CSS, Image, Font, Media), status (2xx, 3xx, 4xx, 5xx), search text. Clear button. | Filtering | ✅ |
 
 ---
 
@@ -842,8 +842,8 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P11.4.1 | **Page source viewer** — Show page HTML source with syntax highlighting. For external scripts/styles: show their content in tabs. | Source viewer | ⬜ |
-| P11.4.2 | **Performance panel** — Show frame timing: parse time, style time, layout time, paint time, JS execution time. Display as stacked bar chart per frame. Highlight slow frames (>16ms). | Performance panel | ⬜ |
+| P11.4.1 | **Page source viewer** — Show page HTML source with syntax highlighting. For external scripts/styles: show their content in tabs. | Source viewer | ✅ |
+| P11.4.2 | **Performance panel** — Show frame timing: parse time, style time, layout time, paint time, JS execution time. Display as stacked bar chart per frame. Highlight slow frames (>16ms). | Performance panel | ✅ |
 
 ---
 
@@ -851,13 +851,13 @@
 
 | Task | Description | Deliverable | Status |
 |------|-------------|-------------|--------|
-| P11.5.1 | **Extension manifest** — Create `docs/EXTENSION_API.md`. Define manifest format: `{ "name": "...", "version": "1.0", "permissions": ["tabs", "storage", ...], "content_scripts": [{ "matches": ["*://*.example.com/*"], "js": ["content.js"] }], "background": { "service_worker": "background.js" }, "browser_action": { "default_popup": "popup.html", "default_icon": "icon.png" } }`. | Manifest spec | ⬜ |
-| P11.5.2 | **Extension loader** — Create `crates/vex-browser/src/extensions/loader.rs`. Load extensions from `~/.vigo/extensions/` directory. Parse manifest.json. Validate permissions. Register content scripts and background scripts. | Extension loader | ⬜ |
-| P11.5.3 | **Content script injection** — When a page loads and matches a content script's `matches` pattern: inject the script's JS into the page's JS context (but in an isolated world — separate global object, shared DOM access). | Content script injection | ⬜ |
-| P11.5.4 | **Background scripts** — Run extension background scripts in a separate `JsRuntime` (not tied to any tab). Provide extension APIs: `vigo.tabs.query()`, `vigo.tabs.create()`, `vigo.storage.local.get/set()`, `vigo.notifications.create()`. | Background scripts | ⬜ |
-| P11.5.5 | **Browser action** — Show extension icons in toolbar. On click: show popup (HTML rendered by Vigo engine in small floating window). Pass messages between popup ↔ background script via `vigo.runtime.sendMessage()`. | Browser action | ⬜ |
-| P11.5.6 | **Extension permissions** — On install: show permission dialog listing requested permissions. User must approve. Store granted permissions. Enforce: extension can only call APIs it has permission for. | Permission system | ⬜ |
-| P11.5.7 | **Test extension** — Create a sample extension "Vigo Dark Mode": content script that adds `filter: invert(1)` to `<html>`. Verify it loads and works. | Test extension | ⬜ |
+| P11.5.1 | **Extension manifest** — Create `docs/EXTENSION_API.md`. Define manifest format: `{ "name": "...", "version": "1.0", "permissions": ["tabs", "storage", ...], "content_scripts": [{ "matches": ["*://*.example.com/*"], "js": ["content.js"] }], "background": { "service_worker": "background.js" }, "browser_action": { "default_popup": "popup.html", "default_icon": "icon.png" } }`. | Manifest spec | ✅ |
+| P11.5.2 | **Extension loader** — Create `crates/vex-browser/src/extensions/loader.rs`. Load extensions from `~/.vigo/extensions/` directory. Parse manifest.json. Validate permissions. Register content scripts and background scripts. | Extension loader | ✅ |
+| P11.5.3 | **Content script injection** — When a page loads and matches a content script's `matches` pattern: inject the script's JS into the page's JS context (but in an isolated world — separate global object, shared DOM access). | Content script injection | ✅ |
+| P11.5.4 | **Background scripts** — Run extension background scripts in a separate `JsRuntime` (not tied to any tab). Provide extension APIs: `vigo.tabs.query()`, `vigo.tabs.create()`, `vigo.storage.local.get/set()`, `vigo.notifications.create()`. | Background scripts | ✅ |
+| P11.5.5 | **Browser action** — Show extension icons in toolbar. On click: show popup (HTML rendered by Vigo engine in small floating window). Pass messages between popup ↔ background script via `vigo.runtime.sendMessage()`. | Browser action | ✅ |
+| P11.5.6 | **Extension permissions** — On install: show permission dialog listing requested permissions. User must approve. Store granted permissions. Enforce: extension can only call APIs it has permission for. | Permission system | ✅ |
+| P11.5.7 | **Test extension** — Create a sample extension "Vigo Dark Mode": content script that adds `filter: invert(1)` to `<html>`. Verify it loads and works. | Test extension | ✅ |
 
 ---
 ---

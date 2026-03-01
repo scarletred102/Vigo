@@ -1,0 +1,18 @@
+{
+    "manifest_version": 1,
+    "name": "Vigo Dark Mode",
+    "version": "1.0.0",
+    "description": "Applies a simple dark mode inversion filter to all web pages.",
+    "permissions": ["activeTab"],
+    "content_scripts": [
+        {
+            "matches": ["*://*/*"],
+            "js": ["content.js"],
+            "run_at": "document_end"
+        }
+    ],
+    "browser_action": {
+        "default_title": "Toggle Dark Mode",
+        "default_icon": "icon.svg"
+    }
+}

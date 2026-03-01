@@ -205,10 +205,7 @@ fn validate_allow_origin(
     Ok(())
 }
 
-fn validate_allow_methods(
-    method: &str,
-    headers: &HashMap<String, String>,
-) -> SecurityResult<()> {
+fn validate_allow_methods(method: &str, headers: &HashMap<String, String>) -> SecurityResult<()> {
     let allowed = get_header(headers, "access-control-allow-methods").unwrap_or_default();
     let methods: Vec<&str> = allowed.split(',').map(str::trim).collect();
 
