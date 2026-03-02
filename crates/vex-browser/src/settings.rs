@@ -8,6 +8,9 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use vex_core::error::VexError;
 use vex_core::VexResult;
+use vex_privacy::canvas::CanvasFingerprintConfig;
+use vex_privacy::fonts::FontRestrictionConfig;
+use vex_privacy::webgl::WebGlMask;
 
 /// All browser settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +62,17 @@ pub struct BrowserSettings {
     pub download_dir: String,
     /// Always ask where to save downloads.
     pub ask_download_location: bool,
+
+    // -- Privacy configs (runtime-only, not serialized) --
+    /// Canvas fingerprint protection config (session seed randomized at startup).
+    #[serde(skip)]
+    pub canvas_fingerprint: CanvasFingerprintConfig,
+    /// WebGL parameter masking config.
+    #[serde(skip)]
+    pub webgl_mask: WebGlMask,
+    /// Font enumeration restriction config.
+    #[serde(skip)]
+    pub font_restriction: FontRestrictionConfig,
 }
 
 /// What to show on the new-tab page.
@@ -105,6 +119,9 @@ impl Default for BrowserSettings {
             default_encoding: "UTF-8".to_string(),
             download_dir: default_download_dir(),
             ask_download_location: false,
+            canvas_fingerprint: CanvasFingerprintConfig::default(),
+            webgl_mask: WebGlMask::default(),
+            font_restriction: FontRestrictionConfig::default(),
         }
     }
 }
@@ -182,6 +199,11 @@ mod tests {
         assert_eq!(s.window_width, 1280);
         assert_eq!(s.window_height, 720);
         assert!((s.default_font_size - 16.0).abs() < f32::EPSILON);
+        // Privacy configs are present with sensible defaults.
+        assert!(s.canvas_fingerprint.enabled);
+        assert_ne!(s.canvas_fingerprint.session_seed, 0);
+        assert!(s.webgl_mask.enabled);
+        assert!(s.font_restriction.enabled);
     }
 
     #[test]

@@ -4,6 +4,25 @@
 
 ---
 
+## JS Engine — Replace Stubs (2026-03-02)
+- **Infrastructure**: Created `browser_request.rs` — `BrowserRequest` enum (Navigate, Reload, Back, Forward, PushState, Alert, ConsoleLog) with `Rc<RefCell<Vec<>>>` shared queue. 4 unit tests.
+- **Task 11-13**: Rewrote `window.rs` — `location.assign()` pushes `Navigate(url)`, `location.reload()` pushes `Reload`, `history.back/forward` push `Back/Forward`, `history.pushState` pushes `PushState{url}` to shared `RequestQueue`. All wired via `NativeFunction::from_closure` with `Rc<RefCell<>>` captures.
+- **Task 14**: Added `update_location(url, ctx)` — parses URL with `url::Url` and sets all location properties (href, origin, protocol, hostname, port, pathname, search, hash) on the global `window.location` object. Added `url` workspace dep to vex-js.
+- **Task 15**: `alert()` pushes `BrowserRequest::Alert(msg)`. Browser loop processes overlays.
+- **Task 16**: Rewrote `console.rs` — now accepts `&RequestQueue`; all methods (log/warn/error/info/debug) push `ConsoleLog{level, message}` to queue in addition to `tracing`. Helper `emit()` centralizes both paths. 3 new tests (console_log_pushes_to_queue, console_error_pushes_error_level, console_warn_pushes_warn_level).
+- **Task 17**: Added `register_with_handle(handle, ctx)` to `fetch.rs` — uses shared `tokio::runtime::Handle` from `JsRuntime` instead of creating per-request runtime. Extracted `fetch_async()` shared helper. `JsRuntime::with_request_queue()` creates one tokio runtime and shares handle.
+- **Task 18**: Added `NavigatorConfig{user_agent, language, cookie_enabled}` to `window.rs`. `register_with_config()` passes config to navigator builder. `system_language()` detects OS language. Default UA: "Vex/0.1 (Vigo Browser Engine)".
+- **Task 19**: Replaced snapshot properties in `style_proxy.rs` with live `PropertyDescriptor` getter/setter closures. Writing `el.style.color = 'blue'` now updates the DOM `style` attribute in real time. Reading reflects current DOM state. 2 new tests.
+- **Context.rs**: `JsRuntime` now has `request_queue: RequestQueue`, `tokio_handle: Handle`, `_tokio_runtime: Runtime`. Constructor `with_request_queue()` is the primary path; `new()` creates an internal queue. `request_queue()` and `tokio_handle()` getters exposed.
+- Test count: ~1054 Rust, 22 Zig; 0 failures; 0 clippy warnings
+- Tasks: 19/77 total done
+
+## Privacy — Wire Existing Code (2026-03-02)
+- Task 9: Added `rand` dep to `vex-privacy`; changed `CanvasFingerprintConfig::default()` to generate `rand::random::<u64>()` session seed instead of `0`; added `canvas_fingerprint`, `webgl_mask`, `font_restriction` fields to `BrowserSettings` (with `#[serde(skip)]` — runtime-only, regenerated each session); updated settings test to verify non-zero seed
+- Task 10: Created `vex-render/src/privacy.rs` — `RenderPrivacyConfig` aggregate with `apply_canvas_noise()`, `is_font_allowed()`, `mask_webgl_params()`, `filter_webgl_extensions()` methods; added `privacy` field to `Renderer` with `set_privacy_config()`/`privacy_config()`/`apply_canvas_noise()`/`is_font_allowed()` methods; added `render_to_pixels_with_privacy()` in `screenshot.rs`; wired `BrowserSettings` → `RenderPrivacyConfig` → `Renderer` in `main.rs` with tracing; 5 new tests in privacy.rs
+- Test count: ~1045 Rust, 22 Zig; 0 failures; 0 clippy warnings
+- Tasks: 10/77 total done
+
 ## Foundation & Config (2026-03-02)
 - Task 1: Added `window_width`, `window_height`, `default_font_size` to `BrowserSettings`; fixed chrome height mismatch (85/80 → `chrome::chrome_height(false)` = 77px) in `main.rs` and `drm_overlay.rs`; aligned compose_frame chrome regions with `chrome.rs` constants
 - Task 2: Extracted `compute_styles_with_font_size()` in `cascade/compute.rs`; `compute_styles()` delegates with `DEFAULT_ROOT_FONT_SIZE` (16.0); re-exported from `vex-css` lib

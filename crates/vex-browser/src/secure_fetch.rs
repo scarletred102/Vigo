@@ -19,8 +19,8 @@ use std::collections::HashMap;
 use tracing::{debug, warn};
 use vex_core::{VexError, VexResult, VexUrl};
 use vex_security::{
-    classify_cors, classify_fetch, validate_response, CorsMode, CorsRequest, CspPolicy,
-    FetchType, Origin, ResourceType,
+    classify_cors, classify_fetch, validate_response, CorsMode, CorsRequest, CspPolicy, FetchType,
+    Origin, ResourceType,
 };
 
 /// Security context for the current page load.
@@ -107,11 +107,7 @@ pub async fn secure_fetch(
         let cors_req = CorsRequest {
             origin: ctx.page_origin_str.clone(),
             method: request.method.to_http().to_string(),
-            headers: request
-                .headers
-                .keys()
-                .map(|k| k.to_lowercase())
-                .collect(),
+            headers: request.headers.keys().map(|k| k.to_lowercase()).collect(),
             with_credentials: request.headers.contains_key("cookie")
                 || request.headers.contains_key("authorization"),
         };

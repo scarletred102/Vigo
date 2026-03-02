@@ -9,6 +9,7 @@
 use std::path::Path;
 
 use crate::display_list::DisplayList;
+use crate::privacy::RenderPrivacyConfig;
 use crate::renderer::Renderer;
 
 /// Render a display list to an RGBA pixel buffer (offscreen).
@@ -165,6 +166,21 @@ pub fn save_screenshot(
         .ok_or_else(|| "pixel buffer size mismatch".to_string())?;
     img.save(path)
         .map_err(|e| format!("failed to write PNG: {e}"))
+}
+
+/// Render a display list to RGBA pixels with canvas fingerprint noise applied.
+///
+/// This is the privacy-aware variant of [`render_to_pixels`] — it applies
+/// deterministic per-session noise to prevent canvas-based fingerprinting.
+pub fn render_to_pixels_with_privacy(
+    dl: &DisplayList,
+    width: u32,
+    height: u32,
+    privacy: &RenderPrivacyConfig,
+) -> Vec<u8> {
+    let mut pixels = render_to_pixels(dl, width, height);
+    privacy.apply_canvas_noise(&mut pixels);
+    pixels
 }
 
 /// Compare two RGBA pixel buffers and return the fraction of pixels that differ

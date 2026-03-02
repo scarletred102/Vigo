@@ -40,73 +40,73 @@ All 11 phases are complete in isolation, but tens of critical stubs, disconnecte
 
 ## Privacy — Wire Existing Code (Tasks 9–10)
 
-- [ ] **9. Randomize canvas fingerprint seed** — Defaults to `0`. Generate `rand::random::<u64>()` at browser startup.
+- [x] **9. Randomize canvas fingerprint seed** — Defaults to `0`. Generate `rand::random::<u64>()` at browser startup.
   - Files: `crates/vex-privacy/src/canvas.rs`, browser init code
 
-- [ ] **10. Wire canvas/webgl/font restrictions to rendering** — Privacy modules exist but are never called from the render pipeline. Add hooks.
+- [x] **10. Wire canvas/webgl/font restrictions to rendering** — Privacy modules exist but are never called from the render pipeline. Add hooks.
   - Files: `crates/vex-render/src/renderer.rs`, `vex-privacy/src/{canvas,webgl,fonts}.rs`
 
 ---
 
 ## JS Engine — Replace Stubs (Tasks 11–19)
 
-- [ ] **11. Wire `location.assign()` to real navigation** — Push `NavigationRequest` to browser event channel → `Tab::load_url()`.
-  - Files: `crates/vex-js/src/api/window.rs`, need event channel
+- [x] **11. Wire `location.assign()` to real navigation** — Push `BrowserRequest::Navigate` to shared `RequestQueue`. Browser event loop drains queue each tick.
+  - Files: `crates/vex-js/src/api/window.rs`, `browser_request.rs`, `context.rs`
 
-- [ ] **12. Wire `location.reload()`** — Trigger re-fetch of current URL.
+- [x] **12. Wire `location.reload()`** — Pushes `BrowserRequest::Reload` to queue.
   - Files: `api/window.rs`
 
-- [ ] **13. Wire `history.back/forward/pushState`** — Connect to `NavigationHistory`. pushState adds entry, back/forward navigates.
-  - Files: `api/window.rs`, `vex-browser/src/navigation.rs`
+- [x] **13. Wire `history.back/forward/pushState`** — Pushes `Back`, `Forward`, `PushState{url}` to `RequestQueue`. Browser loop dispatches to `NavigationHistory`.
+  - Files: `api/window.rs`, `browser_request.rs`
 
-- [ ] **14. Update `location` object dynamically** — Currently frozen at `about:blank`. Refresh all properties after each navigation.
+- [x] **14. Update `location` object dynamically** — `update_location(url, ctx)` parses URL and sets href/origin/protocol/hostname/port/pathname/search/hash on window.location.
   - Files: `api/window.rs`
 
-- [ ] **15. Wire `alert()`** — Render a modal overlay (FillRect + DrawText). Block JS until dismissed.
-  - Files: `api/window.rs`, need UI to browser connection
+- [x] **15. Wire `alert()`** — Pushes `BrowserRequest::Alert(msg)` to queue. Browser loop renders overlay or logs.
+  - Files: `api/window.rs`, `browser_request.rs`
 
-- [ ] **16. Wire `console.*()` to DevTools** — Push entries to shared `Vec<ConsoleEntry>` in addition to `tracing`.
-  - Files: `api/console.rs`, `devtools/console.rs`
+- [x] **16. Wire `console.*()` to DevTools** — Each console method pushes `BrowserRequest::ConsoleLog{level, message}` to queue in addition to `tracing`. 3 new queue tests.
+  - Files: `api/console.rs`, `browser_request.rs`
 
-- [ ] **17. Fix fetch API efficiency** — Replace per-request `tokio::runtime` creation with shared runtime.
+- [x] **17. Fix fetch API efficiency** — Added `register_with_handle(handle, ctx)` and `perform_fetch_with_handle()`. JsRuntime creates one tokio runtime, passes handle to fetch. Extracted shared `fetch_async()`.
   - Files: `api/fetch.rs`, `context.rs`
 
-- [ ] **18. Wire `navigator` properties dynamically** — UA from settings, language from system, cookieEnabled from privacy settings.
-  - Files: `api/window.rs`, `settings.rs`
+- [x] **18. Wire `navigator` properties dynamically** — `NavigatorConfig{user_agent, language, cookie_enabled}` populated from settings. `register_with_config(queue, nav_config, ctx)` passes config to navigator builder. System language detection.
+  - Files: `api/window.rs`, `context.rs`
 
-- [ ] **19. Implement live `element.style` proxy** — Currently read-only snapshot. Use Boa getter/setter so writing triggers re-style.
+- [x] **19. Implement live `element.style` proxy** — Replaced snapshot properties with `PropertyDescriptor` getter/setter closures. Writing `el.style.color = 'blue'` updates DOM `style` attribute. 2 new tests.
   - Files: `api/style_proxy.rs`
 
 ---
 
 ## Storage — Wire to JS (Tasks 20–23)
 
-- [ ] **20. Expose `localStorage` to JS** — Bind to `vex-storage::LocalStorage` (SQLite, already complete). Scope by page origin.
+- [x] **20. Expose `localStorage` to JS** — Bind to `vex-storage::LocalStorage` (SQLite, already complete). Scope by page origin.
   - Files: new `crates/vex-js/src/api/local_storage.rs`, `api/window.rs`
 
-- [ ] **21. Expose `sessionStorage` to JS** — Bind to `vex-storage::SessionStorage` (in-memory, per origin+tab).
+- [x] **21. Expose `sessionStorage` to JS** — Bind to `vex-storage::SessionStorage` (in-memory, per origin+tab).
   - Files: new `crates/vex-js/src/api/session_storage.rs`, `api/window.rs`
 
-- [ ] **22. Expose `document.cookie` to JS** — Getter reads from `CookieStore` (excluding HttpOnly), setter parses and stores.
+- [x] **22. Expose `document.cookie` to JS** — Getter reads from `CookieStore` (excluding HttpOnly), setter parses and stores.
   - Files: `api/document.rs`, `vex-storage/src/cookies.rs`
 
-- [ ] **23. Wire IndexedDB to JS (basic)** — `indexedDB.open()`, object store CRUD. Backed by existing `IdbDatabase`.
+- [x] **23. Wire IndexedDB to JS (basic)** — `indexedDB.open()`, object store CRUD. Backed by existing `IdbDatabase`.
   - Files: new `crates/vex-js/src/api/indexed_db.rs`
 
 ---
 
 ## DOM Events — Complete the Loop (Tasks 24–27)
 
-- [ ] **24. Wire event dispatch to JS callbacks** — When `dispatch_event` fires a callback_id, invoke the corresponding JS function via `JsRuntime`.
+- [x] **24. Wire event dispatch to JS callbacks** — When `dispatch_event` fires a callback_id, invoke the corresponding JS function via `JsRuntime`.
   - Files: `api/events.rs`, `vex-dom/src/events/dispatch.rs`, `context.rs`
 
-- [ ] **25. Wire click events: platform → DOM → JS** — Mouse click at (x,y) → hit-test layout tree → create Click event → dispatch → if `<a href>`, navigate.
+- [x] **25. Wire click events: platform → DOM → JS** — Mouse click at (x,y) → hit-test layout tree → create Click event → dispatch → if `<a href>`, navigate.
   - Files: `main.rs`, `vex-layout` (hit-test), `vex-dom/src/events/dispatch.rs`, `links.rs`
 
-- [ ] **26. Wire keyboard events to focused inputs** — Key events → focused element → update `InputState` → fire `input`/`change` events → re-render.
+- [x] **26. Wire keyboard events to focused inputs** — Key events → focused element → update `InputState` → fire `input`/`change` events → re-render.
   - Files: browser loop, `vex-dom/src/forms.rs`, `api/events.rs`
 
-- [ ] **27. Fire `DOMContentLoaded` and `load` lifecycle events** — After parsing + defer scripts → `DOMContentLoaded`. After all resources → `load`.
+- [x] **27. Fire `DOMContentLoaded` and `load` lifecycle events** — After parsing + defer scripts → `DOMContentLoaded`. After all resources → `load`.
   - Files: `context.rs`, `tab.rs` pipeline
 
 ---

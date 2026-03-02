@@ -13,6 +13,10 @@ use boa_engine::object::builtins::JsFunction;
 use boa_engine::{js_string, Context, JsValue, Source};
 use vex_core::{VexError, VexResult};
 
+use crate::api::events::EventBridge;
+use crate::browser_request::{new_request_queue, RequestQueue};
+use crate::dom_bridge::SharedDocument;
+
 /// A pending timer entry for the event-loop timer queue.
 struct PendingTimer {
     id: u32,
@@ -26,6 +30,14 @@ struct PendingTimer {
 pub struct JsRuntime {
     context: Context,
     timer_queue: BTreeMap<Instant, Vec<PendingTimer>>,
+    /// Shared request queue for JS → browser communication.
+    request_queue: RequestQueue,
+    /// Event bridge (callbacks, listener map, registry).
+    event_bridge: EventBridge,
+    /// Shared tokio runtime handle for async operations (fetch, etc.).
+    tokio_handle: tokio::runtime::Handle,
+    /// Owned tokio runtime (kept alive for the handle).
+    _tokio_runtime: tokio::runtime::Runtime,
 }
 
 impl JsRuntime {
@@ -33,15 +45,104 @@ impl JsRuntime {
     ///
     /// Registers Web APIs: `console`, `setTimeout`/`setInterval`/`clearTimeout`/`clearInterval`.
     pub fn new() -> Self {
+        Self::with_request_queue(new_request_queue())
+    }
+
+    /// Create a JS runtime with an externally-provided request queue.
+    ///
+    /// The browser loop clones the same `RequestQueue` and drains it each tick.
+    pub fn with_request_queue(queue: RequestQueue) -> Self {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to create tokio runtime for JS");
+        let handle = rt.handle().clone();
+
         let mut context = Context::default();
-        crate::api::console::register(&mut context);
+        crate::api::console::register(&queue, &mut context);
         crate::api::timers::register(&mut context);
-        crate::api::fetch::register(&mut context);
-        crate::api::window::register(&mut context);
+        crate::api::fetch::register_with_handle(&handle, &mut context);
+        crate::api::window::register_with_queue(&queue, &mut context);
         Self {
             context,
             timer_queue: BTreeMap::new(),
+            request_queue: queue,
+            event_bridge: EventBridge::new(),
+            tokio_handle: handle,
+            _tokio_runtime: rt,
         }
+    }
+
+    /// Access the shared request queue.
+    ///
+    /// The browser loop drains this after each JS execution to process
+    /// navigation requests, alerts, console logs, etc.
+    pub fn request_queue(&self) -> &RequestQueue {
+        &self.request_queue
+    }
+
+    /// Access the shared tokio runtime handle.
+    pub fn tokio_handle(&self) -> &tokio::runtime::Handle {
+        &self.tokio_handle
+    }
+
+    /// Access the event bridge (callbacks, listeners, registry).
+    pub fn event_bridge(&self) -> &EventBridge {
+        &self.event_bridge
+    }
+
+    /// Register the DOM `document` global with full event listener support.
+    ///
+    /// This must be called after the DOM is parsed (the `SharedDocument`
+    /// must contain a real document). Elements returned by
+    /// `getElementById`, `querySelector`, etc. will include
+    /// `addEventListener` / `removeEventListener`.
+    pub fn register_document(&mut self, doc: &SharedDocument) {
+        crate::api::document::register_with_events(doc, &self.event_bridge, &mut self.context);
+    }
+
+    /// Dispatch a DOM event through the JS event system.
+    ///
+    /// Walks the DOM capture → target → bubble path, invoking registered
+    /// JS callbacks. Returns `true` if `preventDefault()` was called.
+    pub fn dispatch_dom_event(
+        &mut self,
+        doc: &SharedDocument,
+        event: &mut vex_dom::events::Event,
+    ) -> bool {
+        crate::api::events::dispatch_js_event(
+            doc,
+            &self.event_bridge.listeners,
+            &self.event_bridge.callbacks,
+            event,
+            &mut self.context,
+        )
+    }
+
+    /// Fire the `DOMContentLoaded` lifecycle event.
+    ///
+    /// Call after the DOM tree is fully built and all blocking + deferred
+    /// scripts have executed. Returns `true` if `preventDefault()` was called.
+    pub fn fire_dom_content_loaded(&mut self, doc: &SharedDocument) -> bool {
+        crate::lifecycle::fire_dom_content_loaded(
+            doc,
+            &self.event_bridge.listeners,
+            &self.event_bridge.callbacks,
+            &mut self.context,
+        )
+    }
+
+    /// Fire the `load` lifecycle event.
+    ///
+    /// Call after all sub-resources (images, stylesheets, async scripts)
+    /// have finished loading. Returns `true` if `preventDefault()` was called.
+    pub fn fire_load(&mut self, doc: &SharedDocument) -> bool {
+        crate::lifecycle::fire_load(
+            doc,
+            &self.event_bridge.listeners,
+            &self.event_bridge.callbacks,
+            &mut self.context,
+        )
     }
 
     /// Execute a JavaScript source string for its side effects.

@@ -243,6 +243,145 @@ impl InputState {
         self.selection_start = 0;
         self.selection_end = self.value.len();
     }
+
+    // ── Text editing operations ──────────────────────────────────────
+
+    /// Insert a character at the current cursor position (or replace selection).
+    ///
+    /// Moves the cursor to just after the inserted character.
+    pub fn insert_char(&mut self, ch: char) {
+        let (start, end) = self.ordered_selection();
+        let mut buf = [0u8; 4];
+        let s = ch.encode_utf8(&mut buf);
+        self.value.replace_range(start..end, s);
+        let new_pos = start + s.len();
+        self.selection_start = new_pos;
+        self.selection_end = new_pos;
+    }
+
+    /// Insert a string at the current cursor position (or replace selection).
+    pub fn insert_str(&mut self, text: &str) {
+        let (start, end) = self.ordered_selection();
+        self.value.replace_range(start..end, text);
+        let new_pos = start + text.len();
+        self.selection_start = new_pos;
+        self.selection_end = new_pos;
+    }
+
+    /// Delete the character before the cursor (Backspace).
+    ///
+    /// If text is selected, deletes the selection instead.
+    /// Returns `true` if the value changed.
+    pub fn delete_backward(&mut self) -> bool {
+        if self.has_selection() {
+            let (start, end) = self.ordered_selection();
+            self.value.replace_range(start..end, "");
+            self.selection_start = start;
+            self.selection_end = start;
+            return true;
+        }
+        if self.selection_start == 0 {
+            return false;
+        }
+        // Find the previous character boundary.
+        let prev = self.value[..self.selection_start]
+            .char_indices()
+            .next_back()
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        self.value.replace_range(prev..self.selection_start, "");
+        self.selection_start = prev;
+        self.selection_end = prev;
+        true
+    }
+
+    /// Delete the character after the cursor (Delete key).
+    ///
+    /// If text is selected, deletes the selection instead.
+    /// Returns `true` if the value changed.
+    pub fn delete_forward(&mut self) -> bool {
+        if self.has_selection() {
+            let (start, end) = self.ordered_selection();
+            self.value.replace_range(start..end, "");
+            self.selection_start = start;
+            self.selection_end = start;
+            return true;
+        }
+        if self.selection_start >= self.value.len() {
+            return false;
+        }
+        // Find the next character boundary.
+        let next = self.value[self.selection_start..]
+            .char_indices()
+            .nth(1)
+            .map(|(i, _)| self.selection_start + i)
+            .unwrap_or(self.value.len());
+        self.value.replace_range(self.selection_start..next, "");
+        true
+    }
+
+    /// Move the cursor one character to the left.
+    pub fn move_cursor_left(&mut self) {
+        if self.has_selection() {
+            let (start, _) = self.ordered_selection();
+            self.selection_start = start;
+            self.selection_end = start;
+            return;
+        }
+        if self.selection_start > 0 {
+            let prev = self.value[..self.selection_start]
+                .char_indices()
+                .next_back()
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            self.selection_start = prev;
+            self.selection_end = prev;
+        }
+    }
+
+    /// Move the cursor one character to the right.
+    pub fn move_cursor_right(&mut self) {
+        if self.has_selection() {
+            let (_, end) = self.ordered_selection();
+            self.selection_start = end;
+            self.selection_end = end;
+            return;
+        }
+        if self.selection_start < self.value.len() {
+            let next = self.value[self.selection_start..]
+                .char_indices()
+                .nth(1)
+                .map(|(i, _)| self.selection_start + i)
+                .unwrap_or(self.value.len());
+            self.selection_start = next;
+            self.selection_end = next;
+        }
+    }
+
+    /// Move the cursor to the beginning of the value (Home key).
+    pub fn move_cursor_home(&mut self) {
+        self.selection_start = 0;
+        self.selection_end = 0;
+    }
+
+    /// Move the cursor to the end of the value (End key).
+    pub fn move_cursor_end(&mut self) {
+        let end = self.value.len();
+        self.selection_start = end;
+        self.selection_end = end;
+    }
+
+    /// Get the ordered (start, end) of the current selection/cursor range,
+    /// clamped to the value length.
+    fn ordered_selection(&self) -> (usize, usize) {
+        let s = self.selection_start.min(self.value.len());
+        let e = self.selection_end.min(self.value.len());
+        if s <= e {
+            (s, e)
+        } else {
+            (e, s)
+        }
+    }
 }
 
 /// A store for all form element states in a document.
@@ -409,5 +548,96 @@ mod tests {
         assert_eq!(InputType::Text.to_string(), "text");
         assert_eq!(InputType::Password.to_string(), "password");
         assert_eq!(InputType::Checkbox.to_string(), "checkbox");
+    }
+
+    #[test]
+    fn insert_char_at_cursor() {
+        let mut state = InputState::new_text(InputType::Text);
+        state.insert_char('H');
+        state.insert_char('i');
+        assert_eq!(state.value, "Hi");
+        assert_eq!(state.selection_start, 2);
+    }
+
+    #[test]
+    fn insert_char_replaces_selection() {
+        let mut state = InputState::new_text(InputType::Text);
+        state.value = "Hello".to_string();
+        state.selection_start = 1;
+        state.selection_end = 4;
+        state.insert_char('a');
+        assert_eq!(state.value, "Hao");
+        assert_eq!(state.selection_start, 2);
+    }
+
+    #[test]
+    fn delete_backward_removes_char() {
+        let mut state = InputState::new_text(InputType::Text);
+        state.value = "abc".to_string();
+        state.set_cursor(3);
+        assert!(state.delete_backward());
+        assert_eq!(state.value, "ab");
+        assert_eq!(state.selection_start, 2);
+    }
+
+    #[test]
+    fn delete_backward_at_start_is_noop() {
+        let mut state = InputState::new_text(InputType::Text);
+        state.value = "abc".to_string();
+        state.set_cursor(0);
+        assert!(!state.delete_backward());
+        assert_eq!(state.value, "abc");
+    }
+
+    #[test]
+    fn delete_forward_removes_char() {
+        let mut state = InputState::new_text(InputType::Text);
+        state.value = "abc".to_string();
+        state.set_cursor(1);
+        assert!(state.delete_forward());
+        assert_eq!(state.value, "ac");
+        assert_eq!(state.selection_start, 1);
+    }
+
+    #[test]
+    fn delete_forward_at_end_is_noop() {
+        let mut state = InputState::new_text(InputType::Text);
+        state.value = "abc".to_string();
+        state.set_cursor(3);
+        assert!(!state.delete_forward());
+        assert_eq!(state.value, "abc");
+    }
+
+    #[test]
+    fn move_cursor_left_right() {
+        let mut state = InputState::new_text(InputType::Text);
+        state.value = "abc".to_string();
+        state.set_cursor(2);
+        state.move_cursor_left();
+        assert_eq!(state.selection_start, 1);
+        state.move_cursor_right();
+        assert_eq!(state.selection_start, 2);
+    }
+
+    #[test]
+    fn move_cursor_home_end() {
+        let mut state = InputState::new_text(InputType::Text);
+        state.value = "abc".to_string();
+        state.set_cursor(1);
+        state.move_cursor_end();
+        assert_eq!(state.selection_start, 3);
+        state.move_cursor_home();
+        assert_eq!(state.selection_start, 0);
+    }
+
+    #[test]
+    fn insert_str_replaces_selection() {
+        let mut state = InputState::new_text(InputType::Text);
+        state.value = "Hello World".to_string();
+        state.selection_start = 5;
+        state.selection_end = 11;
+        state.insert_str(" Vex");
+        assert_eq!(state.value, "Hello Vex");
+        assert_eq!(state.selection_start, 9);
     }
 }

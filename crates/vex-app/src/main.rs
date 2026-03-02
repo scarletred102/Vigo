@@ -19,8 +19,10 @@ fn main() {
 #[cfg(target_os = "windows")]
 fn run() {
     use std::time::Instant;
+    use vex_browser::settings::BrowserSettings;
     use vex_render::renderer::Renderer;
     use vex_render::scroll::ScrollState;
+    use vex_render::RenderPrivacyConfig;
     use vex_render::{Event, GpuContext, Window};
 
     tracing_subscriber::fmt().with_env_filter("info").init();
@@ -37,7 +39,22 @@ fn run() {
     let mut gpu = GpuContext::new(&window).expect("failed to init GPU");
     tracing::info!("GPU ready");
 
+    // Browser settings (including randomized privacy configs).
+    let settings = BrowserSettings::default();
+    let privacy = RenderPrivacyConfig {
+        canvas: settings.canvas_fingerprint.clone(),
+        fonts: settings.font_restriction.clone(),
+        webgl: settings.webgl_mask.clone(),
+    };
+    tracing::info!(
+        canvas_seed = settings.canvas_fingerprint.session_seed,
+        font_restrict = settings.font_restriction.enabled,
+        webgl_mask = settings.webgl_mask.enabled,
+        "Privacy config initialized"
+    );
+
     let mut renderer = Renderer::new(&gpu.device, &gpu.queue, gpu.config.format);
+    renderer.set_privacy_config(privacy);
     renderer.set_clear_color(0.08, 0.08, 0.12);
 
     let mut vp_w = gpu.config.width as f32;

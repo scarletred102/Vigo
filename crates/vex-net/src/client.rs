@@ -210,7 +210,10 @@ impl HttpClient {
             self.cache
                 .lock()
                 .ok()
-                .and_then(|c| c.get(url).map(|e| (e.etag.clone(), e.last_modified.clone())))
+                .and_then(|c| {
+                    c.get(url)
+                        .map(|e| (e.etag.clone(), e.last_modified.clone()))
+                })
                 .unwrap_or((None, None))
         } else {
             (None, None)

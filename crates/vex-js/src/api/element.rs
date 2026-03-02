@@ -11,13 +11,14 @@
 //!   `removeAttribute(name)`, `appendChild(child)`, `removeChild(child)`,
 //!   `insertBefore(newNode, refNode)`
 
-use boa_engine::object::builtins::JsArray;
+use boa_engine::object::builtins::{JsArray, JsFunction};
 use boa_engine::object::ObjectInitializer;
 use boa_engine::property::Attribute;
 use boa_engine::{js_string, Context, JsNativeError, JsResult, JsValue, NativeFunction};
 use vex_core::VexId;
 use vex_dom::{attributes, NodeData};
 
+use super::events::EventBridge;
 use crate::dom_bridge::SharedDocument;
 
 /// Build a rich element proxy object for the given `VexId`.
@@ -312,6 +313,110 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
     builder.function(get_children, js_string!("getChildren"), 0);
 
     builder.build().into()
+}
+
+/// Build an element proxy with `addEventListener` / `removeEventListener`.
+///
+/// Extends [`build_element_proxy`] by wiring event methods through the
+/// shared [`EventBridge`].
+pub fn build_element_proxy_with_events(
+    id: VexId,
+    doc: &SharedDocument,
+    bridge: &EventBridge,
+    context: &mut Context,
+) -> JsValue {
+    let base = build_element_proxy(id, doc, context);
+    let obj = match base.as_object() {
+        Some(o) => o.clone(),
+        None => return base,
+    };
+
+    // addEventListener(type, callback, capture?)
+    let bridge_add = bridge.clone();
+    // SAFETY: Closure captures Rc handles; single-threaded JS.
+    let add_event_listener = unsafe {
+        NativeFunction::from_closure(move |this, args, ctx| {
+            let node_id = extract_vex_id(this, ctx)?;
+            let type_str = args
+                .first()
+                .ok_or_else(|| {
+                    JsNativeError::typ().with_message("addEventListener requires event type")
+                })?
+                .to_string(ctx)?
+                .to_std_string_escaped();
+
+            let cb_val = args.get(1).ok_or_else(|| {
+                JsNativeError::typ().with_message("addEventListener requires a callback")
+            })?;
+            let cb_obj = cb_val
+                .as_object()
+                .ok_or_else(|| JsNativeError::typ().with_message("callback must be a function"))?;
+            let func = JsFunction::from_object(cb_obj.clone())
+                .ok_or_else(|| JsNativeError::typ().with_message("callback must be a function"))?;
+
+            let capture = args.get(2).map(|v| v.to_boolean()).unwrap_or(false);
+
+            let event_type = super::events::parse_event_type(&type_str);
+            super::events::register_listener_bridge(
+                &bridge_add,
+                node_id,
+                event_type,
+                func,
+                capture,
+            );
+
+            Ok(JsValue::undefined())
+        })
+    };
+
+    // removeEventListener(type, callback, capture?)
+    let bridge_remove = bridge.clone();
+    // SAFETY: Closure captures Rc handles; single-threaded JS.
+    let remove_event_listener = unsafe {
+        NativeFunction::from_closure(move |this, args, ctx| {
+            let node_id = extract_vex_id(this, ctx)?;
+            let type_str = args
+                .first()
+                .ok_or_else(|| {
+                    JsNativeError::typ().with_message("removeEventListener requires event type")
+                })?
+                .to_string(ctx)?
+                .to_std_string_escaped();
+
+            let cb_val = args.get(1).ok_or_else(|| {
+                JsNativeError::typ().with_message("removeEventListener requires a callback")
+            })?;
+            let cb_obj = cb_val
+                .as_object()
+                .ok_or_else(|| JsNativeError::typ().with_message("callback must be a function"))?;
+
+            let capture = args.get(2).map(|v| v.to_boolean()).unwrap_or(false);
+
+            super::events::unregister_listener_bridge(
+                &bridge_remove,
+                node_id,
+                &type_str,
+                cb_obj,
+                capture,
+            );
+
+            Ok(JsValue::undefined())
+        })
+    };
+
+    let add_fn = add_event_listener.to_js_function(context.realm());
+    let set_result = obj.set(js_string!("addEventListener"), add_fn, false, context);
+    if let Err(e) = set_result {
+        tracing::warn!("failed to set addEventListener: {e}");
+    }
+
+    let remove_fn = remove_event_listener.to_js_function(context.realm());
+    let set_result = obj.set(js_string!("removeEventListener"), remove_fn, false, context);
+    if let Err(e) = set_result {
+        tracing::warn!("failed to set removeEventListener: {e}");
+    }
+
+    JsValue::from(obj)
 }
 
 /// Extract `VexId` from a JS object proxy carrying `__vex_id`.

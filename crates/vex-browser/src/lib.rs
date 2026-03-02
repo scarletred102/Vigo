@@ -15,6 +15,7 @@ pub mod devtools;
 pub mod downloads;
 pub mod drm_overlay;
 pub mod error_pages;
+pub mod event_handler;
 pub mod find;
 pub mod history;
 pub mod image_loading;

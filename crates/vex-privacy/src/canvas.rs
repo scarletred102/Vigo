@@ -22,7 +22,7 @@ impl Default for CanvasFingerprintConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            session_seed: 0,
+            session_seed: rand::random::<u64>(),
             noise_magnitude: 2,
         }
     }

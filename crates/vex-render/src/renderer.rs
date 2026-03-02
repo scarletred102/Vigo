@@ -11,6 +11,7 @@ use wgpu::util::DeviceExt;
 
 use crate::display_list::{DisplayCommand, DisplayList, RenderBorderStyle};
 use crate::glyph_atlas::GlyphAtlas;
+use crate::privacy::RenderPrivacyConfig;
 
 /// Maximum rectangles per frame before the instance buffer grows.
 const INITIAL_MAX_RECTS: usize = 4096;
@@ -51,6 +52,9 @@ pub struct Renderer {
     viewport_buffer: wgpu::Buffer,
     viewport_bind_group: wgpu::BindGroup,
     clear_color: wgpu::Color,
+
+    // ── Privacy ──
+    privacy: RenderPrivacyConfig,
 
     // ── Rect pipeline ──
     rect_pipeline: wgpu::RenderPipeline,
@@ -199,6 +203,7 @@ impl Renderer {
                 b: 0.12,
                 a: 1.0,
             },
+            privacy: RenderPrivacyConfig::default(),
             rect_pipeline,
             rect_buffer,
             rect_capacity: INITIAL_MAX_RECTS,
@@ -216,6 +221,32 @@ impl Renderer {
     /// Set the background clear color.
     pub fn set_clear_color(&mut self, r: f64, g: f64, b: f64) {
         self.clear_color = wgpu::Color { r, g, b, a: 1.0 };
+    }
+
+    /// Set the privacy configuration for the render pipeline.
+    ///
+    /// Controls canvas fingerprint noise, font restriction, and WebGL masking.
+    pub fn set_privacy_config(&mut self, config: RenderPrivacyConfig) {
+        self.privacy = config;
+    }
+
+    /// Get a reference to the current privacy configuration.
+    pub fn privacy_config(&self) -> &RenderPrivacyConfig {
+        &self.privacy
+    }
+
+    /// Apply canvas fingerprint noise to RGBA pixel data.
+    ///
+    /// Call this on pixel data from `toDataURL()`, `getImageData()`, or
+    /// screenshot readback to defeat canvas-based fingerprinting.
+    pub fn apply_canvas_noise(&self, pixels: &mut [u8]) {
+        self.privacy.apply_canvas_noise(pixels);
+    }
+
+    /// Check whether a font family is allowed by the privacy restriction policy.
+    #[must_use]
+    pub fn is_font_allowed(&self, family: &str) -> bool {
+        self.privacy.is_font_allowed(family)
     }
 
     /// Upload display list data to GPU buffers.

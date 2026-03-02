@@ -25,6 +25,52 @@ pub fn register(context: &mut Context) {
     }
 }
 
+/// Register the global `fetch(url)` using a shared tokio runtime handle.
+///
+/// This avoids creating a new tokio runtime per request, which is expensive.
+pub fn register_with_handle(handle: &tokio::runtime::Handle, context: &mut Context) {
+    let handle = handle.clone();
+    // SAFETY: Closure captures a Handle (which is Send+Sync).
+    // The closure only runs on the single JS thread.
+    let fetch_closure = unsafe {
+        NativeFunction::from_closure(move |_this, args, context| {
+            fetch_with_handle(&handle, args, context)
+        })
+    };
+    if let Err(error) = context.register_global_callable(js_string!("fetch"), 1, fetch_closure) {
+        tracing::error!(target: "vex_js::fetch", "failed to register fetch: {error}");
+    }
+}
+
+/// `fetch(url)` using a shared handle — no per-request runtime creation.
+fn fetch_with_handle(
+    handle: &tokio::runtime::Handle,
+    args: &[JsValue],
+    context: &mut Context,
+) -> JsResult<JsValue> {
+    let url_str = args
+        .first()
+        .ok_or_else(|| JsNativeError::typ().with_message("fetch requires a URL argument"))?
+        .to_string(context)?
+        .to_std_string_escaped();
+
+    let fetch_result = perform_fetch_with_handle(handle, &url_str);
+
+    match fetch_result {
+        Ok(result) => {
+            let response_obj =
+                build_response_object(result.status, &result.body, &result.headers, context);
+            let promise = JsPromise::resolve(response_obj, context);
+            Ok(JsValue::from(promise))
+        }
+        Err(err_msg) => {
+            let error = JsNativeError::typ().with_message(err_msg);
+            let promise = JsPromise::reject(error, context);
+            Ok(JsValue::from(promise))
+        }
+    }
+}
+
 /// `fetch(url)` → `Promise<Response>`
 fn fetch_fn(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
     let url_str = args
@@ -64,29 +110,40 @@ fn perform_fetch(url: &str) -> Result<FetchResult, String> {
         .build()
         .map_err(|e| format!("failed to create runtime: {e}"))?;
 
-    rt.block_on(async {
-        let client = vex_net::HttpClient::new().map_err(|e| format!("client error: {e}"))?;
+    rt.block_on(fetch_async(url))
+}
 
-        let request = vex_net::Request::get(url).map_err(|e| format!("invalid URL: {e}"))?;
+/// Perform HTTP fetch using a shared runtime handle (no new runtime per call).
+fn perform_fetch_with_handle(
+    handle: &tokio::runtime::Handle,
+    url: &str,
+) -> Result<FetchResult, String> {
+    handle.block_on(fetch_async(url))
+}
 
-        let response: vex_net::Response = client
-            .fetch(request)
-            .await
-            .map_err(|e| format!("fetch failed: {e}"))?;
+/// Shared async fetch logic.
+async fn fetch_async(url: &str) -> Result<FetchResult, String> {
+    let client = vex_net::HttpClient::new().map_err(|e| format!("client error: {e}"))?;
 
-        let status = response.status;
-        let headers: Vec<(String, String)> = response
-            .headers
-            .iter()
-            .map(|(k, v): (&String, &String)| (k.clone(), v.clone()))
-            .collect();
-        let body = response.text().unwrap_or("").to_owned();
+    let request = vex_net::Request::get(url).map_err(|e| format!("invalid URL: {e}"))?;
 
-        Ok(FetchResult {
-            status,
-            body,
-            headers,
-        })
+    let response: vex_net::Response = client
+        .fetch(request)
+        .await
+        .map_err(|e| format!("fetch failed: {e}"))?;
+
+    let status = response.status;
+    let headers: Vec<(String, String)> = response
+        .headers
+        .iter()
+        .map(|(k, v): (&String, &String)| (k.clone(), v.clone()))
+        .collect();
+    let body = response.text().unwrap_or("").to_owned();
+
+    Ok(FetchResult {
+        status,
+        body,
+        headers,
     })
 }
 

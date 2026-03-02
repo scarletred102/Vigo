@@ -13,7 +13,7 @@
 //! DOM element via `SharedDocument`.
 
 use boa_engine::object::ObjectInitializer;
-use boa_engine::property::Attribute;
+use boa_engine::property::{Attribute, PropertyDescriptor};
 use boa_engine::{js_string, Context, JsValue, NativeFunction};
 use vex_core::VexId;
 
@@ -151,19 +151,54 @@ pub fn build_style_proxy(node_id: VexId, doc: &SharedDocument, context: &mut Con
     };
     builder.function(remove_property, js_string!("removeProperty"), 1);
 
-    // Named property accessors — snapshot current value as a writable property.
-    // A full implementation would use ES6 getter/setters but ObjectInitializer
-    // doesn't expose that. For now, read-only snapshot + setProperty().
+    let obj = builder.build();
+
+    // Named property accessors — live getter/setter closures that read/write
+    // the DOM `style` attribute on every access.
     for &(js_name, css_name) in STYLE_PROPERTIES {
-        let val = get_style_property(doc, node_id, css_name);
-        builder.property(
-            js_string!(js_name.to_string()),
-            js_string!(val),
-            Attribute::WRITABLE | Attribute::CONFIGURABLE,
+        let getter_doc = doc.clone();
+        let css_get = css_name.to_owned();
+        // SAFETY: Closure captures Rc<RefCell<Document>> and a String.
+        // Invoked by Boa on the same single JS thread.
+        let getter = unsafe {
+            NativeFunction::from_closure(move |_this, _args, _ctx| {
+                let val = get_style_property(&getter_doc, node_id, &css_get);
+                Ok(JsValue::from(js_string!(val)))
+            })
+        };
+
+        let setter_doc = doc.clone();
+        let css_set = css_name.to_owned();
+        // SAFETY: Same single-thread guarantee.
+        let setter = unsafe {
+            NativeFunction::from_closure(move |_this, args, ctx| {
+                let val = args
+                    .first()
+                    .map(|v| v.to_string(ctx))
+                    .transpose()?
+                    .map(|s| s.to_std_string_escaped())
+                    .unwrap_or_default();
+                set_style_property(&setter_doc, node_id, &css_set, &val);
+                Ok(JsValue::undefined())
+            })
+        };
+
+        let get_fn = getter.to_js_function(context.realm());
+        let set_fn = setter.to_js_function(context.realm());
+
+        let _ = obj.define_property_or_throw(
+            js_string!(js_name),
+            PropertyDescriptor::builder()
+                .get(get_fn)
+                .set(set_fn)
+                .enumerable(true)
+                .configurable(true)
+                .build(),
+            context,
         );
     }
 
-    builder.build().into()
+    obj.into()
 }
 
 /// Read a single CSS property from the element's `style` attribute.
@@ -350,6 +385,62 @@ mod tests {
         let result = ctx
             .eval(Source::from_bytes(
                 "document.getElementById('target').style.getPropertyValue('color')",
+            ))
+            .unwrap();
+        assert_eq!(result.as_string().unwrap().to_std_string_escaped(), "green");
+    }
+
+    #[test]
+    fn style_named_setter_updates_dom() {
+        use boa_engine::Source;
+
+        let mut doc = vex_dom::Document::new();
+        let root = doc.root();
+        let div = doc.create_element("div", vex_dom::Namespace::Html);
+        doc.append_child(root, div);
+        vex_dom::attributes::set_attribute(doc.arena_mut(), div, "id", "target");
+        vex_dom::attributes::set_attribute(doc.arena_mut(), div, "style", "color: red");
+
+        let shared = crate::dom_bridge::shared_document(doc);
+        let mut ctx = Context::default();
+        crate::api::document::register(&shared, &mut ctx);
+
+        // Write via named property setter: el.style.color = 'blue'
+        ctx.eval(Source::from_bytes(
+            "var el = document.getElementById('target'); \
+             el.style.color = 'blue';",
+        ))
+        .unwrap();
+
+        let doc_ref = shared.borrow();
+        let style = vex_dom::attributes::get_attribute(doc_ref.arena(), div, "style").unwrap();
+        assert!(
+            style.contains("blue"),
+            "style should contain blue after named setter: got {style}"
+        );
+    }
+
+    #[test]
+    fn style_named_getter_reflects_changes() {
+        use boa_engine::Source;
+
+        let mut doc = vex_dom::Document::new();
+        let root = doc.root();
+        let div = doc.create_element("div", vex_dom::Namespace::Html);
+        doc.append_child(root, div);
+        vex_dom::attributes::set_attribute(doc.arena_mut(), div, "id", "target");
+        vex_dom::attributes::set_attribute(doc.arena_mut(), div, "style", "color: red");
+
+        let shared = crate::dom_bridge::shared_document(doc);
+        let mut ctx = Context::default();
+        crate::api::document::register(&shared, &mut ctx);
+
+        // Change via setProperty, read via named getter.
+        let result = ctx
+            .eval(Source::from_bytes(
+                "var el = document.getElementById('target'); \
+                 el.style.setProperty('color', 'green'); \
+                 el.style.color",
             ))
             .unwrap();
         assert_eq!(result.as_string().unwrap().to_std_string_escaped(), "green");

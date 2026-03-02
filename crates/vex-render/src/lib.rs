@@ -17,6 +17,7 @@ pub mod painter;
 pub mod platform;
 #[cfg(target_os = "windows")]
 mod platform_ffi;
+pub mod privacy;
 pub mod renderer;
 pub mod screenshot;
 pub mod scroll;
@@ -28,3 +29,4 @@ pub use gpu::GpuContext;
 pub use painter::build_display_list;
 #[cfg(target_os = "windows")]
 pub use platform::Window;
+pub use privacy::RenderPrivacyConfig;
