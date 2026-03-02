@@ -11,7 +11,7 @@ pub mod resolve;
 pub mod specificity;
 pub mod value_resolution;
 
-pub use compute::compute_styles;
+pub use compute::{compute_styles, compute_styles_with_font_size, DEFAULT_ROOT_FONT_SIZE};
 pub use inheritance::apply_inheritance;
 pub use matching::collect_matching_declarations;
 pub use origin::Origin;

@@ -8,32 +8,32 @@ All 11 phases are complete in isolation, but tens of critical stubs, disconnecte
 
 ## Foundation & Config (Tasks 1–3)
 
-- [ ] **1. Create centralized `BrowserConfig`** — Consolidate all hardcoded constants (chrome height 85 vs 80, window size 1280×720, user-agent string, colors) into `BrowserSettings`. Fix the chrome height mismatch between `main.rs`, `drm_overlay.rs`, and `ui/chrome.rs`.
+- [x] **1. Create centralized `BrowserConfig`** — Consolidate all hardcoded constants (chrome height 85 vs 80, window size 1280×720, user-agent string, colors) into `BrowserSettings`. Fix the chrome height mismatch between `main.rs`, `drm_overlay.rs`, and `ui/chrome.rs`.
   - Files: `settings.rs`, `ui/chrome.rs`, `drm_overlay.rs`, `main.rs`
 
-- [ ] **2. Make root font-size dynamic** — `cascade/compute.rs` hardcodes `16.0_f32`. Compute from `<html>` element's style or `BrowserSettings.default_font_size`.
+- [x] **2. Make root font-size dynamic** — `cascade/compute.rs` hardcodes `16.0_f32`. Compute from `<html>` element's style or `BrowserSettings.default_font_size`.
   - Files: `cascade/compute.rs`, `computed.rs`
 
-- [ ] **3. Fix `tab.rs` panic** — Replace `panic!()` with a guaranteed-valid static `VexUrl` for `about:blank`.
+- [x] **3. Fix `tab.rs` panic** — Replace `panic!()` with a guaranteed-valid static `VexUrl` for `about:blank`.
   - Files: `tab.rs`
 
 ---
 
 ## Network — Wire Existing Code (Tasks 4–8)
 
-- [ ] **4. Wire `HttpCache` into `HttpClient`** — The cache module is fully coded + tested but `HttpClient` never uses it. Add a `cache` field, check freshness before requests, send conditional headers, handle 304.
+- [x] **4. Wire `HttpCache` into `HttpClient`** — The cache module is fully coded + tested but `HttpClient` never uses it. Add a `cache` field, check freshness before requests, send conditional headers, handle 304.
   - Files: `crates/vex-net/src/client.rs`, `cache.rs`
 
-- [ ] **5. Wire DNS resolution results into HTTP connector** — Currently resolved IPs are discarded with `let _ =`. Feed resolved addresses into the actual connection.
+- [x] **5. Wire DNS resolution results into HTTP connector** — Currently resolved IPs are discarded with `let _ =`. Feed resolved addresses into the actual connection.
   - Files: `client.rs`, `dns.rs`
 
-- [ ] **6. Enforce cookie `HttpOnly` and `SameSite`** — Fields exist, are parsed, but marked `#[allow(dead_code)]`. Implement actual enforcement logic.
+- [x] **6. Enforce cookie `HttpOnly` and `SameSite`** — Fields exist, are parsed, but marked `#[allow(dead_code)]`. Implement actual enforcement logic.
   - Files: `crates/vex-net/src/cookies.rs`
 
-- [ ] **7. Add `deflate` decompression** — Missing from `decompress.rs`. Also handle multiple Content-Encoding values.
+- [x] **7. Add `deflate` decompression** — Missing from `decompress.rs`. Also handle multiple Content-Encoding values.
   - Files: `decompress.rs`
 
-- [ ] **8. Wire security policies into fetch** — `SopPolicy`, `CorsPolicy`, `CspPolicy` are fully implemented but never called. Add security classification to the fetch pipeline.
+- [x] **8. Wire security policies into fetch** — `SopPolicy`, `CorsPolicy`, `CspPolicy` are fully implemented but never called. Add security classification to the fetch pipeline.
   - Files: `client.rs`, `vex-security/src/{sop,cors,csp}.rs`
 
 ---

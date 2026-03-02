@@ -1,19 +1,18 @@
 ---
-name: "Vex Phase Start"
-description: "Start a new development phase for the Vigo/Vex engine. Reads PLAN.md, TASKS.md, SESSION_LOG.md, all instructions and hooks, then scaffolds and begins implementation."
-argument-hint: "Phase number to start (e.g. 7)"
+name: "Vex Continue Dev"
+description: "Continue Vigo/Vex final browser assembly. Reads FINAL_TASKS.md, finds the current active section, and works task-by-task until the section is wired, tested, and committed. Optional argument: section name or task number to jump to."
+argument-hint: "Optional: section name or task number (e.g. 'Network' or '4'). Defaults to first incomplete section."
 agent: agent
 tools: [read, edit, search, execute, todo, agent]
 ---
 
-# Vex Phase Start — Phase $input
+# Vex Final Assembly — Continue Development
 
 ## Context to read first (do this before anything else)
 
 Read ALL of the following files in parallel using sub-agents. You must have this context before writing a single line of code:
 
-- [PLAN.md](../../PLAN.md) — find the `## Phase $input` section and read it fully
-- [TASKS.md](../../TASKS.md) — extract every task row for `## Phase $input` and list them
+- [FINAL_TASKS.md](../../FINAL_TASKS.md) — the 77 wiring tasks; find the current section (first with unchecked `- [ ]` items) and read it fully
 - [SESSION_LOG.md](../../SESSION_LOG.md) — read the most recent session summary to understand what was just completed
 - [.github/copilot-instructions.md](../copilot-instructions.md) — workspace rules (always active)
 - [.github/instructions/vex-coding-conventions.instructions.md](../instructions/vex-coding-conventions.instructions.md)
@@ -29,14 +28,15 @@ Read ALL of the following files in parallel using sub-agents. You must have this
 
 Continue the development. Make use of all the tools that you can. Use sub agents. Don't overcode. Follow all the instructions, plans, hooks and make sure everything you code works properly — not just the tests. Run them, check for errors, double check the code. Be creative and mindful.
 
-## Phase $input — Pre-Flight Checklist
+## Pre-Flight Checklist
 
-Before writing any Phase $input code, verify the previous phase is complete:
+Before touching any task:
 
 1. Run `just ci` and confirm it exits 0 (fmt-check + clippy + test all pass)
-2. Check that every task in Phase `$input - 1` is marked `✅` in TASKS.md
-3. Read SESSION_LOG.md to confirm the previous phase summary is written
-4. If anything is incomplete, fix it before proceeding — do not start a new phase on a broken foundation
+2. Read FINAL_TASKS.md and identify the **current section** — the first `## Section` heading that still has unchecked `- [ ]` items
+3. If `$input` was provided, jump to the section matching that name or task number instead
+4. Read SESSION_LOG.md to understand the most recent context
+5. If CI fails, fix it before wiring anything new — do not accumulate broken builds
 
 ## Implementation Workflow
 
@@ -47,13 +47,14 @@ Work task-by-task. For each task in Phase $input:
 - Understand patterns already established (naming, error types, test conventions)
 - Read the exact PLAN.md rationale for this task before designing it
 
-### Step 2 — Scaffold
-- Create the files/modules listed in the task's Deliverable column
-- Add MPL-2.0 headers to every new `.rs` and `.zig` file
-- Define the public API (types + function signatures) first; implement after
+### Step 2 — Plan
+- Each task in FINAL_TASKS.md lists the specific files to touch/wire
+- When a new file is required, add MPL-2.0 headers to every new `.rs` and `.zig` file
+- Define the connection point (function call, trait impl, or FFI bridge) before writing the body
 
-### Step 3 — Implement
-- Write the implementation following conventions from the instruction files
+### Step 3 — Wire
+- Connect the existing stubs to the existing callers; avoid rewriting working code
+- Follow conventions from the instruction files
 - No `.unwrap()` / `.expect()` in library code — use `?`
 - No `println!` — use `tracing::` macros
 - No speculative features — only what the task description says
@@ -69,15 +70,15 @@ just run      # binary opens without panic (where applicable)
 If any step fails, fix it before moving to the next task. Never accumulate broken tasks.
 
 ### Step 5 — Mark complete
-- Update the task row in TASKS.md from `⬜` to `✅`
-- Add a one-line note to SESSION_LOG.md under the current phase heading
+- Update the task in FINAL_TASKS.md from `- [ ]` to `- [x]`
+- Add a one-line note to SESSION_LOG.md under the current section heading
 
 ### Step 6 — Next task
-- Repeat from Step 1 for the next `⬜` task in Phase $input
+- Repeat from Step 1 for the next `- [ ]` task in the current section
 
-## Phase Completion
+## Section Completion
 
-When every Phase $input task is marked `✅`:
+When every task in the current section is marked `- [x]`:
 
 1. Run the full CI gate:
    ```
@@ -91,23 +92,24 @@ When every Phase $input task is marked `✅`:
    ```
    Address every issue the reviewer raises before committing.
 
-3. Update SESSION_LOG.md — add a phase summary block at the very top:
+3. Update SESSION_LOG.md — add a section summary block at the very top:
    ```markdown
-   ## Phase $input — <Phase Name> ✅ (YYYY-MM-DD)
-   - <key deliverable 1>
-   - <key deliverable 2>
+   ## <Section Name> (YYYY-MM-DD)
+   - <wired connection 1>
+   - <wired connection 2>
    - Test count: XXX Rust, YY Zig
+   - Tasks: N/77 total done
    ```
 
-4. Update TASKS.md — every Phase $input task must be `✅`
+4. Confirm every task in this section is `- [x]` in FINAL_TASKS.md
 
 5. Commit:
    ```
    git add -A
-   git commit -m "Phase $input complete: <Phase Name>"
+   git commit -m "Wire: <Section Name>"
    ```
 
-6. Announce completion with a summary, then ask: **"Ready to start Phase ${{input_plus_one}}?"**
+6. Announce section completion with a summary, then continue to the next section
 
 ## Non-Negotiable Rules (summary)
 
@@ -117,8 +119,7 @@ When every Phase $input task is marked `✅`:
 | No `.unwrap()` in lib crates | Code review / reviewer agent |
 | No `println!` in lib crates | Code review |
 | MPL-2.0 header on every file | Code review |
-| Every public fn has a test | Reviewer agent |
-| Only Phase $input scope | This prompt |
+| Only wire existing code — no new features | Task scope |
 | All deps via workspace deps | Code review |
 | `thiserror` in libs, `anyhow` in vex-app | Code review |
 
@@ -126,8 +127,7 @@ When every Phase $input task is marked `✅`:
 
 | File | What to use it for |
 |------|-------------------|
-| PLAN.md §Phase $input | Rationale, architecture decisions, exit criteria |
-| TASKS.md §Phase $input | Exact deliverables, file names, test counts |
+| FINAL_TASKS.md | The 77 wiring tasks — update `- [ ]` → `- [x]` as you go |
 | SESSION_LOG.md | Prior art, established patterns, test baselines |
-| docs/ARCHITECTURE.md | Crate dependency graph — where does new code belong? |
+| docs/ARCHITECTURE.md | Crate dependency graph — where does new code connect? |
 | .github/instructions/*.instructions.md | Style, safety, API patterns |

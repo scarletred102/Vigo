@@ -4,6 +4,25 @@
 
 ---
 
+## Foundation & Config (2026-03-02)
+- Task 1: Added `window_width`, `window_height`, `default_font_size` to `BrowserSettings`; fixed chrome height mismatch (85/80 → `chrome::chrome_height(false)` = 77px) in `main.rs` and `drm_overlay.rs`; aligned compose_frame chrome regions with `chrome.rs` constants
+- Task 2: Extracted `compute_styles_with_font_size()` in `cascade/compute.rs`; `compute_styles()` delegates with `DEFAULT_ROOT_FONT_SIZE` (16.0); re-exported from `vex-css` lib
+- Task 3: Replaced `panic!()` in `Tab::blank()` with `about_blank()` helper fn that uses `expect` (infallible per URL spec)
+- Fixed pre-existing flaky `image_loading::tests::decode_success_path` (increased polling with `tokio::time::sleep`)
+- Fixed `drm_fallback_test.rs` integration test to use `chrome::chrome_height()` instead of hardcoded 80
+- Tasks: 3/77 total done
+
+## Network — Wire Existing Code (2026-03-02)
+- Task 4: Wired `HttpCache` into `HttpClient` — added `Mutex<HttpCache>` field, fresh-cache bypass, conditional headers (`If-None-Match`/`If-Modified-Since`), 304 Not Modified reuse, and post-fetch cache storage for GET requests. Added 2 tests (`cache_is_initialized_and_accessible`, `cache_stores_and_retrieves_entries`).
+- Task 5: Replaced `let _ =` DNS discard with `let resolved = ...` + `debug!(host, ?resolved, "DNS resolved")`. Resolution errors still propagate via `?`.
+- Task 6: Enforced cookie `HttpOnly` and `SameSite` — removed `#[allow(dead_code)]`, added `CookieAccess` (HttpRequest/JsAccess) and `NavigationKind` (SameSite/CrossSiteNavigation/CrossSiteSubresource) enums, added `get_cookies_filtered()` with HttpOnly exclusion for JS and SameSite=Strict/Lax policy. Added 3 tests. Re-exported `CookieAccess`, `NavigationKind`, `SameSite` from `vex-net`.
+- Task 7: Added deflate decompression via `flate2::read::DeflateDecoder` + `decompress_multi()` for comma-separated Content-Encoding. Updated accept-encoding header. Added tests.
+- Task 8: Created `secure_fetch` module in `vex-browser` — `SecurityContext` (page origin + CSP), `secure_fetch()` async fn with CSP enforcement → SOP classification → CORS validation flow. Added `vex-security` dep to vex-browser. 6 tests.
+- Test count: ~1035 Rust tests passing, 0 failures, ~20 ignored, 0 clippy warnings
+- Tasks: 8/77 total done
+
+---
+
 ## Current State
 
 **Phase 0 ✅ — Phase 1 ✅ — Phase 2 ✅ — Phase 3 ✅ — Phase 4 (CSS) ✅ — Phase 5 (Layout) ✅ — Phase 6 (GPU Rendering) ✅ — Phase 7 (JavaScript) ✅ — Phase 8 (Browser Chrome) ✅ — Phase 9 (Media) ✅ — Phase 10 (Security, Storage & Web Compat) ✅**
@@ -14,7 +33,7 @@ The full rendering pipeline is operational: parse HTML → build DOM → extract
 
 ```bash
 cargo run -p vex-app                          # opens window + renders welcome.html via full pipeline
-cargo test --workspace                        # 839 tests (16 ignored)
+cargo test --workspace                        # ~1035 tests (~20 ignored)
 cargo clippy --workspace --all-targets        # 0 warnings
 cd zig && zig build test                      # 22 Zig tests
 ```

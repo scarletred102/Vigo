@@ -18,7 +18,7 @@ pub mod ua_stylesheet;
 pub mod values;
 
 // Re-export key public types.
-pub use cascade::compute_styles;
+pub use cascade::{compute_styles, compute_styles_with_font_size, DEFAULT_ROOT_FONT_SIZE};
 pub use computed::ComputedStyle;
 pub use media::{evaluate_media, parse_media_condition, MediaCondition};
 pub use parser::{parse_inline_style, parse_stylesheet, Stylesheet};

@@ -27,6 +27,12 @@ pub struct BrowserSettings {
     pub default_zoom: u32,
     /// Show bookmarks bar.
     pub show_bookmarks_bar: bool,
+    /// Default window width in logical pixels.
+    pub window_width: u32,
+    /// Default window height in logical pixels.
+    pub window_height: u32,
+    /// Default root font-size in pixels (used for `rem` unit resolution).
+    pub default_font_size: f32,
 
     // -- Privacy --
     /// Block third-party cookies.
@@ -86,6 +92,9 @@ impl Default for BrowserSettings {
             theme: ThemeMode::Dark,
             default_zoom: 100,
             show_bookmarks_bar: true,
+            window_width: 1280,
+            window_height: 720,
+            default_font_size: 16.0,
             block_third_party_cookies: true,
             tracking_protection: true,
             do_not_track: true,
@@ -170,6 +179,9 @@ mod tests {
         assert!(s.https_only);
         assert!(s.javascript_enabled);
         assert_eq!(s.theme, ThemeMode::Dark);
+        assert_eq!(s.window_width, 1280);
+        assert_eq!(s.window_height, 720);
+        assert!((s.default_font_size - 16.0).abs() < f32::EPSILON);
     }
 
     #[test]

@@ -158,11 +158,12 @@ fn compose_frame(
     scroll: &vex_render::scroll::ScrollState,
     page_dl: &vex_render::display_list::DisplayList,
 ) -> vex_render::display_list::DisplayList {
+    use vex_browser::ui::chrome;
     use vex_core::color::Color;
     use vex_core::geometry::{Point, Rect};
     use vex_render::display_list::{DisplayCommand, DisplayList};
 
-    let chrome_height = 85.0;
+    let chrome_height = chrome::chrome_height(false);
     let sy = scroll.offset_y;
 
     let mut dl = DisplayList::with_capacity(16 + page_dl.commands().len());
@@ -171,7 +172,7 @@ fn compose_frame(
 
     // Tab bar.
     dl.push(DisplayCommand::FillRect {
-        rect: Rect::new(0.0, 0.0, vp_w, 40.0),
+        rect: Rect::new(0.0, 0.0, vp_w, chrome::TAB_BAR_HEIGHT),
         color: Color::rgb(38, 38, 46),
     });
     // Active tab.
@@ -187,17 +188,17 @@ fn compose_frame(
         line_height: 18.0,
     });
 
-    // Address bar.
+    // Navigation bar.
     dl.push(DisplayCommand::FillRect {
-        rect: Rect::new(0.0, 40.0, vp_w, 44.0),
+        rect: Rect::new(0.0, chrome::TAB_BAR_HEIGHT, vp_w, chrome::NAV_BAR_HEIGHT),
         color: Color::rgb(30, 30, 38),
     });
     dl.push(DisplayCommand::FillRect {
-        rect: Rect::new(60.0, 48.0, vp_w - 120.0, 28.0),
+        rect: Rect::new(60.0, chrome::TAB_BAR_HEIGHT + 8.0, vp_w - 120.0, 28.0),
         color: Color::rgb(44, 44, 56),
     });
     dl.push(DisplayCommand::DrawText {
-        position: Point::new(72.0, 53.0),
+        position: Point::new(72.0, chrome::TAB_BAR_HEIGHT + 13.0),
         text: "vex://welcome".into(),
         color: Color::rgb(160, 160, 180),
         font_size: 14.0,
@@ -206,7 +207,12 @@ fn compose_frame(
 
     // Accent line.
     dl.push(DisplayCommand::FillRect {
-        rect: Rect::new(0.0, 84.0, vp_w, 1.0),
+        rect: Rect::new(
+            0.0,
+            chrome_height - chrome::ACCENT_LINE_HEIGHT,
+            vp_w,
+            chrome::ACCENT_LINE_HEIGHT,
+        ),
         color: Color::rgb(76, 86, 200),
     });
 

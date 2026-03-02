@@ -4,6 +4,7 @@
 //! HTTP client with TLS 1.3, connection pooling, redirect following, and decompression.
 
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
@@ -12,6 +13,7 @@ use hyper_util::rt::TokioExecutor;
 use tracing::{debug, warn};
 use vex_core::{VexError, VexResult, VexUrl};
 
+use crate::cache::HttpCache;
 use crate::cookies::CookieJar;
 use crate::decompress;
 use crate::dns::{DnsMode, DnsResolver};
@@ -55,6 +57,7 @@ pub struct HttpClient {
     config: ClientConfig,
     cookies: CookieJar,
     dns_resolver: DnsResolver,
+    cache: Mutex<HttpCache>,
 }
 
 impl HttpClient {
@@ -82,6 +85,7 @@ impl HttpClient {
             config,
             cookies: CookieJar::new(),
             dns_resolver,
+            cache: Mutex::new(HttpCache::new()),
         })
     }
 
@@ -97,6 +101,11 @@ impl HttpClient {
     /// Access the cookie jar.
     pub fn cookie_jar(&self) -> &CookieJar {
         &self.cookies
+    }
+
+    /// Access the HTTP cache (locked).
+    pub fn cache(&self) -> &Mutex<HttpCache> {
+        &self.cache
     }
 
     /// Fetch a URL, returning the response.
@@ -166,6 +175,11 @@ impl HttpClient {
     }
 
     /// Perform a single (non-redirect-following) HTTP fetch.
+    ///
+    /// Checks the in-memory cache first. On cache hit with a fresh response,
+    /// returns without a network round-trip. Stale entries with ETag or
+    /// Last-Modified trigger conditional requests (If-None-Match /
+    /// If-Modified-Since); a 304 reuses the cached body.
     async fn do_fetch(
         &self,
         url: &VexUrl,
@@ -173,10 +187,39 @@ impl HttpClient {
         extra_headers: &HashMap<String, String>,
         body: &Option<Vec<u8>>,
     ) -> VexResult<Response> {
+        // ── Cache lookup (GET only) ──────────────────────────────────
+        if method == Method::Get {
+            if let Ok(cache) = self.cache.lock() {
+                if let Some(cached) = cache.get(url) {
+                    if cached.is_fresh() {
+                        debug!(url = %url, "cache hit (fresh)");
+                        return Ok(Response {
+                            status: cached.status,
+                            headers: cached.headers.clone(),
+                            body: cached.body.clone(),
+                            url: url.clone(),
+                            was_cached: true,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Grab conditional-request validators before the network call
+        let (cached_etag, cached_last_modified) = if method == Method::Get {
+            self.cache
+                .lock()
+                .ok()
+                .and_then(|c| c.get(url).map(|e| (e.etag.clone(), e.last_modified.clone())))
+                .unwrap_or((None, None))
+        } else {
+            (None, None)
+        };
+
         if let Some(host) = url.host() {
-            // P2.2.3 — DNS mode is wired into the client path by resolving via
-            // the configured resolver (system DNS or DoH) before request send.
-            let _ = self.dns_resolver.resolve(host).await?;
+            // Resolve using the configured resolver (system DNS or DoH).
+            let resolved = self.dns_resolver.resolve(host).await?;
+            debug!(host, ?resolved, "DNS resolved");
         }
 
         let uri: hyper::Uri = url
@@ -190,7 +233,15 @@ impl HttpClient {
             .uri(&uri)
             .header("user-agent", &self.config.user_agent)
             .header("accept", "*/*")
-            .header("accept-encoding", "gzip, br, zstd");
+            .header("accept-encoding", "gzip, deflate, br, zstd");
+
+        // Conditional headers for cache revalidation
+        if let Some(ref etag) = cached_etag {
+            builder = builder.header("if-none-match", etag.as_str());
+        }
+        if let Some(ref lm) = cached_last_modified {
+            builder = builder.header("if-modified-since", lm.as_str());
+        }
 
         // Add cookies
         if let Some(cookie_header) = self.cookies.get_cookies(url) {
@@ -236,6 +287,22 @@ impl HttpClient {
             }
         }
 
+        // Handle 304 Not Modified — reuse cached body
+        if status == 304 && method == Method::Get {
+            if let Ok(cache) = self.cache.lock() {
+                if let Some(cached) = cache.get(url) {
+                    debug!(url = %url, "304 Not Modified, using cached body");
+                    return Ok(Response {
+                        status: cached.status,
+                        headers: cached.headers.clone(),
+                        body: cached.body.clone(),
+                        url: url.clone(),
+                        was_cached: true,
+                    });
+                }
+            }
+        }
+
         // Store cookies from Set-Cookie headers
         for value in hyper_resp.headers().get_all("set-cookie") {
             if let Ok(v) = value.to_str() {
@@ -268,6 +335,13 @@ impl HttpClient {
                 }
             }
         };
+
+        // Store in cache (GET only)
+        if method == Method::Get {
+            if let Ok(mut cache) = self.cache.lock() {
+                cache.store(url, status, &headers, &body);
+            }
+        }
 
         debug!(status, bytes = body.len(), "response received");
 
@@ -308,5 +382,32 @@ mod tests {
     fn client_accepts_doh_mode() {
         let client = HttpClient::with_dns_mode(DnsMode::DoH(crate::dns::DoHProvider::Cloudflare));
         assert!(client.is_ok());
+    }
+
+    #[test]
+    fn cache_is_initialized_and_accessible() {
+        let client = HttpClient::new().unwrap();
+        let cache = client.cache().lock().unwrap();
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn cache_stores_and_retrieves_entries() {
+        let client = HttpClient::new().unwrap();
+        let url = VexUrl::parse("https://example.com/page").unwrap();
+
+        let mut headers = HashMap::new();
+        headers.insert("cache-control".to_string(), "max-age=3600".to_string());
+
+        {
+            let mut cache = client.cache().lock().unwrap();
+            cache.store(&url, 200, &headers, b"cached body");
+        }
+
+        let cache = client.cache().lock().unwrap();
+        let entry = cache.get(&url).unwrap();
+        assert_eq!(entry.status, 200);
+        assert_eq!(entry.body, b"cached body");
+        assert!(entry.is_fresh());
     }
 }

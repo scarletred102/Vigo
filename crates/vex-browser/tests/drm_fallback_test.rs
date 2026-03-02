@@ -46,19 +46,22 @@ fn test_drm_fallback_pipeline() {
         // Step 5: Verify overlay is rendering
         assert!(overlay.is_rendering());
 
-        // Verify positioning (chrome offset 80px)
+        // Verify positioning (chrome offset = chrome_height(false) = 77px)
+        let chrome_h = vex_browser::ui::chrome::chrome_height(false);
         let screen = overlay.screen_rect().unwrap();
         assert!((screen.origin.x - 0.0).abs() < 0.1);
-        // Y = 120 (layout) + 80 (chrome) = 200
-        assert!((screen.origin.y - 200.0).abs() < 0.1);
+        // Y = 120 (layout) + chrome_h (chrome)
+        let expected_y = 120.0 + chrome_h;
+        assert!((screen.origin.y - expected_y).abs() < 0.1);
         assert!((screen.size.width - 1280.0).abs() < 0.1);
         assert!((screen.size.height - 720.0).abs() < 0.1);
 
         // Simulate scrolling
         overlay.on_scroll(50.0);
         let scrolled = overlay.screen_rect().unwrap();
-        // Y = 120 - 50 + 80 = 150
-        assert!((scrolled.origin.y - 150.0).abs() < 0.1);
+        // Y = 120 - 50 + chrome_h
+        let expected_scrolled_y = 120.0 - 50.0 + chrome_h;
+        assert!((scrolled.origin.y - expected_scrolled_y).abs() < 0.1);
 
         // Simulate tab switch
         overlay.on_tab_switch(false);

@@ -16,16 +16,33 @@ use crate::computed::ComputedStyle;
 use crate::parser::Stylesheet;
 use crate::ua_stylesheet;
 
+/// Default root font-size in pixels (matches browser spec default).
+pub const DEFAULT_ROOT_FONT_SIZE: f32 = 16.0;
+
 /// Compute styles for every element in the document.
 ///
 /// Algorithm:
 /// 1. Collect user-agent stylesheet defaults.
 /// 2. For each element (tree order), collect matching declarations,
 ///    resolve cascade, apply inheritance, resolve all values to px.
+///
+/// Uses [`DEFAULT_ROOT_FONT_SIZE`] for `rem` resolution. Call
+/// [`compute_styles_with_font_size`] to override.
 pub fn compute_styles(
     document: &Document,
     stylesheets: &[Stylesheet],
     viewport: Size,
+) -> HashMap<VexId, ComputedStyle> {
+    compute_styles_with_font_size(document, stylesheets, viewport, DEFAULT_ROOT_FONT_SIZE)
+}
+
+/// Like [`compute_styles`] but allows specifying a custom root font-size
+/// (e.g. from `BrowserSettings.default_font_size`).
+pub fn compute_styles_with_font_size(
+    document: &Document,
+    stylesheets: &[Stylesheet],
+    viewport: Size,
+    root_font_size: f32,
 ) -> HashMap<VexId, ComputedStyle> {
     let mut styles: HashMap<VexId, ComputedStyle> = HashMap::new();
     let arena = document.arena();
@@ -37,7 +54,6 @@ pub fn compute_styles(
 
     // Walk tree in document order
     let root = document.root();
-    let root_font_size = 16.0_f32;
     compute_recursive(
         root,
         None,

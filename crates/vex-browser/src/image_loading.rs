@@ -100,12 +100,12 @@ mod tests {
         loader.request_decode(ImageId(1), tiny_png());
 
         let mut result = Vec::new();
-        for _ in 0..50 {
+        for _ in 0..200 {
             result = loader.drain_finished().await;
             if !result.is_empty() {
                 break;
             }
-            tokio::task::yield_now().await;
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
         }
 
         assert_eq!(result.len(), 1);
@@ -125,12 +125,12 @@ mod tests {
         loader.request_decode(ImageId(2), b"not-an-image".to_vec());
 
         let mut result = Vec::new();
-        for _ in 0..50 {
+        for _ in 0..200 {
             result = loader.drain_finished().await;
             if !result.is_empty() {
                 break;
             }
-            tokio::task::yield_now().await;
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
         }
 
         assert_eq!(result.len(), 1);

@@ -56,11 +56,15 @@ Full pipeline (page render):
 | 4 — CSS Parser + Style System | ✅ |
 | 5 — Layout Engine | ✅ |
 | 6 — GPU Rendering | ✅ |
-| **7 — JavaScript (Boa)** | 🔲 next |
-| 8–11 — Media, Storage, Security, Browser Chrome | 🔲 |
+| 7 — JavaScript (Boa) | ✅ |
+| 8 — Browser Chrome | ✅ |
+| 9 — Media Pipeline | ✅ |
+| 10 — Storage & Security | ✅ |
+| 11 — Extensions & Process Model | ✅ |
+| **Final Assembly (77 wiring tasks)** | 🔲 in progress |
 
-Current task list: `TASKS.md`. Master plan: `PLAN.md`.  
-**Only implement what is in the current phase — no speculative features.**
+All 11 phases are structurally complete. Current work: **final wiring, integration, and assembly** — see `FINAL_TASKS.md`.  
+**Only work on tasks listed in `FINAL_TASKS.md`. No new features beyond what is listed.**
 
 ## Core Directive
 
@@ -102,7 +106,7 @@ See `.github/instructions/vex-render-apis.instructions.md` for full details.
 
 - Unit tests: `#[cfg(test)] mod tests` at the bottom of each file.
 - Integration tests: `tests/` directory per crate.
-- Every public function added in a phase must have test coverage.
+- Every wired-up function must have test coverage where the logic is non-trivial.
 - Non-deterministic (network/filesystem) tests: `#[ignore]`.
 - Current count: ~382 Rust tests, 22 Zig tests — do not reduce this.
 
@@ -110,6 +114,7 @@ See `.github/instructions/vex-render-apis.instructions.md` for full details.
 
 | Topic | File |
 |-------|------|
+| **Current task checklist** | `FINAL_TASKS.md` |
 | Rust & Zig style, naming, safety | `.github/instructions/vex-coding-conventions.instructions.md` |
 | Zig build, MSVC ABI, FFI layout | `.github/instructions/vex-zig-build.instructions.md` |
 | wgpu 23, cosmic-text, image pipeline | `.github/instructions/vex-render-apis.instructions.md` |

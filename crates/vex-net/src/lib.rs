@@ -20,6 +20,6 @@ pub mod types;
 // Re-export the main public API.
 pub use cache::HttpCache;
 pub use client::{ClientConfig, HttpClient};
-pub use cookies::CookieJar;
+pub use cookies::{CookieAccess, CookieJar, NavigationKind, SameSite};
 pub use dns::{DnsMode, DnsResolver, DoHProvider};
 pub use types::{Method, Request, Response};

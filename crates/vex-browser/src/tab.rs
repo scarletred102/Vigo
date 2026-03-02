@@ -13,6 +13,14 @@ use vex_layout::LayoutBox;
 use vex_render::display_list::{DisplayList, ImageId};
 use vex_render::scroll::ScrollState;
 
+/// Create a guaranteed-valid `about:blank` URL.
+///
+/// `about:blank` is defined by the URL spec and will always parse
+/// successfully, so the `expect` here is unreachable in practice.
+fn about_blank() -> VexUrl {
+    VexUrl::parse("about:blank").expect("about:blank is always valid per URL spec")
+}
+
 /// Unique identifier for a browser tab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TabId(pub u32);
@@ -94,15 +102,7 @@ impl Tab {
 
     /// Create a blank tab (no URL loaded yet).
     pub fn blank(id: TabId) -> Self {
-        let url = match VexUrl::parse("vex://newtab") {
-            Ok(url) => url,
-            Err(_) => match VexUrl::parse("about:blank") {
-                Ok(url) => url,
-                Err(error) => {
-                    panic!("failed to parse built-in blank tab URL: {error}");
-                }
-            },
-        };
+        let url = VexUrl::parse("vex://newtab").unwrap_or_else(|_| about_blank());
         Self::new(id, url)
     }
 

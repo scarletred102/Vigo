@@ -13,10 +13,13 @@
 
 use vex_core::geometry::Rect;
 
+use crate::ui::chrome;
 use crate::webview_fallback::{WebViewConfig, WebViewFallback};
 
-/// Chrome height offset (tab bar + address bar above content).
-const CHROME_HEIGHT: f32 = 80.0;
+/// Default chrome height offset (tab bar + nav bar + accent line, no bookmarks).
+fn default_chrome_height() -> f32 {
+    chrome::chrome_height(false)
+}
 
 /// Manages the seamless overlay of a WebView2 over the page content.
 #[derive(Debug)]
@@ -41,7 +44,7 @@ impl OverlayManager {
             fallback: WebViewFallback::new(),
             video_layout_rect: None,
             scroll_y: 0.0,
-            chrome_offset_y: CHROME_HEIGHT,
+            chrome_offset_y: default_chrome_height(),
             tab_active: true,
         }
     }
@@ -173,8 +176,9 @@ mod tests {
         if mgr.fallback().state() == WebViewState::Active {
             assert!(mgr.is_rendering());
             let screen = mgr.screen_rect().unwrap();
-            // Y = 200 (layout) - 0 (scroll) + 80 (chrome) = 280
-            assert!((screen.origin.y - 280.0).abs() < 0.1);
+            // Y = 200 (layout) - 0 (scroll) + 77 (chrome) = 277
+            let expected_y = 200.0 + default_chrome_height();
+            assert!((screen.origin.y - expected_y).abs() < 0.1);
         }
     }
 
@@ -186,8 +190,9 @@ mod tests {
 
         mgr.on_scroll(200.0);
         let screen = mgr.screen_rect().unwrap();
-        // Y = 500 - 200 + 80 = 380
-        assert!((screen.origin.y - 380.0).abs() < 0.1);
+        // Y = 500 - 200 + chrome_height
+        let expected_y = 500.0 - 200.0 + default_chrome_height();
+        assert!((screen.origin.y - expected_y).abs() < 0.1);
     }
 
     #[test]
@@ -219,7 +224,7 @@ mod tests {
         let video_rect = Rect::new(0.0, 100.0, 800.0, 450.0);
         mgr.activate_for_drm("https://example.com", video_rect);
 
-        // With default chrome offset of 80, video screen Y = 100 + 80 = 180
+        // With default chrome offset, video is visible on screen
         assert!(mgr.is_on_screen(720.0));
 
         // Scroll the video way off screen

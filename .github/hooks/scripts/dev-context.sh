@@ -2,163 +2,198 @@
 # Copyright (c) Vigo Contributors
 # SPDX-License-Identifier: MPL-2.0
 #
-# Vigo dev-session hook -- runs at SessionStart (Linux / macOS CI).
-# Reads TASKS.md to detect the current phase, then injects a focused
-# system message that sets the agent''s mission and workflow rules.
+# Vigo dev-session hook -- runs at SessionStart (Linux/macOS).
+# Reads FINAL_TASKS.md, finds the current section (first with unchecked tasks),
+# and injects a focused system message.
 
 set -euo pipefail
 
-TASKS="TASKS.md"
+TASKS="FINAL_TASKS.md"
 SESSION_LOG="SESSION_LOG.md"
 
-# Defaults (fallback if TASKS.md is missing)
-CURRENT_PHASE="7"
-CURRENT_NAME="JavaScript Engine"
-NEXT_PHASE="8"
+# ---- parse checkbox counts per section ------------------------------------
+declare -a SEC_NAMES=()
+declare -a SEC_DONE=()
+declare -a SEC_TODO=()
+declare -A SEC_TASKS_MAP=()   # section_index -> newline-separated task titles
 
-# Detect current phase.
-# Strategy: count done/todo tasks per phase.
-# Current = first phase where todo > 0 AND done == 0.
-if [[ -f "$TASKS" ]]; then
-    declare -A phase_done
-    declare -A phase_todo
-    declare -A phase_name
-    cur_phase=""
+current_sec=""
+sec_idx=-1
 
-    while IFS= read -r line; do
-        # Match: ## Phase 7 -- JavaScript Engine
-        if [[ "$line" =~ ^##[[:space:]]+Phase[[:space:]]+([0-9]+)[^0-9](.*) ]]; then
-            cur_phase="${BASH_REMATCH[1]}"
-            raw_name="${BASH_REMATCH[2]}"
-            # Strip leading dashes / em-dashes / spaces
-            raw_name="${raw_name##*( )}"
-            raw_name="${raw_name#*--}"
-            raw_name="${raw_name#*-}"
-            raw_name="${raw_name## }"
-            phase_name["$cur_phase"]="${raw_name}"
-            phase_done["$cur_phase"]="0"
-            phase_todo["$cur_phase"]="0"
-        fi
-        if [[ -n "$cur_phase" ]]; then
-            # U+2705 = checkmark (done), U+2B1C = white-square (todo)
-            if [[ "$line" == *$'\xe2\x9c\x85'* ]]; then
-                phase_done["$cur_phase"]=$(( ${phase_done[$cur_phase]:-0} + 1 ))
-            fi
-            if [[ "$line" == *$'\xe2\xac\x9c'* ]]; then
-                phase_todo["$cur_phase"]=$(( ${phase_todo[$cur_phase]:-0} + 1 ))
-            fi
-        fi
-    done < "$TASKS"
+while IFS= read -r line; do
+  if [[ "$line" =~ ^##[[:space:]]+(.+) ]]; then
+    current_sec="${BASH_REMATCH[1]}"
+    # Will finalise when we see the first checkbox or next heading
+    sec_idx=$(( sec_idx + 1 ))
+    SEC_NAMES[$sec_idx]="$current_sec"
+    SEC_DONE[$sec_idx]=0
+    SEC_TODO[$sec_idx]=0
+    SEC_TASKS_MAP[$sec_idx]=""
+  fi
+  if [[ $sec_idx -ge 0 ]]; then
+    if [[ "$line" =~ ^[[:space:]]*-[[:space:]]+'\[x\]' ]]; then
+      SEC_DONE[$sec_idx]=$(( SEC_DONE[$sec_idx] + 1 ))
+    elif [[ "$line" =~ ^[[:space:]]*-[[:space:]]+'[ ]' ]]; then
+      SEC_TODO[$sec_idx]=$(( SEC_TODO[$sec_idx] + 1 ))
+      # extract task description between **…** (first ** to second **)
+      desc=$(echo "$line" | sed "s/^[[:space:]]*-[[:space:]]*\[ \][[:space:]]*\*\*//;s/\*\*.*$//")
+      if [[ -n "${SEC_TASKS_MAP[$sec_idx]}" ]]; then
+        SEC_TASKS_MAP[$sec_idx]="${SEC_TASKS_MAP[$sec_idx]}
+  - [ ] $desc"
+      else
+        SEC_TASKS_MAP[$sec_idx]="  - [ ] $desc"
+      fi
+    fi
+  fi
+done < "$TASKS"
 
-    # Find first phase where todo > 0 and done == 0
-    for pn in $(echo "${!phase_done[@]}" | tr ' ' '\n' | sort -n); do
-        done_c="${phase_done[$pn]:-0}"
-        todo_c="${phase_todo[$pn]:-0}"
-        if (( todo_c > 0 && done_c == 0 )); then
-            CURRENT_PHASE="$pn"
-            CURRENT_NAME="${phase_name[$pn]}"
-            NEXT_PHASE=$(( pn + 1 ))
-            break
-        fi
-    done
+# ---- totals and find active section --------------------------------------
+total=0
+total_done=0
+cur_name=""
+cur_tasks=""
+next_name=""
+found_cur=false
+
+for i in "${!SEC_NAMES[@]}"; do
+  s_done="${SEC_DONE[$i]}"
+  s_todo="${SEC_TODO[$i]}"
+  s_total=$(( s_done + s_todo ))
+  if [[ $s_total -eq 0 ]]; then continue; fi
+  total=$(( total + s_total ))
+  total_done=$(( total_done + s_done ))
+  if [[ "$found_cur" == "false" && $s_todo -gt 0 ]]; then
+    cur_name="${SEC_NAMES[$i]}"
+    cur_tasks="${SEC_TASKS_MAP[$i]}"
+    # trim to first 8 lines
+    cur_tasks=$(echo "$cur_tasks" | head -8)
+    found_cur=true
+  elif [[ "$found_cur" == "true" && -z "$next_name" && $s_todo -gt 0 ]]; then
+    next_name="${SEC_NAMES[$i]}"
+  fi
+done
+
+remaining=$(( total - total_done ))
+if [[ $total -gt 0 ]]; then
+  pct=$(( (total_done * 100) / total ))
+else
+  pct=0
 fi
+[[ -z "$next_name" ]] && next_name="(this is the last section)"
 
-# Extract current phase task block (first 80 lines of that section)
-PHASE_BLOCK="(phase block unavailable)"
-if [[ -f "$TASKS" ]]; then
-    PHASE_BLOCK=$(
-        awk "
-            /^## Phase ${CURRENT_PHASE}[^0-9]/ { p=1 }
-            p && /^## Phase [0-9]/ && !/^## Phase ${CURRENT_PHASE}[^0-9]/ { p=0 }
-            p { print }
-        " "$TASKS" | head -80
-    )
-fi
-
-# Recent session log
-LOG_SNIP=""
+# ---- session log snippet --------------------------------------------------
 if [[ -f "$SESSION_LOG" ]]; then
-    LOG_SNIP=$(tail -30 "$SESSION_LOG")
+  log_snip=$(tail -30 "$SESSION_LOG")
+else
+  log_snip="(SESSION_LOG.md not found)"
 fi
 
-# Build message (ASCII-clean)
-MSG="================================================================
-  VIGO DEV SESSION -- AUTO-INJECTED CONTEXT
-  Phase ${CURRENT_PHASE}: ${CURRENT_NAME}  (CURRENT)
-  Next:  Phase ${NEXT_PHASE}
+# ---- build message --------------------------------------------------------
+msg=$(cat <<MSG
+================================================================
+  VIGO FINAL ASSEMBLY -- AUTO-INJECTED CONTEXT
+  Task list: FINAL_TASKS.md (77 wiring tasks total)
+  Progress:  ${total_done}/${total} done (${pct}%)
+  Remaining: ${remaining} tasks
+================================================================
+
+  Current section: ${cur_name}
+  Next section:    ${next_name}
+
+  Next tasks to work on:
+${cur_tasks}
+
 ================================================================
 
 ## Your Mission
 
 Continue the development. Make use of all the tools that you can.
-Use sub agents. Do not overcode. Follow the instructions. Make sure
-everything you code works properly -- not just the tests. Run them,
-check for errors, double check the code. Be creative and mindful.
+Use sub agents. Do not overcode. Follow all the instructions,
+plans, and hooks. Make sure everything you code works properly --
+not just the tests. Run them, check for errors, double check the
+code. Be creative and mindful.
 
-## Mandatory Session Workflow
+## Mandatory Workflow
 
-1. ORIENT -- Read PLAN.md (Phase ${CURRENT_PHASE} section) and TASKS.md
-   before writing any code. Use a sub-agent to explore existing code
-   when you need context.
+1. ORIENT -- Use sub-agents to explore the relevant crates and
+   files listed in the task before writing a single line.
+   Read FINAL_TASKS.md for the task description and file list.
 
-2. WORK TASK BY TASK -- for every Phase ${CURRENT_PHASE} task:
-   - Write the code.
+2. WORK TASK BY TASK -- for each unchecked task in the current
+   section:
+   - Read the task description + file list carefully.
+   - Explore the existing stubs/code with a sub-agent.
+   - Wire it up. Do not rewrite working code unnecessarily.
    - Run: just build   (fix errors before moving on)
    - Run: just test    (fix any failures)
-   - Run: just lint    (fix ALL Clippy warnings -- zero allowed)
-   - Mark the task done in TASKS.md immediately.
+   - Run: just lint    (zero Clippy warnings required)
+   - Mark done in FINAL_TASKS.md:  - [ ]  -->  - [x]
 
-3. USE SUB-AGENTS -- use sub-agents for codebase exploration,
-   pattern verification, and validation to keep this context focused.
+3. USE SUB-AGENTS -- for codebase exploration, pattern checks,
+   and validation steps, to keep this context focused.
 
-4. VERIFY RUNTIME BEHAVIOR -- do not only check that tests pass.
-   Run the binary where possible. Check for panics and wrong output.
+4. VERIFY THE WIRING WORKS -- "wired" means actually connected
+   and exercised at runtime, not just that the code compiles.
+   Run the browser when possible. Check real behavior.
 
-5. PHASE COMPLETION -- when every Phase ${CURRENT_PHASE} task is done:
-   a. Run:  just ci
-      (must exit 0: fmt-check + clippy + test)
-   b. Update SESSION_LOG.md -- add a phase summary at the top.
-   c. Update TASKS.md       -- mark all Phase ${CURRENT_PHASE} tasks done.
-   d. Commit:
-        git add -A
-        git commit -m \"Phase ${CURRENT_PHASE} complete: ${CURRENT_NAME}\"
-   e. Announce completion and ask to start Phase ${NEXT_PHASE}.
+5. SECTION COMPLETE -- when all tasks in the current section
+   are marked [x]:
+   a. Run:  just ci   (must exit 0)
+   b. Update SESSION_LOG.md with a section summary.
+   c. Commit:  git add -A
+               git commit -m "Wire: <section name>"
+   d. Announce and continue to the next section.
 
 ## Non-Negotiable Rules
 
 - Zero Clippy warnings (cargo clippy --workspace -- -D warnings).
 - No .unwrap() / .expect() in library crates -- use ? operator.
-- No println! / eprintln! in library crates -- use tracing:: macros.
+- No println! / eprintln! in library crates -- use tracing::.
 - Every unsafe block must have a // SAFETY: comment.
-- Every .rs and .zig file must start with the MPL-2.0 header.
-- All crate deps declared in [workspace.dependencies] in root Cargo.toml.
-- Use thiserror in library crates; anyhow only in vex-app.
-- Only implement Phase ${CURRENT_PHASE} tasks -- no speculative features.
-- Every public function added must have at least one test.
+- Every .rs / .zig file must start with the MPL-2.0 header.
+- All deps declared in [workspace.dependencies] in root Cargo.toml.
+- Do not add new features -- only wire up what already exists.
+- Wired functions where the logic is non-trivial must have tests.
 
 ## Key Reference Files
 
-  PLAN.md              -- master plan (phases + deliverables)
-  TASKS.md             -- task checklist (update as you complete tasks)
-  SESSION_LOG.md       -- session history (update after each phase)
+  FINAL_TASKS.md       -- the 77 wiring tasks (UPDATE as you go)
+  SESSION_LOG.md       -- session history
   .github/copilot-instructions.md
   .github/instructions/vex-coding-conventions.instructions.md
   .github/instructions/vex-zig-build.instructions.md
   .github/instructions/vex-render-apis.instructions.md
   docs/ARCHITECTURE.md  docs/RUST_STYLE.md  docs/ZIG_STYLE.md
-  docs/FFI_CONVENTIONS.md
+
+## Success Criteria (from FINAL_TASKS.md)
+
+  1. just ci passes clean
+  2. just run opens window, loads vex://welcome, renders
+  3. Type URL -> page loads, renders, JS executes
+  4. Click links -> navigation, back/forward work
+  5. Ctrl+T/W -> tabs open/close
+  6. console.log() appears in DevTools console
+  7. <input> elements accept text
+  8. localStorage persists across page loads
+  9. Images load asynchronously
+  10. Find-in-page (Ctrl+F) highlights matches
 
 ## Recent Session Log (last 30 lines)
 
-${LOG_SNIP}
+${log_snip}
+MSG
+)
 
-## Phase ${CURRENT_PHASE} Task Block (from TASKS.md)
-
-${PHASE_BLOCK}"
-
-# Output JSON using python3 for safe encoding
-python3 -c "
-import json, sys
-msg = sys.stdin.read()
-print(json.dumps({'systemMessage': msg}))
-" <<< "$MSG"
+# ---- emit JSON -----------------------------------------------------------
+# Use python3 if available, otherwise jq, otherwise manual escape
+if command -v python3 &>/dev/null; then
+  echo "$msg" | python3 -c "
+import sys, json
+print(json.dumps({'systemMessage': sys.stdin.read()}))"
+elif command -v jq &>/dev/null; then
+  echo "{\"systemMessage\": $(echo "$msg" | jq -Rs .)}"
+else
+  # Minimal fallback: escape backslash, quote, newline
+  escaped=$(echo "$msg" | sed 's/\\/\\\\/g;s/"/\\"/g' | awk '{printf "%s\\n", $0}')
+  echo "{\"systemMessage\": \"${escaped}\"}"
+fi
