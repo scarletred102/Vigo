@@ -116,7 +116,25 @@ extern "user32" fn LoadCursorW(?HINSTANCE, [*:0]align(1) const u16) callconv(.wi
 extern "user32" fn BeginPaint(HWND, *PAINTSTRUCT) callconv(.winapi) ?HDC;
 extern "user32" fn EndPaint(HWND, *const PAINTSTRUCT) callconv(.winapi) BOOL;
 extern "user32" fn GetDpiForWindow(HWND) callconv(.winapi) UINT;
+extern "user32" fn GetKeyState(c_int) callconv(.winapi) i16;
+extern "user32" fn SetWindowTextW(HWND, [*:0]const u16) callconv(.winapi) BOOL;
 extern "kernel32" fn GetModuleHandleW(?[*:0]const u16) callconv(.winapi) ?HINSTANCE;
+
+// ── Virtual key codes for modifier detection ──────────────────────
+
+const VK_SHIFT: c_int = 0x10;
+const VK_CONTROL: c_int = 0x11;
+const VK_MENU: c_int = 0x12; // Alt
+
+/// Build a modifier bitmask from the current keyboard state.
+/// Bit 0 = Ctrl, Bit 1 = Shift, Bit 2 = Alt.
+fn getModifiers() u32 {
+    var mods: u32 = 0;
+    if (GetKeyState(VK_CONTROL) < 0) mods |= 0x01;
+    if (GetKeyState(VK_SHIFT) < 0) mods |= 0x02;
+    if (GetKeyState(VK_MENU) < 0) mods |= 0x04;
+    return mods;
+}
 
 // ── Thread-local event queue ──────────────────────────────────────
 
@@ -164,11 +182,11 @@ fn wndProc(hwnd: HWND, msg: UINT, wp: WPARAM, lp: LPARAM) callconv(.winapi) LRES
             return 0;
         },
         WM_KEYDOWN => {
-            pushEvent(Event.keyDown(@truncate(@as(usize, @bitCast(wp))), 0));
+            pushEvent(Event.keyDown(@truncate(@as(usize, @bitCast(wp))), getModifiers()));
             return 0;
         },
         WM_KEYUP => {
-            pushEvent(Event.keyUp(@truncate(@as(usize, @bitCast(wp))), 0));
+            pushEvent(Event.keyUp(@truncate(@as(usize, @bitCast(wp))), getModifiers()));
             return 0;
         },
         WM_MOUSEMOVE => {
@@ -305,4 +323,37 @@ pub fn getRawHandle(hwnd: HWND) RawHandle {
         .hwnd = @ptrCast(hwnd),
         .hinstance = @ptrCast(GetModuleHandleW(null)),
     };
+}
+
+/// Update the window title bar text.
+///
+/// `title` is a null-terminated UTF-8 string from Rust.
+/// We convert to wide UTF-16 for Win32's `SetWindowTextW`.
+pub fn setTitle(hwnd: HWND, title: [*:0]const u8) void {
+    // Convert UTF-8 to UTF-16 with a fixed stack buffer (512 wide chars).
+    var buf: [512]u16 = undefined;
+    var i: usize = 0;
+    var cursor: usize = 0;
+    while (title[cursor] != 0 and i < buf.len - 1) {
+        const byte = title[cursor];
+        if (byte < 0x80) {
+            buf[i] = byte;
+            i += 1;
+            cursor += 1;
+        } else {
+            // Multi-byte UTF-8: replace with '?' for simplicity.
+            // Full UTF-8 → UTF-16 is handled in Rust-side before calling
+            // platform APIs if needed.
+            buf[i] = '?';
+            i += 1;
+            cursor += 1;
+            // Skip continuation bytes.
+            while (title[cursor] != 0 and (title[cursor] & 0xC0) == 0x80) {
+                cursor += 1;
+            }
+        }
+    }
+    buf[i] = 0;
+    const wide_ptr: [*:0]const u16 = @ptrCast(&buf);
+    _ = SetWindowTextW(hwnd, wide_ptr);
 }

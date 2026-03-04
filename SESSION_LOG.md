@@ -4,6 +4,13 @@
 
 ---
 
+## Script Execution (2026-03-03)
+- **Task 28**: Wired script execution into `Tab::load_html()` pipeline — `extract_scripts()` → `ExecutionPlan::from_scripts()` → execute blocking scripts → CSS/layout/display-list pipeline (borrowing from `SharedDocument`) → execute deferred scripts → fire `DOMContentLoaded` + `load` lifecycle events. External script fetch logged as warning (not yet wired to HTTP client for sync path).
+- **Task 29**: Tab now owns `runtime: Option<JsRuntime>`, `shared_doc: Option<SharedDocument>`, `request_queue: RequestQueue`. Replaced `document: Option<Document>` with shared wrapper. Added `borrow_document()` and `has_document()` helpers. Runtime created fresh per `load_html()` with all Web APIs registered. `start_load()` clears runtime + shared_doc.
+- 4 new tests: `load_html_executes_inline_scripts`, `load_html_fires_lifecycle_events`, `load_html_with_no_scripts_still_creates_runtime`, `borrow_document_works`
+- Test count: ~1058+ Rust, 22 Zig; 0 failures; 0 clippy warnings
+- Tasks: 29/77 total done
+
 ## JS Engine — Replace Stubs (2026-03-02)
 - **Infrastructure**: Created `browser_request.rs` — `BrowserRequest` enum (Navigate, Reload, Back, Forward, PushState, Alert, ConsoleLog) with `Rc<RefCell<Vec<>>>` shared queue. 4 unit tests.
 - **Task 11-13**: Rewrote `window.rs` — `location.assign()` pushes `Navigate(url)`, `location.reload()` pushes `Reload`, `history.back/forward` push `Back/Forward`, `history.pushState` pushes `PushState{url}` to shared `RequestQueue`. All wired via `NativeFunction::from_closure` with `Rc<RefCell<>>` captures.

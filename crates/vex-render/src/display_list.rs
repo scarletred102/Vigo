@@ -38,7 +38,11 @@ pub enum RenderBorderStyle {
 #[derive(Debug, Clone)]
 pub enum DisplayCommand {
     /// Fill a rectangle with a solid color.
-    FillRect { rect: Rect, color: Color },
+    FillRect {
+        rect: Rect,
+        color: Color,
+        border_radius: f32,
+    },
 
     /// Draw borders around a rectangle.
     DrawBorder {
@@ -125,6 +129,7 @@ mod tests {
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(0.0, 0.0, 100.0, 50.0),
             color: Color::rgb(255, 0, 0),
+            border_radius: 0.0,
         });
         dl.push(DisplayCommand::PushClip {
             rect: Rect::new(10.0, 10.0, 80.0, 30.0),
@@ -169,6 +174,7 @@ mod tests {
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(0.0, 0.0, 50.0, 50.0),
             color: Color::WHITE,
+            border_radius: 0.0,
         });
         dl.push(DisplayCommand::PopOpacity);
         assert_eq!(dl.len(), 3);

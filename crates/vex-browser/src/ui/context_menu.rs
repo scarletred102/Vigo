@@ -167,12 +167,14 @@ impl ContextMenu {
                 menu_rect.size.height + 2.0,
             ),
             color: MENU_BORDER,
+            border_radius: 0.0,
         });
 
         // Background.
         dl.push(DisplayCommand::FillRect {
             rect: menu_rect,
             color: MENU_BG,
+            border_radius: 0.0,
         });
 
         let mut y = self.position.y + MENU_PADDING;
@@ -186,6 +188,7 @@ impl ContextMenu {
                         1.0,
                     ),
                     color: SEPARATOR_COLOR,
+                    border_radius: 0.0,
                 });
                 y += SEPARATOR_HEIGHT;
             } else {

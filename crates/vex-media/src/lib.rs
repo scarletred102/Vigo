@@ -11,9 +11,12 @@
 pub mod abr;
 pub mod controls;
 pub mod dash;
+pub mod ffi;
 pub mod hls;
 pub mod media_element;
 pub mod media_loading;
 pub mod pip;
+pub mod pipeline;
+pub mod streaming;
 pub mod sync;
 pub mod video_render;

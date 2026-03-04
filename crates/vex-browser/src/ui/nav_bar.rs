@@ -42,6 +42,7 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     dl.push(DisplayCommand::FillRect {
         rect: nav_rect,
         color: NAV_BAR_BG,
+        border_radius: 0.0,
     });
 
     let left = nav_rect.origin.x + 8.0;
@@ -52,6 +53,7 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(x, btn_y, NAV_BUTTON_SIZE, NAV_BUTTON_SIZE),
         color: BUTTON_BG,
+        border_radius: 0.0,
     });
     dl.push(DisplayCommand::DrawText {
         position: Point::new(x + 8.0, btn_y + 6.0),
@@ -70,6 +72,7 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(x, btn_y, NAV_BUTTON_SIZE, NAV_BUTTON_SIZE),
         color: BUTTON_BG,
+        border_radius: 0.0,
     });
     dl.push(DisplayCommand::DrawText {
         position: Point::new(x + 8.0, btn_y + 6.0),
@@ -88,6 +91,7 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(x, btn_y, NAV_BUTTON_SIZE, NAV_BUTTON_SIZE),
         color: BUTTON_BG,
+        border_radius: 0.0,
     });
     dl.push(DisplayCommand::DrawText {
         position: Point::new(x + 8.0, btn_y + 6.0),
@@ -104,6 +108,7 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(x, btn_y, address_bar_width, address_bar_height),
         color: ADDRESS_BAR_BG,
+        border_radius: 0.0,
     });
 
     // HTTPS indicator.

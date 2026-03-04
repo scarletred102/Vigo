@@ -10,6 +10,7 @@
 use vex_core::color::Color;
 use vex_core::geometry::{Insets, Point, Rect};
 use vex_dom::forms::{FormElementKind, InputState, InputType};
+use vex_layout::TextEngine;
 
 use crate::display_list::{DisplayCommand, DisplayList, RenderBorderStyle};
 
@@ -35,13 +36,21 @@ const INPUT_PADDING: f32 = 4.0;
 /// Paint a form control into the display list based on its state.
 ///
 /// The `rect` is the layout box content area for the form element.
-pub fn paint_form_control(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayList) {
+/// Pass a `TextEngine` for accurate cursor positioning; if `None`, a
+/// monospace heuristic is used.
+pub fn paint_form_control(
+    state: &InputState,
+    rect: Rect,
+    focused: bool,
+    dl: &mut DisplayList,
+    text_engine: Option<&mut TextEngine>,
+) {
     match state.kind {
         FormElementKind::Input(input_type) => {
-            paint_input(state, input_type, rect, focused, dl);
+            paint_input(state, input_type, rect, focused, dl, text_engine);
         }
         FormElementKind::Textarea => {
-            paint_textarea(state, rect, focused, dl);
+            paint_textarea(state, rect, focused, dl, text_engine);
         }
         FormElementKind::Select => {
             paint_select(state, rect, focused, dl);
@@ -59,6 +68,7 @@ fn paint_input(
     rect: Rect,
     focused: bool,
     dl: &mut DisplayList,
+    text_engine: Option<&mut TextEngine>,
 ) {
     match input_type {
         InputType::Checkbox => paint_checkbox(state, rect, focused, dl),
@@ -67,18 +77,25 @@ fn paint_input(
             paint_button(state, rect, focused, dl);
         }
         InputType::Hidden => {} // No visual output.
-        _ => paint_text_input(state, rect, focused, dl),
+        _ => paint_text_input(state, rect, focused, dl, text_engine),
     }
 }
 
 /// Paint a text-like input (`text`, `password`, `email`, `url`, etc.).
-fn paint_text_input(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayList) {
+fn paint_text_input(
+    state: &InputState,
+    rect: Rect,
+    focused: bool,
+    dl: &mut DisplayList,
+    text_engine: Option<&mut TextEngine>,
+) {
     let border_color = if focused { FOCUS_BORDER } else { INPUT_BORDER };
 
     // Background.
     dl.push(DisplayCommand::FillRect {
         rect,
         color: INPUT_BACKGROUND,
+        border_radius: 0.0,
     });
 
     // Border.
@@ -131,13 +148,15 @@ fn paint_text_input(state: &InputState, rect: Rect, focused: bool, dl: &mut Disp
 
     // Cursor (only when focused and no selection).
     if focused && !state.has_selection() {
-        let cursor_x = content_rect.origin.x + estimate_cursor_x(state, INPUT_FONT_SIZE);
+        let cursor_x =
+            content_rect.origin.x + measure_cursor_x(state, INPUT_FONT_SIZE, text_engine);
         let cursor_y = content_rect.origin.y + 2.0;
         let cursor_h = rect.size.height - 4.0;
 
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(cursor_x, cursor_y, CURSOR_WIDTH, cursor_h.max(0.0)),
             color: CURSOR_COLOR,
+            border_radius: 0.0,
         });
     }
 
@@ -160,6 +179,7 @@ fn paint_checkbox(state: &InputState, rect: Rect, focused: bool, dl: &mut Displa
         } else {
             INPUT_BACKGROUND
         },
+        border_radius: 0.0,
     });
 
     // Box border.
@@ -181,29 +201,30 @@ fn paint_checkbox(state: &InputState, rect: Rect, focused: bool, dl: &mut Displa
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(cx, cy, size * 0.2, size * 0.3),
             color: check_color,
+            border_radius: 0.0,
         });
         // Long stroke (up-right).
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(cx + size * 0.15, cy - size * 0.1, size * 0.35, size * 0.15),
             color: check_color,
+            border_radius: 0.0,
         });
     }
 }
 
 /// Paint a radio button.
 fn paint_radio(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayList) {
-    // Approximated as a square with background — true circles require
-    // a dedicated shader or rounded-rect support (future).
     let size = RADIO_SIZE.min(rect.size.width).min(rect.size.height);
     let x = rect.origin.x + (rect.size.width - size) / 2.0;
     let y = rect.origin.y + (rect.size.height - size) / 2.0;
     let radio_rect = Rect::new(x, y, size, size);
     let border_color = if focused { FOCUS_BORDER } else { INPUT_BORDER };
 
-    // Outer circle (approximated as rect — the renderer doesn't support circles natively).
+    // Outer circle (using border_radius = half size for a perfect circle).
     dl.push(DisplayCommand::FillRect {
         rect: radio_rect,
         color: INPUT_BACKGROUND,
+        border_radius: size / 2.0,
     });
     dl.push(DisplayCommand::DrawBorder {
         rect: radio_rect,
@@ -219,6 +240,7 @@ fn paint_radio(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayLi
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(x + dot_inset, y + dot_inset, dot_size, dot_size),
             color: CHECKBOX_CHECK,
+            border_radius: dot_size / 2.0,
         });
     }
 }
@@ -231,6 +253,7 @@ fn paint_button(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayL
     dl.push(DisplayCommand::FillRect {
         rect,
         color: BUTTON_BACKGROUND,
+        border_radius: 0.0,
     });
 
     // Border.
@@ -263,9 +286,15 @@ fn paint_button(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayL
 }
 
 /// Paint a `<textarea>`.
-fn paint_textarea(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayList) {
+fn paint_textarea(
+    state: &InputState,
+    rect: Rect,
+    focused: bool,
+    dl: &mut DisplayList,
+    text_engine: Option<&mut TextEngine>,
+) {
     // Same as text input but taller.
-    paint_text_input(state, rect, focused, dl);
+    paint_text_input(state, rect, focused, dl, text_engine);
 }
 
 /// Paint a `<select>` (simplified dropdown stub).
@@ -276,6 +305,7 @@ fn paint_select(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayL
     dl.push(DisplayCommand::FillRect {
         rect,
         color: INPUT_BACKGROUND,
+        border_radius: 0.0,
     });
 
     // Border.
@@ -318,22 +348,36 @@ fn paint_select(state: &InputState, rect: Rect, focused: bool, dl: &mut DisplayL
     });
 }
 
-/// Rough estimate of cursor X position based on monospace-width chars.
+/// Measure cursor X offset using the text shaper when available.
 ///
-/// A real implementation would use the text shaper, but this is a reasonable
-/// approximation for the initial form rendering.
-fn estimate_cursor_x(state: &InputState, font_size: f32) -> f32 {
-    let char_count = if matches!(state.kind, FormElementKind::Input(InputType::Password)) {
-        state.value.chars().count()
+/// Falls back to a monospace heuristic (~60% of font size per char) if no
+/// `TextEngine` is provided.
+fn measure_cursor_x(
+    state: &InputState,
+    font_size: f32,
+    text_engine: Option<&mut TextEngine>,
+) -> f32 {
+    let text_before_cursor = if matches!(state.kind, FormElementKind::Input(InputType::Password)) {
+        "•".repeat(state.value.chars().count())
     } else {
         state
             .value
             .get(..state.selection_start)
             .unwrap_or(&state.value)
-            .chars()
-            .count()
+            .to_string()
     };
-    char_count as f32 * font_size * 0.6 // ~60% of font size per character
+
+    match text_engine {
+        Some(engine) => {
+            let (width, _) =
+                engine.measure(&text_before_cursor, font_size, font_size * 1.2, f32::MAX);
+            width
+        }
+        None => {
+            // Heuristic fallback: ~60% of font size per character.
+            text_before_cursor.chars().count() as f32 * font_size * 0.6
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -357,7 +401,7 @@ mod tests {
         let state = text_input("hello");
         let mut dl = DisplayList::default();
 
-        paint_form_control(&state, rect(), false, &mut dl);
+        paint_form_control(&state, rect(), false, &mut dl, None);
 
         // Background, border, clip, text, pop_clip = 5 commands
         assert!(dl.len() >= 4, "got {} commands", dl.len());
@@ -372,7 +416,7 @@ mod tests {
         state.set_cursor(2);
         let mut dl = DisplayList::default();
 
-        paint_form_control(&state, rect(), true, &mut dl);
+        paint_form_control(&state, rect(), true, &mut dl, None);
 
         // Should have a cursor FillRect somewhere
         let cursor_fills: Vec<_> = dl
@@ -397,7 +441,7 @@ mod tests {
         state.value = "secret".to_string();
         let mut dl = DisplayList::default();
 
-        paint_form_control(&state, rect(), false, &mut dl);
+        paint_form_control(&state, rect(), false, &mut dl, None);
 
         // Find DrawText command
         let text_cmds: Vec<_> = dl
@@ -421,7 +465,7 @@ mod tests {
         let state = InputState::new_checkbox(false);
         let mut dl = DisplayList::default();
 
-        paint_form_control(&state, rect(), false, &mut dl);
+        paint_form_control(&state, rect(), false, &mut dl, None);
 
         // Background + border = 2 minimum
         assert!(dl.len() >= 2);
@@ -432,7 +476,7 @@ mod tests {
         let state = InputState::new_checkbox(true);
         let mut dl = DisplayList::default();
 
-        paint_form_control(&state, rect(), false, &mut dl);
+        paint_form_control(&state, rect(), false, &mut dl, None);
 
         // Checked: background(blue) + border + 2 check rects = 4
         assert!(dl.len() >= 4, "got {} commands", dl.len());
@@ -443,7 +487,7 @@ mod tests {
         let state = InputState::new_radio(true);
         let mut dl = DisplayList::default();
 
-        paint_form_control(&state, rect(), false, &mut dl);
+        paint_form_control(&state, rect(), false, &mut dl, None);
 
         // Outer + border + inner dot = 3 minimum
         assert!(dl.len() >= 3);
@@ -455,7 +499,7 @@ mod tests {
         state.kind = FormElementKind::Input(InputType::Submit);
         let mut dl = DisplayList::default();
 
-        paint_form_control(&state, rect(), false, &mut dl);
+        paint_form_control(&state, rect(), false, &mut dl, None);
 
         let text_cmds: Vec<_> = dl
             .commands()
@@ -477,7 +521,7 @@ mod tests {
         state.value = "Option A".to_string();
         let mut dl = DisplayList::default();
 
-        paint_form_control(&state, rect(), false, &mut dl);
+        paint_form_control(&state, rect(), false, &mut dl, None);
 
         let text_cmds: Vec<_> = dl
             .commands()
@@ -500,7 +544,7 @@ mod tests {
         state.kind = FormElementKind::Input(InputType::Hidden);
         let mut dl = DisplayList::default();
 
-        paint_form_control(&state, rect(), false, &mut dl);
+        paint_form_control(&state, rect(), false, &mut dl, None);
         assert!(dl.is_empty());
     }
 
@@ -510,7 +554,7 @@ mod tests {
         state.placeholder = "Enter text...".to_string();
         let mut dl = DisplayList::default();
 
-        paint_form_control(&state, rect(), false, &mut dl);
+        paint_form_control(&state, rect(), false, &mut dl, None);
 
         let text_cmds: Vec<_> = dl
             .commands()

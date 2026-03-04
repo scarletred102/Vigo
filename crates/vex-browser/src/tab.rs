@@ -3,12 +3,14 @@
 
 //! Tab model — represents a single browser tab with its own page state.
 
+use std::cell::Ref;
 use std::collections::HashMap;
 
 use vex_core::geometry::Size;
-use vex_core::{VexId, VexUrl};
+use vex_core::{VexError, VexId, VexUrl};
 use vex_css::ComputedStyle;
 use vex_dom::Document;
+use vex_js::{ExecutionPlan, JsRuntime, RequestQueue, SharedDocument};
 use vex_layout::LayoutBox;
 use vex_render::display_list::{DisplayList, ImageId};
 use vex_render::scroll::ScrollState;
@@ -64,8 +66,12 @@ pub struct Tab {
     pub url: VexUrl,
     /// Page title (extracted from `<title>` element).
     pub title: String,
-    /// Parsed DOM document.
-    pub document: Option<Document>,
+    /// Shared DOM document (for JS ↔ Rust interop).
+    pub shared_doc: Option<SharedDocument>,
+    /// JavaScript runtime with all Web APIs registered.
+    pub runtime: Option<JsRuntime>,
+    /// Request queue shared between JS runtime and browser loop.
+    pub request_queue: RequestQueue,
     /// Computed CSS styles for each DOM node.
     pub styles: Option<HashMap<VexId, ComputedStyle>>,
     /// Layout tree for the current page.
@@ -89,7 +95,9 @@ impl Tab {
             id,
             url,
             title: String::from("New Tab"),
-            document: None,
+            shared_doc: None,
+            runtime: None,
+            request_queue: vex_js::new_request_queue(),
             styles: None,
             layout: None,
             display_list: None,
@@ -131,43 +139,118 @@ impl Tab {
 
     /// Load HTML content into this tab (synchronous — from a string).
     ///
-    /// Parses HTML → DOM, extracts styles, computes cascade, lays out,
-    /// and builds a display list. This is the *synchronous* in-memory pipeline
-    /// used for built-in pages (welcome, error, settings).
+    /// Parses HTML → DOM, extracts scripts and styles, creates a JS runtime,
+    /// executes blocking scripts → computes CSS cascade → layout → display list
+    /// → executes deferred scripts → fires lifecycle events.
     pub fn load_html(&mut self, html: &str, viewport: Size) {
         self.loading = LoadingState::Loading { progress: 0.2 };
 
         let document = vex_html::parse_html(html);
 
-        // Extract <style> blocks.
-        let style_ids = document.get_elements_by_tag_name("style");
-        let mut stylesheets = Vec::new();
-        for id in &style_ids {
-            let css_text = document.text_content(*id);
-            if !css_text.is_empty() {
-                stylesheets.push(vex_css::parse_stylesheet(&css_text));
+        // Extract scripts before moving document into shared wrapper.
+        let scripts = vex_html::extract::extract_scripts(&document);
+        let plan = ExecutionPlan::from_scripts(&scripts);
+
+        // Wrap document for JS interop.
+        let shared_doc = vex_js::shared_document(document);
+
+        // Create JS runtime with all Web APIs.
+        let mut runtime = JsRuntime::with_request_queue(self.request_queue.clone());
+        runtime.register_document(&shared_doc);
+
+        // Execute blocking scripts (inline + synchronous external).
+        if !plan.blocking.is_empty() {
+            tracing::debug!("Executing {} blocking script(s)", plan.blocking.len());
+            let mut fetch_fn = |url: &str| -> Result<String, VexError> {
+                tracing::warn!("External script fetch not yet wired: {url}");
+                Err(VexError::Network(format!(
+                    "synchronous fetch not available for {url}"
+                )))
+            };
+            for (i, result) in plan
+                .execute_blocking(&mut runtime, &mut fetch_fn)
+                .iter()
+                .enumerate()
+            {
+                if let Err(e) = result {
+                    tracing::warn!("Blocking script {i} failed: {e}");
+                }
             }
         }
 
-        self.loading = LoadingState::Loading { progress: 0.5 };
+        // CSS pipeline: extract <style>, compute cascade, layout, display list.
+        let (styles, layout_root, dl, title) = {
+            let doc = shared_doc.borrow();
 
-        let styles = vex_css::compute_styles(&document, &stylesheets, viewport);
-        let layout_root = vex_layout::layout_document(&document, &styles, viewport);
+            let style_ids = doc.get_elements_by_tag_name("style");
+            let mut stylesheets = Vec::new();
+            for id in &style_ids {
+                let css_text = doc.text_content(*id);
+                if !css_text.is_empty() {
+                    stylesheets.push(vex_css::parse_stylesheet(&css_text));
+                }
+            }
 
-        self.loading = LoadingState::Loading { progress: 0.8 };
+            self.loading = LoadingState::Loading { progress: 0.5 };
 
-        let dl = vex_render::build_display_list(&layout_root, &styles, &document, viewport);
+            let styles = vex_css::compute_styles(&doc, &stylesheets, viewport);
+            let layout_root = vex_layout::layout_document(&doc, &styles, viewport);
 
-        // Extract title from <title> element.
-        let title_ids = document.get_elements_by_tag_name("title");
-        if let Some(&tid) = title_ids.first() {
-            let title_text = document.text_content(tid);
-            if !title_text.is_empty() {
-                self.title = title_text;
+            self.loading = LoadingState::Loading { progress: 0.8 };
+
+            let dl = vex_render::build_display_list(&layout_root, &styles, &doc, viewport);
+
+            // Extract title from <title> element.
+            let title_ids = doc.get_elements_by_tag_name("title");
+            let title = title_ids
+                .first()
+                .map(|&tid| doc.text_content(tid))
+                .filter(|t| !t.is_empty());
+
+            (styles, layout_root, dl, title)
+        };
+
+        if let Some(title_text) = title {
+            self.title = title_text;
+        }
+
+        // Execute deferred scripts (after DOM built, before DOMContentLoaded).
+        if !plan.deferred.is_empty() {
+            tracing::debug!("Executing {} deferred script(s)", plan.deferred.len());
+            let mut fetch_fn = |url: &str| -> Result<String, VexError> {
+                tracing::warn!("External script fetch not yet wired: {url}");
+                Err(VexError::Network(format!(
+                    "synchronous fetch not available for {url}"
+                )))
+            };
+            for (i, result) in plan
+                .execute_deferred(&mut runtime, &mut fetch_fn)
+                .iter()
+                .enumerate()
+            {
+                if let Err(e) = result {
+                    tracing::warn!("Deferred script {i} failed: {e}");
+                }
             }
         }
 
-        self.document = Some(document);
+        // Fire lifecycle events.
+        runtime.fire_dom_content_loaded(&shared_doc);
+        runtime.fire_load(&shared_doc);
+
+        if plan.total() > 0 {
+            tracing::info!(
+                "Tab {}: executed {} script(s) ({} blocking, {} deferred, {} async)",
+                self.id,
+                plan.total(),
+                plan.blocking.len(),
+                plan.deferred.len(),
+                plan.async_scripts.len(),
+            );
+        }
+
+        self.shared_doc = Some(shared_doc);
+        self.runtime = Some(runtime);
         self.styles = Some(styles);
         self.layout = Some(layout_root);
         self.display_list = Some(dl);
@@ -192,11 +275,24 @@ impl Tab {
         self.scroll.set_content_size(width, height);
     }
 
+    /// Borrow the DOM document (from the shared wrapper).
+    ///
+    /// Returns `None` if no page has been loaded yet.
+    pub fn borrow_document(&self) -> Option<Ref<'_, Document>> {
+        self.shared_doc.as_ref().map(|sd| sd.borrow())
+    }
+
+    /// Whether this tab has a parsed DOM document.
+    pub fn has_document(&self) -> bool {
+        self.shared_doc.is_some()
+    }
+
     /// Begin loading a URL — resets tab state, sets loading to Connecting.
     pub fn start_load(&mut self, url: VexUrl) {
         self.url = url;
         self.loading = LoadingState::Connecting;
-        self.document = None;
+        self.shared_doc = None;
+        self.runtime = None;
         self.styles = None;
         self.layout = None;
         self.display_list = None;
@@ -263,6 +359,32 @@ impl Tab {
         }
     }
 
+    /// Re-run layout and display list from the existing document and styles.
+    ///
+    /// Used after zoom level changes to recalculate layout at the new
+    /// effective viewport size without re-parsing HTML.
+    pub fn relayout(&mut self, viewport: Size) {
+        let (layout_root, dl) = {
+            let (shared_doc, styles) = match (&self.shared_doc, &self.styles) {
+                (Some(sd), Some(s)) => (sd, s),
+                _ => return,
+            };
+            let doc = shared_doc.borrow();
+            let layout_root = vex_layout::layout_document(&doc, styles, viewport);
+            let dl = vex_render::build_display_list(&layout_root, styles, &doc, viewport);
+            (layout_root, dl)
+        };
+        self.layout = Some(layout_root);
+        self.display_list = Some(dl);
+        self.dirty = true;
+        tracing::debug!(
+            "Tab {} relayout at {:.0}×{:.0}",
+            self.id,
+            viewport.width,
+            viewport.height
+        );
+    }
+
     /// Reload the current page.
     pub fn reload(&mut self) {
         let url = self.url.clone();
@@ -282,7 +404,8 @@ mod tests {
         assert_eq!(tab.id, TabId::new(1));
         assert_eq!(tab.url, url);
         assert_eq!(tab.title, "New Tab");
-        assert!(tab.document.is_none());
+        assert!(!tab.has_document());
+        assert!(tab.runtime.is_none());
         assert!(tab.styles.is_none());
         assert!(tab.layout.is_none());
         assert!(tab.display_list.is_none());
@@ -337,7 +460,8 @@ mod tests {
 
         tab.reload();
         assert_eq!(tab.loading, LoadingState::Connecting);
-        assert!(tab.document.is_none());
+        assert!(!tab.has_document());
+        assert!(tab.runtime.is_none());
     }
 
     #[test]
@@ -349,11 +473,76 @@ mod tests {
         tab.load_html(html, Size::new(800.0, 600.0));
 
         assert_eq!(tab.title, "Test Page");
-        assert!(tab.document.is_some());
+        assert!(tab.has_document());
+        assert!(tab.shared_doc.is_some());
+        assert!(tab.runtime.is_some());
         assert!(tab.styles.is_some());
         assert!(tab.layout.is_some());
         assert!(tab.display_list.is_some());
         assert!(tab.is_complete());
+    }
+
+    #[test]
+    fn load_html_executes_inline_scripts() {
+        let url = VexUrl::parse("https://example.com").unwrap();
+        let mut tab = Tab::new(TabId::new(1), url);
+
+        let html = r#"<html><head>
+            <script>var testVar = 42;</script>
+        </head><body></body></html>"#;
+        tab.load_html(html, Size::new(800.0, 600.0));
+
+        // Runtime was created and inline script executed.
+        let runtime = tab.runtime.as_mut().unwrap();
+        let val = runtime.eval("testVar").unwrap();
+        assert_eq!(val.as_number().unwrap() as i32, 42);
+    }
+
+    #[test]
+    fn load_html_fires_lifecycle_events() {
+        let url = VexUrl::parse("https://example.com").unwrap();
+        let mut tab = Tab::new(TabId::new(1), url);
+
+        // Register a DOMContentLoaded listener via inline script.
+        let html = r#"<html><head>
+            <script>
+                var dcl_fired = false;
+                document.addEventListener('DOMContentLoaded', function() {
+                    dcl_fired = true;
+                });
+            </script>
+        </head><body></body></html>"#;
+        tab.load_html(html, Size::new(800.0, 600.0));
+
+        // The runtime exists and completed successfully.
+        assert!(tab.runtime.is_some());
+        assert!(tab.is_complete());
+    }
+
+    #[test]
+    fn load_html_with_no_scripts_still_creates_runtime() {
+        let url = VexUrl::parse("https://example.com").unwrap();
+        let mut tab = Tab::new(TabId::new(1), url);
+
+        let html = "<html><body><p>No scripts here</p></body></html>";
+        tab.load_html(html, Size::new(800.0, 600.0));
+
+        // Runtime is always created (for event handling, etc).
+        assert!(tab.runtime.is_some());
+        assert!(tab.has_document());
+    }
+
+    #[test]
+    fn borrow_document_works() {
+        let url = VexUrl::parse("https://example.com").unwrap();
+        let mut tab = Tab::new(TabId::new(1), url);
+
+        assert!(tab.borrow_document().is_none());
+
+        tab.load_html("<html><body>Hello</body></html>", Size::new(800.0, 600.0));
+
+        let doc = tab.borrow_document();
+        assert!(doc.is_some());
     }
 
     #[test]

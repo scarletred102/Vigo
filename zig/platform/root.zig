@@ -35,6 +35,10 @@ export fn vex_platform_get_raw_handle(handle: *anyopaque, out: *RawHandle) void 
     out.* = window.getRawHandle(@ptrCast(@alignCast(handle)));
 }
 
+export fn vex_platform_set_title(handle: *anyopaque, title: [*:0]const u8) void {
+    window.setTitle(@ptrCast(@alignCast(handle)), title);
+}
+
 // ── Tests ─────────────────────────────────────────────────────────
 
 test "event module" {

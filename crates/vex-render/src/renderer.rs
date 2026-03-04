@@ -18,12 +18,13 @@ const INITIAL_MAX_RECTS: usize = 4096;
 /// Maximum glyph instances per frame before the instance buffer grows.
 const INITIAL_MAX_GLYPHS: usize = 8192;
 
-/// Instance data for one rectangle: [x, y, w, h, r, g, b, a].
+/// Instance data for one rectangle: [x, y, w, h, r, g, b, a, border_radius, pad, pad, pad].
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct RectInstance {
-    rect: [f32; 4],  // x, y, width, height
-    color: [f32; 4], // r, g, b, a
+    rect: [f32; 4],   // x, y, width, height
+    color: [f32; 4],  // r, g, b, a
+    extra: [f32; 4],  // border_radius, _pad, _pad, _pad
 }
 
 /// Instance data for one glyph: rect + atlas UV + color.
@@ -404,6 +405,11 @@ fn create_rect_pipeline(
                 shader_location: 1,
                 format: wgpu::VertexFormat::Float32x4,
             },
+            wgpu::VertexAttribute {
+                offset: 32,
+                shader_location: 2,
+                format: wgpu::VertexFormat::Float32x4,
+            },
         ],
     };
 
@@ -565,12 +571,25 @@ fn upload_atlas_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, atlas: &Gl
 }
 
 /// Extract `RectInstance` data from all `FillRect` and `DrawBorder` commands.
+///
+/// Handles `PushOpacity` / `PopOpacity` by pre-multiplying alpha.
 fn collect_rect_instances(dl: &DisplayList) -> Vec<RectInstance> {
     let mut instances = Vec::with_capacity(dl.len());
+    let mut opacity_stack: Vec<f32> = Vec::new();
+    let mut current_opacity: f32 = 1.0;
 
     for cmd in dl.commands() {
         match cmd {
-            DisplayCommand::FillRect { rect, color } => {
+            DisplayCommand::PushOpacity { opacity } => {
+                opacity_stack.push(current_opacity);
+                current_opacity *= opacity;
+            }
+            DisplayCommand::PopOpacity => {
+                current_opacity = opacity_stack.pop().unwrap_or(1.0);
+            }
+            DisplayCommand::FillRect { rect, color, border_radius } => {
+                let mut c = color.to_f32_array();
+                c[3] *= current_opacity;
                 instances.push(RectInstance {
                     rect: [
                         rect.origin.x,
@@ -578,7 +597,8 @@ fn collect_rect_instances(dl: &DisplayList) -> Vec<RectInstance> {
                         rect.size.width,
                         rect.size.height,
                     ],
-                    color: color.to_f32_array(),
+                    color: c,
+                    extra: [*border_radius, 0.0, 0.0, 0.0],
                 });
             }
             DisplayCommand::DrawBorder {
@@ -587,8 +607,19 @@ fn collect_rect_instances(dl: &DisplayList) -> Vec<RectInstance> {
                 colors,
                 styles,
             } => {
-                // Decompose border into up to 4 thin rectangles.
-                emit_border_rects(rect, widths, colors, styles, &mut instances);
+                // Apply opacity to border colors.
+                let mut oc = *colors;
+                if current_opacity < 1.0 {
+                    for c in &mut oc {
+                        *c = vex_core::color::Color::rgba(
+                            c.r,
+                            c.g,
+                            c.b,
+                            (c.a as f32 * current_opacity) as u8,
+                        );
+                    }
+                }
+                emit_border_rects(rect, widths, &oc, styles, &mut instances);
             }
             // DrawText/DrawImage handled by separate pipelines.
             _ => {}
@@ -616,6 +647,7 @@ fn emit_border_rects(
         out.push(RectInstance {
             rect: [x, y, w, widths.top],
             color: colors[0].to_f32_array(),
+            extra: [0.0, 0.0, 0.0, 0.0],
         });
     }
     // Right border.
@@ -623,6 +655,7 @@ fn emit_border_rects(
         out.push(RectInstance {
             rect: [x + w - widths.right, y, widths.right, h],
             color: colors[1].to_f32_array(),
+            extra: [0.0, 0.0, 0.0, 0.0],
         });
     }
     // Bottom border.
@@ -630,6 +663,7 @@ fn emit_border_rects(
         out.push(RectInstance {
             rect: [x, y + h - widths.bottom, w, widths.bottom],
             color: colors[2].to_f32_array(),
+            extra: [0.0, 0.0, 0.0, 0.0],
         });
     }
     // Left border.
@@ -637,6 +671,7 @@ fn emit_border_rects(
         out.push(RectInstance {
             rect: [x, y, widths.left, h],
             color: colors[3].to_f32_array(),
+            extra: [0.0, 0.0, 0.0, 0.0],
         });
     }
 }
@@ -654,10 +689,12 @@ mod tests {
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(10.0, 20.0, 100.0, 50.0),
             color: Color::rgb(255, 0, 0),
+            border_radius: 0.0,
         });
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(50.0, 50.0, 200.0, 100.0),
             color: Color::rgba(0, 255, 0, 128),
+            border_radius: 0.0,
         });
 
         let instances = collect_rect_instances(&dl);

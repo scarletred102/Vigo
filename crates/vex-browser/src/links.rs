@@ -96,6 +96,51 @@ pub fn normalize_url_input(input: &str) -> VexResult<VexUrl> {
     VexUrl::parse(&format!("https://{trimmed}"))
 }
 
+/// Normalize user input into a URL, using a search engine for non-URL text.
+///
+/// `search_template` is a URL template such as
+/// `"https://duckduckgo.com/?q={query}"` where `{query}` will be replaced
+/// with the percent-encoded query text.
+pub fn normalize_or_search(input: &str, search_template: &str) -> VexResult<VexUrl> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return VexUrl::parse("vex://newtab");
+    }
+
+    // Already has a scheme — parse directly.
+    if trimmed.contains("://") || trimmed.starts_with("vex:") || trimmed.starts_with("about:") {
+        return VexUrl::parse(trimmed);
+    }
+
+    // Looks like a domain name — add https://.
+    if trimmed.contains('.') || trimmed.starts_with("localhost") {
+        return VexUrl::parse(&format!("https://{trimmed}"));
+    }
+
+    // Search query — percent-encode and substitute into the template.
+    let encoded = simple_url_encode(trimmed);
+    let search_url = search_template.replace("{query}", &encoded);
+    VexUrl::parse(&search_url)
+}
+
+/// Minimal percent-encoding for search query strings.
+fn simple_url_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            b' ' => out.push('+'),
+            _ => {
+                out.push('%');
+                out.push_str(&format!("{b:02X}"));
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,6 +200,31 @@ mod tests {
     #[test]
     fn normalize_empty_returns_newtab() {
         let url = normalize_url_input("").unwrap();
+        assert_eq!(url.as_ref(), "vex://newtab");
+    }
+
+    #[test]
+    fn search_query_uses_template() {
+        let url = normalize_or_search("rust browser", "https://search.example/?q={query}").unwrap();
+        assert_eq!(url.as_ref(), "https://search.example/?q=rust+browser");
+    }
+
+    #[test]
+    fn search_preserves_existing_scheme() {
+        let url = normalize_or_search("https://example.com", "https://search.example/?q={query}")
+            .unwrap();
+        assert_eq!(url.as_ref(), "https://example.com/");
+    }
+
+    #[test]
+    fn search_domain_gets_https() {
+        let url = normalize_or_search("example.com", "https://search.example/?q={query}").unwrap();
+        assert_eq!(url.as_ref(), "https://example.com/");
+    }
+
+    #[test]
+    fn search_empty_returns_newtab() {
+        let url = normalize_or_search("", "https://search.example/?q={query}").unwrap();
         assert_eq!(url.as_ref(), "vex://newtab");
     }
 }

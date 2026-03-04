@@ -225,6 +225,60 @@ impl ProcessManager {
             .get(&tab_id)
             .is_some_and(|info| info.status == ProcessStatus::Crashed)
     }
+
+    /// Spawn a real OS renderer process via `CreateProcessW` (Windows).
+    ///
+    /// **Current status:** Returns a logical [`ProcessId`] without creating a
+    /// real OS process. The browser operates in single-process mode — all DOM,
+    /// layout, rendering, and JS run on the main thread. This method exists so
+    /// the [`ProcessManager`] API is ready for the multi-process milestone.
+    ///
+    /// When multi-process mode is implemented, this will:
+    /// 1. Build a command line: `vigo.exe --renderer --tab-id={id} --pipe={name}`
+    /// 2. Create a named pipe for IPC
+    /// 3. Call `CreateProcessW` with a restricted token (via [`SandboxPolicy`])
+    /// 4. Store the real PID from `PROCESS_INFORMATION.dwProcessId`
+    ///
+    /// [`SandboxPolicy`]: crate::sandbox::SandboxPolicy
+    pub fn spawn_renderer_os(&mut self, tab_id: TabId) -> ProcessId {
+        // For now, delegate to the logical PID path.
+        let pid = self.spawn_renderer(tab_id);
+        tracing::debug!(
+            %tab_id, %pid,
+            "spawn_renderer_os: single-process mode, using logical PID"
+        );
+        pid
+    }
+
+    /// Send an IPC message to a renderer process.
+    ///
+    /// **Current status:** Logs the message. When multi-process mode is active,
+    /// this will serialize the message and write it to the named pipe.
+    pub fn send_message(&self, tab_id: TabId, msg: &IpcMessage) {
+        if let Some(info) = self.renderers.get(&tab_id) {
+            tracing::debug!(
+                %tab_id, pid = %info.pid,
+                "IPC send: {msg:?}"
+            );
+        } else {
+            tracing::warn!(%tab_id, "send_message: no renderer for tab");
+        }
+    }
+
+    /// Terminate a renderer process, optionally with a timeout.
+    ///
+    /// In single-process mode this just removes the renderer tracking entry.
+    /// In multi-process mode this would send `IpcMessage::Shutdown`, wait up to
+    /// `timeout_ms`, then call `TerminateProcess` if the renderer hasn't exited.
+    pub fn terminate_renderer(&mut self, tab_id: TabId, _timeout_ms: u32) -> Option<RendererInfo> {
+        if let Some(mut info) = self.renderers.remove(&tab_id) {
+            info.status = ProcessStatus::Exited;
+            tracing::info!(%tab_id, pid = %info.pid, "renderer terminated");
+            Some(info)
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -329,5 +383,53 @@ mod tests {
             },
         ];
         assert_eq!(msgs.len(), 8);
+    }
+
+    #[test]
+    fn spawn_renderer_os_uses_logical_pid() {
+        let mut pm = ProcessManager::new();
+        let tid = make_tab_id(50);
+        let pid = pm.spawn_renderer_os(tid);
+        assert_eq!(pm.count(), 1);
+        let info = pm.get(tid).unwrap();
+        assert_eq!(info.pid, pid);
+        assert_eq!(info.status, ProcessStatus::Starting);
+    }
+
+    #[test]
+    fn send_message_no_panic() {
+        let mut pm = ProcessManager::new();
+        let tid = make_tab_id(60);
+        pm.spawn_renderer(tid);
+        pm.mark_running(tid);
+        let msg = IpcMessage::RequestFrame { tab_id: tid };
+        pm.send_message(tid, &msg);
+        // No panic = success.
+    }
+
+    #[test]
+    fn send_message_missing_tab() {
+        let pm = ProcessManager::new();
+        let tid = make_tab_id(99);
+        let msg = IpcMessage::Shutdown;
+        pm.send_message(tid, &msg);
+        // Logs a warning, no panic.
+    }
+
+    #[test]
+    fn terminate_renderer_marks_exited() {
+        let mut pm = ProcessManager::new();
+        let tid = make_tab_id(70);
+        pm.spawn_renderer(tid);
+        pm.mark_running(tid);
+        let info = pm.terminate_renderer(tid, 5000).unwrap();
+        assert_eq!(info.status, ProcessStatus::Exited);
+        assert_eq!(pm.count(), 0);
+    }
+
+    #[test]
+    fn terminate_missing_renderer() {
+        let mut pm = ProcessManager::new();
+        assert!(pm.terminate_renderer(make_tab_id(999), 0).is_none());
     }
 }

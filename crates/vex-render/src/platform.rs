@@ -132,6 +132,20 @@ impl Window {
     pub fn height(&self) -> u32 {
         self.height.load(Ordering::Relaxed)
     }
+
+    /// Update the window title bar text at runtime.
+    ///
+    /// The string is converted to a null-terminated byte sequence and
+    /// passed to the Zig platform layer's `SetWindowTextW`.
+    pub fn set_title(&self, title: &str) {
+        let mut buf = title.as_bytes().to_vec();
+        buf.push(0); // null-terminate
+        // SAFETY: `handle` is valid for the lifetime of `Window`, and
+        // `buf` is a null-terminated UTF-8 string.
+        unsafe {
+            platform_ffi::vex_platform_set_title(self.handle, buf.as_ptr());
+        }
+    }
 }
 
 impl Drop for Window {

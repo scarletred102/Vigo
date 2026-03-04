@@ -37,6 +37,7 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
     dl.push(DisplayCommand::FillRect {
         rect: tab_bar_rect,
         color: TAB_BAR_BG,
+        border_radius: 0.0,
     });
 
     let available_width = tab_bar_rect.size.width - NEW_TAB_BTN_WIDTH - 8.0;
@@ -57,6 +58,7 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
             } else {
                 INACTIVE_TAB_BG
             },
+            border_radius: 0.0,
         });
 
         // Tab title (truncated).
@@ -90,6 +92,7 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(plus_x, plus_y, NEW_TAB_BTN_WIDTH, TAB_HEIGHT),
         color: INACTIVE_TAB_BG,
+        border_radius: 0.0,
     });
     dl.push(DisplayCommand::DrawText {
         position: Point::new(plus_x + 10.0, plus_y + 7.0),

@@ -62,7 +62,7 @@ pub fn layout_inline_children(
         .unwrap_or(TextAlign::Left);
 
     // Build line boxes from children
-    let lines = build_line_boxes(
+    let mut lines = build_line_boxes(
         &mut layout_box.children,
         arena,
         styles,
@@ -72,7 +72,14 @@ pub fn layout_inline_children(
 
     // Apply positions
     let mut cursor_y = 0.0_f32;
-    for line in &lines {
+    let line_count = lines.len();
+    for (line_idx, line) in lines.iter_mut().enumerate() {
+        // For justify: distribute extra space between fragments.
+        if text_align == TextAlign::Justify {
+            let is_last = line_idx == line_count - 1;
+            apply_justify(line, available_width, is_last);
+        }
+
         let offset_x = align_offset(text_align, line.width, available_width);
 
         for frag in &line.fragments {
@@ -191,8 +198,33 @@ fn align_offset(align: TextAlign, line_width: f32, container_width: f32) -> f32 
         TextAlign::Left => 0.0,
         TextAlign::Right => free,
         TextAlign::Center => free / 2.0,
-        TextAlign::Justify => 0.0, // TODO: distribute space between words
+        // Justify uses 0 offset — spacing is distributed in apply_justify().
+        TextAlign::Justify => 0.0,
     }
+}
+
+/// Distribute extra horizontal space between fragments for justify alignment.
+///
+/// Only applies to lines with more than one fragment that are NOT the last line.
+fn apply_justify(line: &mut LineBox, available_width: f32, is_last_line: bool) {
+    // Don't justify the last line — it should remain left-aligned.
+    if is_last_line || line.fragments.len() < 2 {
+        return;
+    }
+
+    let free = (available_width - line.width).max(0.0);
+    if free <= 0.0 {
+        return;
+    }
+
+    let gaps = (line.fragments.len() - 1) as f32;
+    let extra_per_gap = free / gaps;
+
+    // Shift each fragment by cumulative extra space.
+    for (i, frag) in line.fragments.iter_mut().enumerate() {
+        frag.x += extra_per_gap * i as f32;
+    }
+    line.width = available_width;
 }
 
 #[cfg(test)]
@@ -230,5 +262,39 @@ mod tests {
         let mut engine = TextEngine::new();
         let h = layout_inline_children(&mut parent, &arena, &styles, &mut engine);
         assert_eq!(h, 0.0);
+    }
+
+    #[test]
+    fn justify_distributes_space_between_fragments() {
+        let mut line = LineBox {
+            fragments: vec![
+                InlineFragment { child_index: 0, x: 0.0, y: 0.0, width: 100.0, height: 20.0 },
+                InlineFragment { child_index: 1, x: 100.0, y: 0.0, width: 100.0, height: 20.0 },
+                InlineFragment { child_index: 2, x: 200.0, y: 0.0, width: 100.0, height: 20.0 },
+            ],
+            width: 300.0,
+            height: 20.0,
+        };
+        apply_justify(&mut line, 500.0, false);
+        // 200px free / 2 gaps = 100px per gap.
+        assert!((line.fragments[0].x - 0.0).abs() < 0.01);
+        assert!((line.fragments[1].x - 200.0).abs() < 0.01);
+        assert!((line.fragments[2].x - 400.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn justify_last_line_not_justified() {
+        let mut line = LineBox {
+            fragments: vec![
+                InlineFragment { child_index: 0, x: 0.0, y: 0.0, width: 100.0, height: 20.0 },
+                InlineFragment { child_index: 1, x: 100.0, y: 0.0, width: 100.0, height: 20.0 },
+            ],
+            width: 200.0,
+            height: 20.0,
+        };
+        let original_x1 = line.fragments[1].x;
+        apply_justify(&mut line, 500.0, true);
+        // Last line: should not change.
+        assert_eq!(line.fragments[1].x, original_x1);
     }
 }

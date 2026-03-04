@@ -12,6 +12,28 @@
 
 use std::fmt;
 
+// ── Errors ─────────────────────────────────────────────────────────────
+
+/// Errors that can occur when applying a sandbox policy.
+#[derive(Debug, Clone)]
+pub enum SandboxError {
+    /// Invalid configuration (e.g., CPU > 100%).
+    InvalidConfig(String),
+    /// Win32 API call failed.
+    OsError(String),
+}
+
+impl fmt::Display for SandboxError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidConfig(msg) => write!(f, "invalid sandbox config: {msg}"),
+            Self::OsError(msg) => write!(f, "sandbox OS error: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for SandboxError {}
+
 // ── Configuration ──────────────────────────────────────────────────────
 
 /// Resource limits for a sandboxed renderer process.
@@ -155,6 +177,63 @@ impl SandboxPolicy {
         self.token.integrity_level = level;
         self
     }
+
+    /// Apply the sandbox policy to a process identified by its handle.
+    ///
+    /// **Current status:** Validates the policy configuration and returns
+    /// `Ok(())` without calling Win32 APIs. The browser currently runs in
+    /// single-process mode, so no real sandboxing is needed.
+    ///
+    /// When multi-process mode is implemented, this will:
+    /// 1. Create a Windows Job Object via `CreateJobObjectW`
+    /// 2. Set memory/CPU limits via `SetInformationJobObject`
+    /// 3. Apply UI restrictions via `JOB_OBJECT_UILIMIT_*` flags
+    /// 4. Create a restricted token via `CreateRestrictedToken`
+    /// 5. Set the integrity level via `SetTokenInformation`
+    /// 6. Assign the process to the Job Object via `AssignProcessToJobObject`
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the policy configuration is invalid (e.g., CPU > 100).
+    pub fn apply(&self, _process_handle: *mut std::ffi::c_void) -> Result<(), SandboxError> {
+        if !self.enabled {
+            tracing::debug!("Sandbox disabled — skipping enforcement");
+            return Ok(());
+        }
+
+        // Validate configuration.
+        if self.limits.max_cpu_percent > 100 {
+            return Err(SandboxError::InvalidConfig(
+                "CPU percent must be 0–100".into(),
+            ));
+        }
+
+        tracing::info!(
+            memory_mb = self.limits.max_memory_bytes / (1024 * 1024),
+            cpu = self.limits.max_cpu_percent,
+            integrity = %self.token.integrity_level,
+            "Sandbox policy would be applied (stub — single-process mode)"
+        );
+
+        Ok(())
+    }
+
+    /// Create a restricted token for the sandbox configuration.
+    ///
+    /// **Current status:** Returns `Ok(())`. When multi-process mode is active,
+    /// this will call `CreateRestrictedToken` to strip admin SIDs and set the
+    /// integrity level.
+    pub fn create_restricted_token(&self) -> Result<(), SandboxError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        tracing::debug!(
+            remove_admin = self.token.remove_admin_sids,
+            integrity = %self.token.integrity_level,
+            "Would create restricted token (stub)"
+        );
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -206,5 +285,44 @@ mod tests {
         assert_eq!(IntegrityLevel::Low.to_string(), "low");
         assert_eq!(IntegrityLevel::Untrusted.to_string(), "untrusted");
         assert_eq!(IntegrityLevel::Medium.to_string(), "medium");
+    }
+
+    #[test]
+    fn apply_disabled_policy_succeeds() {
+        let policy = SandboxPolicy::debug();
+        assert!(policy.apply(std::ptr::null_mut()).is_ok());
+    }
+
+    #[test]
+    fn apply_production_policy_succeeds() {
+        let policy = SandboxPolicy::production();
+        assert!(policy.apply(std::ptr::null_mut()).is_ok());
+    }
+
+    #[test]
+    fn apply_invalid_cpu_fails() {
+        let policy = SandboxPolicy::production().with_max_cpu(200);
+        let err = policy.apply(std::ptr::null_mut()).unwrap_err();
+        assert!(err.to_string().contains("CPU"));
+    }
+
+    #[test]
+    fn create_restricted_token_succeeds() {
+        let policy = SandboxPolicy::production();
+        assert!(policy.create_restricted_token().is_ok());
+    }
+
+    #[test]
+    fn create_restricted_token_disabled() {
+        let policy = SandboxPolicy::debug();
+        assert!(policy.create_restricted_token().is_ok());
+    }
+
+    #[test]
+    fn sandbox_error_display() {
+        let err = SandboxError::InvalidConfig("test".into());
+        assert!(err.to_string().contains("invalid sandbox config"));
+        let err = SandboxError::OsError("access denied".into());
+        assert!(err.to_string().contains("sandbox OS error"));
     }
 }

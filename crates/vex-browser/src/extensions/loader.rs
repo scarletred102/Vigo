@@ -278,6 +278,39 @@ impl ExtensionLoader {
     pub fn extensions_dir(&self) -> &Path {
         &self.extensions_dir
     }
+
+    /// Collect browser actions from all active extensions (Task 60).
+    pub fn browser_actions(&self) -> Vec<super::action::BrowserAction> {
+        let mut actions = Vec::new();
+        for ext in self.extensions.values() {
+            if !ext.is_active() {
+                continue;
+            }
+            if let Some(ref ba_def) = ext.manifest.browser_action {
+                let title = ba_def
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| ext.manifest.name.clone());
+                let has_popup = ba_def.popup.is_some();
+                actions.push(super::action::BrowserAction::new(
+                    ext.id().to_owned(),
+                    title,
+                    has_popup,
+                ));
+            }
+        }
+        actions
+    }
+
+    /// Read background worker source for an extension (Task 59).
+    ///
+    /// Returns `None` if no background worker is configured.
+    pub fn background_source(&self, id: &str) -> Option<String> {
+        let ext = self.extensions.get(id)?;
+        let worker_path = ext.manifest.background_worker.as_ref()?;
+        let full_path = ext.manifest.root_dir.join(worker_path);
+        std::fs::read_to_string(full_path).ok()
+    }
 }
 
 #[cfg(test)]

@@ -18,21 +18,35 @@ use vex_dom::node::NodeData;
 use vex_dom::Document;
 use vex_layout::LayoutBox;
 
-use crate::display_list::{DisplayCommand, DisplayList, RenderBorderStyle};
+use crate::display_list::{DisplayCommand, DisplayList, ImageId, RenderBorderStyle};
 
 /// Build a display list from a laid-out tree.
 ///
 /// Walks the layout tree in paint order, emitting drawing commands for
-/// backgrounds, borders, and text. Skips boxes entirely outside the viewport.
+/// backgrounds, borders, text, and images. Skips boxes outside the viewport.
+///
+/// `images` maps DOM node `VexId` → `ImageId` for `<img>` elements that have
+/// already been decoded and uploaded to the image atlas.
 pub fn build_display_list(
     root: &LayoutBox,
     styles: &HashMap<VexId, ComputedStyle>,
     document: &Document,
     viewport: Size,
 ) -> DisplayList {
+    build_display_list_with_images(root, styles, document, viewport, &HashMap::new())
+}
+
+/// Build a display list including loaded images.
+pub fn build_display_list_with_images(
+    root: &LayoutBox,
+    styles: &HashMap<VexId, ComputedStyle>,
+    document: &Document,
+    viewport: Size,
+    images: &HashMap<VexId, ImageId>,
+) -> DisplayList {
     let mut dl = DisplayList::with_capacity(root.children.len() * 4);
     let viewport_rect = Rect::new(0.0, 0.0, viewport.width, viewport.height);
-    paint_box(root, styles, document, &viewport_rect, &mut dl);
+    paint_box(root, styles, document, images, &viewport_rect, &mut dl);
     dl
 }
 
@@ -41,6 +55,7 @@ fn paint_box(
     layout_box: &LayoutBox,
     styles: &HashMap<VexId, ComputedStyle>,
     document: &Document,
+    images: &HashMap<VexId, ImageId>,
     viewport: &Rect,
     dl: &mut DisplayList,
 ) {
@@ -57,7 +72,7 @@ fn paint_box(
     if let Some(s) = style {
         if s.visibility == Visibility::Hidden {
             // Still takes space but doesn't paint.
-            paint_children(layout_box, styles, document, viewport, dl);
+            paint_children(layout_box, styles, document, images, viewport, dl);
             return;
         }
     }
@@ -85,8 +100,18 @@ fn paint_box(
     // 3. Text content.
     paint_text(layout_box, style, document, dl);
 
-    // 4. Children (recursive).
-    paint_children(layout_box, styles, document, viewport, dl);
+    // 4. Images: emit DrawImage for <img> elements with loaded images.
+    if let Some(node_id) = layout_box.node_id {
+        if let Some(&image_id) = images.get(&node_id) {
+            dl.push(DisplayCommand::DrawImage {
+                rect: layout_box.content_rect(),
+                image_id,
+            });
+        }
+    }
+
+    // 5. Children (recursive).
+    paint_children(layout_box, styles, document, images, viewport, dl);
 
     // Close clip/opacity in reverse order.
     if needs_clip.is_some() {
@@ -107,6 +132,7 @@ fn paint_background(layout_box: &LayoutBox, style: Option<&ComputedStyle>, dl: &
     dl.push(DisplayCommand::FillRect {
         rect: layout_box.dimensions.border_box(),
         color: bg_color,
+        border_radius: 0.0,
     });
 }
 
@@ -204,11 +230,12 @@ fn paint_children(
     layout_box: &LayoutBox,
     styles: &HashMap<VexId, ComputedStyle>,
     document: &Document,
+    images: &HashMap<VexId, ImageId>,
     viewport: &Rect,
     dl: &mut DisplayList,
 ) {
     for child in &layout_box.children {
-        paint_box(child, styles, document, viewport, dl);
+        paint_box(child, styles, document, images, viewport, dl);
     }
 }
 
