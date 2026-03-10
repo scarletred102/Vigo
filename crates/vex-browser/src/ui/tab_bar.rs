@@ -10,20 +10,20 @@ use vex_render::display_list::{DisplayCommand, DisplayList};
 use crate::tab::Tab;
 
 /// Colors for the tab bar.
-const TAB_BAR_BG: Color = Color::rgb(38, 38, 46);
-const ACTIVE_TAB_BG: Color = Color::rgb(52, 52, 64);
-const INACTIVE_TAB_BG: Color = Color::rgb(42, 42, 52);
-const TAB_TEXT_COLOR: Color = Color::rgb(210, 210, 220);
-const INACTIVE_TAB_TEXT: Color = Color::rgb(140, 140, 160);
-const CLOSE_BTN_COLOR: Color = Color::rgb(120, 120, 140);
-const NEW_TAB_BTN_COLOR: Color = Color::rgb(100, 100, 120);
+const TAB_BAR_BG: Color = Color::rgb(20, 23, 32);
+const ACTIVE_TAB_BG: Color = Color::rgb(44, 49, 67);
+const INACTIVE_TAB_BG: Color = Color::rgb(30, 34, 48);
+const TAB_TEXT_COLOR: Color = Color::rgb(230, 234, 247);
+const INACTIVE_TAB_TEXT: Color = Color::rgb(156, 162, 188);
+const CLOSE_BTN_COLOR: Color = Color::rgb(182, 188, 212);
+const NEW_TAB_BTN_COLOR: Color = Color::rgb(196, 202, 226);
 
 /// Maximum tab width in pixels.
-const MAX_TAB_WIDTH: f32 = 220.0;
+const MAX_TAB_WIDTH: f32 = 250.0;
 /// Minimum tab width before text is hidden.
-const MIN_TAB_WIDTH: f32 = 60.0;
+const MIN_TAB_WIDTH: f32 = 84.0;
 /// Padding between tabs.
-const TAB_GAP: f32 = 2.0;
+const TAB_GAP: f32 = 6.0;
 /// Tab height.
 const TAB_HEIGHT: f32 = 32.0;
 /// Top offset for tabs within the tab bar.
@@ -58,7 +58,7 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
             } else {
                 INACTIVE_TAB_BG
             },
-            border_radius: 0.0,
+            border_radius: 8.0,
         });
 
         // Tab title (truncated).
@@ -92,7 +92,7 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(plus_x, plus_y, NEW_TAB_BTN_WIDTH, TAB_HEIGHT),
         color: INACTIVE_TAB_BG,
-        border_radius: 0.0,
+        border_radius: 8.0,
     });
     dl.push(DisplayCommand::DrawText {
         position: Point::new(plus_x + 10.0, plus_y + 7.0),

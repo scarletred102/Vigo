@@ -98,7 +98,7 @@ fn paint_box(
     paint_borders(layout_box, style, dl);
 
     // 3. Text content.
-    paint_text(layout_box, style, document, dl);
+    paint_text(layout_box, style, styles, document, dl);
 
     // 4. Images: emit DrawImage for <img> elements with loaded images.
     if let Some(node_id) = layout_box.node_id {
@@ -186,6 +186,7 @@ fn paint_borders(layout_box: &LayoutBox, style: Option<&ComputedStyle>, dl: &mut
 fn paint_text(
     layout_box: &LayoutBox,
     style: Option<&ComputedStyle>,
+    styles: &HashMap<VexId, ComputedStyle>,
     document: &Document,
     dl: &mut DisplayList,
 ) {
@@ -212,8 +213,9 @@ fn paint_text(
         return;
     }
 
+    let inherited = node.parent.and_then(|pid| styles.get(&pid));
     let fallback = default_text_style();
-    let s = style.unwrap_or(&fallback);
+    let s = style.or(inherited).unwrap_or(&fallback);
     let content = &layout_box.dimensions.content;
 
     dl.push(DisplayCommand::DrawText {
@@ -401,5 +403,40 @@ mod tests {
                 .any(|c| matches!(c, DisplayCommand::DrawBorder { .. })),
             "should emit DrawBorder for solid 2px border"
         );
+    }
+
+    #[test]
+    fn text_paint_inherits_parent_color() {
+        let mut doc = Document::new();
+        let body = doc.create_element("body", vex_dom::Namespace::Html);
+        let text = doc.create_text("Hello Vigo");
+        doc.append_child(doc.root(), body);
+        doc.append_child(body, text);
+
+        let mut layout_root = make_box(text.index(), Rect::new(10.0, 10.0, 120.0, 24.0));
+        layout_root.box_type = BoxType::Inline;
+
+        let mut styles = HashMap::new();
+        let parent_style = ComputedStyle {
+            color: Color::WHITE,
+            font_size: 16.0,
+            line_height: 19.2,
+            ..ComputedStyle::default()
+        };
+        styles.insert(body, parent_style);
+
+        let viewport = Size::new(800.0, 600.0);
+        let dl = build_display_list(&layout_root, &styles, &doc, viewport);
+
+        let text_cmd = dl.commands().iter().find_map(|cmd| match cmd {
+            DisplayCommand::DrawText { text, color, .. } if text.contains("Hello") => {
+                Some((*color, text.clone()))
+            }
+            _ => None,
+        });
+
+        let (color, text) = text_cmd.expect("expected DrawText command for text node");
+        assert_eq!(text, "Hello Vigo");
+        assert_eq!(color, Color::WHITE);
     }
 }

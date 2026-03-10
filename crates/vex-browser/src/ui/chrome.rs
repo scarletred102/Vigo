@@ -6,13 +6,13 @@
 use vex_core::geometry::Rect;
 
 /// Heights (in logical pixels) for each chrome region.
-pub const TAB_BAR_HEIGHT: f32 = 36.0;
-pub const NAV_BAR_HEIGHT: f32 = 40.0;
-pub const BOOKMARK_BAR_HEIGHT: f32 = 28.0;
-pub const FIND_BAR_HEIGHT: f32 = 36.0;
+pub const TAB_BAR_HEIGHT: f32 = 40.0;
+pub const NAV_BAR_HEIGHT: f32 = 46.0;
+pub const BOOKMARK_BAR_HEIGHT: f32 = 32.0;
+pub const FIND_BAR_HEIGHT: f32 = 40.0;
 
 /// Accent line between chrome and content.
-pub const ACCENT_LINE_HEIGHT: f32 = 1.0;
+pub const ACCENT_LINE_HEIGHT: f32 = 2.0;
 
 /// Total fixed chrome height (tab bar + nav bar + accent line).
 pub fn chrome_height(show_bookmarks: bool) -> f32 {

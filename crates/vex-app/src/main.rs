@@ -150,24 +150,33 @@ fn run() {
         }
     }
 
-    // ── Load welcome page into active tab if it has no content ───
+    // ── Bootstrap active tab content if needed ─────────────────────────────
     {
-        let viewport = Size::new(vp_w, vp_h);
-        let tab = tab_mgr.active_tab_mut();
-        if !tab.has_document() {
-            let html = include_str!("welcome.html");
-            tab.load_html(html, viewport);
-            tab.url = VexUrl::parse("vex://welcome")
-                .unwrap_or_else(|_| VexUrl::parse("about:blank").expect("about:blank is valid"));
-            tab.set_content_size(vp_w, 1400.0);
+        let needs_bootstrap = !tab_mgr.active_tab().has_document();
+        if needs_bootstrap {
+            let url = tab_mgr.active_tab().url.clone();
+            let url_str = url.as_ref().to_string();
 
-            // Task 56: Populate Sources panel with the welcome page HTML.
-            sources_state.add_source(
-                "welcome.html".to_owned(),
-                "vex://welcome".to_owned(),
-                SourceKind::Html,
-                html.to_owned(),
-            );
+            if url_str.starts_with("http://") || url_str.starts_with("https://") {
+                navigate_tab(&mut tab_mgr, &url, vp_w, vp_h);
+            } else {
+                let viewport = Size::new(vp_w, vp_h);
+                let html = vex_browser::internal_pages::newtab_page();
+                let tab = tab_mgr.active_tab_mut();
+                tab.load_html(&html, viewport);
+                tab.url = VexUrl::parse("vex://newtab").unwrap_or_else(|_| {
+                    VexUrl::parse("about:blank").expect("about:blank is valid")
+                });
+                tab.set_content_size(vp_w, 1400.0);
+
+                // Task 56: Populate Sources panel with the internal new-tab HTML.
+                sources_state.add_source(
+                    "newtab.html".to_owned(),
+                    "vex://newtab".to_owned(),
+                    SourceKind::Html,
+                    html,
+                );
+            }
         }
     }
 
@@ -612,21 +621,70 @@ fn navigate_tab(
         return;
     }
 
-    // HTTP(S) URL — update tab, show navigation placeholder.
+    // Real network navigation for HTTP(S).
+    if url_str.starts_with("http://") || url_str.starts_with("https://") {
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                tracing::error!("Failed to create tokio runtime for navigation: {e}");
+                let tab = tab_mgr.active_tab_mut();
+                tab.start_load(url.clone());
+                tab.load_html(
+                    &format!(
+                        "<!doctype html><html><head><title>Navigation Error</title></head><body><h1>Navigation Error</h1><p>{e}</p></body></html>"
+                    ),
+                    viewport,
+                );
+                tab.set_content_size(vp_w, vp_h);
+                return;
+            }
+        };
+
+        let tab = tab_mgr.active_tab_mut();
+        rt.block_on(tab.load_url(url.clone(), viewport));
+
+        let content_height = tab
+            .layout
+            .as_ref()
+            .map(estimated_layout_height)
+            .unwrap_or(vp_h)
+            .max(vp_h);
+        tab.set_content_size(vp_w, content_height + 32.0);
+        return;
+    }
+
+    // Unknown schemes fallback to an internal error page.
     let tab = tab_mgr.active_tab_mut();
     tab.start_load(url.clone());
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><title>Loading…</title>
-<style>body{{background:#1a1a2e;color:#ddd;font-family:sans-serif;padding:40px}}
-h1{{color:#7c3aed}}</style></head>
-<body><h1>Navigating…</h1><p>Loading <code>{}</code></p>
-<p style="color:#888">Async page loading will be wired in the image/fetch tasks.</p>
-</body></html>"#,
-        url_str,
+    tab.load_html(
+        &format!(
+            "<!doctype html><html><head><title>Unsupported URL</title></head><body><h1>Unsupported URL scheme</h1><p>{}</p></body></html>",
+            url_str
+        ),
+        viewport,
     );
-    tab.load_html(&html, viewport);
-    tab.url = url.clone();
-    tab.set_content_size(vp_w, 800.0);
+    tab.set_content_size(vp_w, vp_h);
+}
+
+#[cfg(target_os = "windows")]
+fn estimated_layout_height(root: &vex_layout::LayoutBox) -> f32 {
+    fn walk(node: &vex_layout::LayoutBox, max_bottom: &mut f32) {
+        let rect = node.margin_box();
+        let bottom = rect.origin.y + rect.size.height;
+        if bottom > *max_bottom {
+            *max_bottom = bottom;
+        }
+        for child in &node.children {
+            walk(child, max_bottom);
+        }
+    }
+
+    let mut max_bottom = 0.0;
+    walk(root, &mut max_bottom);
+    max_bottom
 }
 
 /// Reload the active tab.
@@ -826,12 +884,28 @@ fn handle_browser_action(
         BrowserAction::Stop => tab_mgr.active_tab_mut().stop(),
         BrowserAction::Downloads => {
             tracing::info!("Downloads: {} total", downloads.count());
+            if let Ok(url) = vex_core::VexUrl::parse("vex://downloads") {
+                navigate_tab(tab_mgr, &url, vp_w, vp_h);
+            }
         }
-        BrowserAction::Bookmarks
-        | BrowserAction::DevTools
+        BrowserAction::Bookmarks => {
+            if let Ok(url) = vex_core::VexUrl::parse("vex://bookmarks") {
+                navigate_tab(tab_mgr, &url, vp_w, vp_h);
+            }
+        }
+        BrowserAction::History => {
+            if let Ok(url) = vex_core::VexUrl::parse("vex://history") {
+                navigate_tab(tab_mgr, &url, vp_w, vp_h);
+            }
+        }
+        BrowserAction::Settings => {
+            if let Ok(url) = vex_core::VexUrl::parse("vex://settings") {
+                navigate_tab(tab_mgr, &url, vp_w, vp_h);
+            }
+        }
+        BrowserAction::DevTools
         | BrowserAction::Fullscreen
-        | BrowserAction::History
-        | BrowserAction::Settings => {
+         => {
             tracing::info!("{action:?} (UI not yet wired)");
         }
     }
@@ -964,7 +1038,7 @@ fn compose_frame(
     // ── Accent line ─────────────────────────────────────────────
     dl.push(DisplayCommand::FillRect {
         rect: chrome.accent_line,
-        color: Color::rgb(90, 50, 200),
+        color: Color::rgb(124, 88, 255),
         border_radius: 0.0,
     });
 
@@ -1245,7 +1319,7 @@ fn render_bookmark_bar(
 
     dl.push(DisplayCommand::FillRect {
         rect,
-        color: Color::rgb(38, 38, 46),
+        color: Color::rgb(22, 25, 34),
         border_radius: 0.0,
     });
 
@@ -1260,13 +1334,13 @@ fn render_bookmark_bar(
         let w = (title.len() as f32 * 7.0 + 16.0).min(150.0);
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(x, rect.origin.y + 3.0, w, 22.0),
-            color: Color::rgb(48, 48, 60),
-            border_radius: 0.0,
+            color: Color::rgb(40, 44, 60),
+            border_radius: 8.0,
         });
         dl.push(DisplayCommand::DrawText {
             position: Point::new(x + 8.0, rect.origin.y + 7.0),
             text: title,
-            color: Color::rgb(180, 180, 200),
+            color: Color::rgb(216, 220, 235),
             font_size: 11.0,
             line_height: 14.0,
         });
@@ -1317,15 +1391,15 @@ fn render_find_bar(
 
     dl.push(DisplayCommand::FillRect {
         rect,
-        color: Color::rgb(42, 42, 55),
-        border_radius: 0.0,
+        color: Color::rgb(34, 37, 52),
+        border_radius: 10.0,
     });
 
     // Input area
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(rect.origin.x + 8.0, rect.origin.y + 6.0, 250.0, 24.0),
-        color: Color::rgb(30, 30, 40),
-        border_radius: 0.0,
+        color: Color::rgb(20, 23, 33),
+        border_radius: 8.0,
     });
 
     let text = if query.is_empty() {

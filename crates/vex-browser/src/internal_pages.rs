@@ -14,61 +14,72 @@ use crate::history::HistoryRecord;
 /// CSS shared by all internal pages.
 const INTERNAL_CSS: &str = r#"
 body {
-    background: #0f0f23;
-    color: #ddd;
+    background: #0b0d14;
+    color: #e8ebf6;
     font-family: system-ui, -apple-system, sans-serif;
     margin: 0;
-    padding: 40px;
+    padding: 32px;
     line-height: 1.6;
 }
-h1 { color: #7c3aed; margin-top: 0; }
-h2 { color: #a78bfa; }
-a { color: #818cf8; text-decoration: none; }
+h1 { color: #c7b8ff; margin-top: 0; font-size: 34px; line-height: 1.2; }
+h2 { color: #a9b7ff; margin: 0 0 10px; }
+a { color: #9aa8ff; text-decoration: none; }
 a:hover { text-decoration: underline; }
 table { border-collapse: collapse; width: 100%; margin: 16px 0; }
-th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #333; }
-th { color: #a78bfa; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #252a3a; }
+th { color: #a9b7ff; }
 .card {
-    background: #1a1a2e;
-    border-radius: 8px;
-    padding: 20px;
-    margin: 16px 0;
+    background: #141826;
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin: 14px 0;
+}
+.hero {
+    background: #121624;
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 18px;
+}
+.hero p {
+    color: #b8bfd9;
+    margin: 8px 0 0;
 }
 .grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 16px;
+    gap: 12px;
 }
 .grid-item {
-    background: #1a1a2e;
-    border-radius: 8px;
-    padding: 16px;
-    width: 200px;
+    background: #171c2b;
+    border-radius: 10px;
+    padding: 14px;
+    width: 220px;
     cursor: pointer;
 }
-.grid-item:hover { background: #2a2a4e; }
-.grid-item h3 { margin: 0 0 4px; color: #c4b5fd; font-size: 14px; }
-.grid-item p { margin: 0; color: #888; font-size: 12px; }
-.empty { color: #666; font-style: italic; }
+.grid-item:hover { background: #202740; }
+.grid-item h3 { margin: 0 0 4px; color: #d2d9ff; font-size: 14px; }
+.grid-item p { margin: 0; color: #8f98bd; font-size: 12px; }
+.empty { color: #7c84a5; font-style: italic; }
 input[type="text"], input[type="search"] {
-    background: #1a1a2e;
-    color: #ddd;
-    border: 1px solid #444;
-    border-radius: 4px;
+    background: #121624;
+    color: #e8ebf6;
+    border: 1px solid #2b3147;
+    border-radius: 8px;
     padding: 8px 12px;
     font-size: 14px;
     width: 300px;
 }
 .btn {
-    background: #7c3aed;
-    color: white;
+    background: #6c63ff;
+    color: #fff;
     border: none;
-    border-radius: 4px;
+    border-radius: 8px;
     padding: 8px 16px;
     cursor: pointer;
     font-size: 14px;
 }
 .section { margin-bottom: 32px; }
+.muted { color: #9ca4c8; }
 "#;
 
 /// Generate the new tab page.
@@ -78,23 +89,26 @@ pub fn newtab_page() -> String {
         r#"<!DOCTYPE html>
 <html><head><title>New Tab</title><style>{INTERNAL_CSS}</style></head>
 <body>
-<h1>🌐 Vigo Browser</h1>
-<p>Welcome to the Vex engine — a browser built from scratch.</p>
+<div class="hero">
+    <h1>Vigo Browser</h1>
+    <p>Fast, private browsing powered by the Vex engine.</p>
+    <p class="muted">Type an address above or open one of the internal pages below.</p>
+</div>
 
 <div class="section">
-  <h2>Quick Start</h2>
+    <h2>Quick access</h2>
   <div class="grid">
-    <div class="grid-item"><h3>📖 History</h3><p>vex://history</p></div>
-    <div class="grid-item"><h3>🔖 Bookmarks</h3><p>vex://bookmarks</p></div>
-    <div class="grid-item"><h3>⬇️ Downloads</h3><p>vex://downloads</p></div>
-    <div class="grid-item"><h3>⚙️ Settings</h3><p>vex://settings</p></div>
+        <div class="grid-item"><h3>History</h3><p>vex://history</p></div>
+        <div class="grid-item"><h3>Bookmarks</h3><p>vex://bookmarks</p></div>
+        <div class="grid-item"><h3>Downloads</h3><p>vex://downloads</p></div>
+        <div class="grid-item"><h3>Settings</h3><p>vex://settings</p></div>
   </div>
 </div>
 
 <div class="card">
-  <h2>About Vex</h2>
-  <p>Rust + Zig browser engine. Phase 11 complete.</p>
-  <p>Type a URL in the address bar or click a link to get started.</p>
+    <h2>About this build</h2>
+    <p>Rust + Zig browser engine with native UI chrome and privacy defaults.</p>
+    <p class="muted">If a page fails to load, check URL format or try another site.</p>
 </div>
 </body></html>"#
     )
@@ -107,7 +121,7 @@ pub fn settings_page() -> String {
         r#"<!DOCTYPE html>
 <html><head><title>Settings — Vigo</title><style>{INTERNAL_CSS}</style></head>
 <body>
-<h1>⚙️ Settings</h1>
+<h1>Settings</h1>
 
 <div class="card">
   <h2>General</h2>

@@ -10,17 +10,17 @@ use vex_render::display_list::{DisplayCommand, DisplayList};
 /// Button sizes.
 const NAV_BUTTON_SIZE: f32 = 28.0;
 const NAV_BUTTON_GAP: f32 = 4.0;
-const BUTTON_TOP_OFFSET: f32 = 6.0;
+const BUTTON_TOP_OFFSET: f32 = 8.0;
 
 /// Colors.
-const NAV_BAR_BG: Color = Color::rgb(38, 38, 46);
-const BUTTON_BG: Color = Color::rgb(52, 52, 64);
-const BUTTON_TEXT: Color = Color::rgb(180, 180, 200);
-const BUTTON_DISABLED: Color = Color::rgb(80, 80, 90);
-const ADDRESS_BAR_BG: Color = Color::rgb(30, 30, 38);
-const ADDRESS_TEXT: Color = Color::rgb(200, 200, 220);
-const HTTPS_COLOR: Color = Color::rgb(80, 200, 120);
-const HTTP_COLOR: Color = Color::rgb(200, 80, 80);
+const NAV_BAR_BG: Color = Color::rgb(20, 23, 32);
+const BUTTON_BG: Color = Color::rgb(42, 47, 66);
+const BUTTON_TEXT: Color = Color::rgb(220, 224, 240);
+const BUTTON_DISABLED: Color = Color::rgb(105, 110, 130);
+const ADDRESS_BAR_BG: Color = Color::rgb(14, 17, 25);
+const ADDRESS_TEXT: Color = Color::rgb(228, 231, 245);
+const HTTPS_COLOR: Color = Color::rgb(86, 204, 138);
+const HTTP_COLOR: Color = Color::rgb(238, 116, 116);
 
 /// State for rendering the navigation bar.
 pub struct NavBarState<'a> {
@@ -53,7 +53,7 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(x, btn_y, NAV_BUTTON_SIZE, NAV_BUTTON_SIZE),
         color: BUTTON_BG,
-        border_radius: 0.0,
+        border_radius: 8.0,
     });
     dl.push(DisplayCommand::DrawText {
         position: Point::new(x + 8.0, btn_y + 6.0),
@@ -72,7 +72,7 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(x, btn_y, NAV_BUTTON_SIZE, NAV_BUTTON_SIZE),
         color: BUTTON_BG,
-        border_radius: 0.0,
+        border_radius: 8.0,
     });
     dl.push(DisplayCommand::DrawText {
         position: Point::new(x + 8.0, btn_y + 6.0),
@@ -91,7 +91,7 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(x, btn_y, NAV_BUTTON_SIZE, NAV_BUTTON_SIZE),
         color: BUTTON_BG,
-        border_radius: 0.0,
+        border_radius: 8.0,
     });
     dl.push(DisplayCommand::DrawText {
         position: Point::new(x + 8.0, btn_y + 6.0),
@@ -108,7 +108,7 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(x, btn_y, address_bar_width, address_bar_height),
         color: ADDRESS_BAR_BG,
-        border_radius: 0.0,
+        border_radius: 10.0,
     });
 
     // HTTPS indicator.
