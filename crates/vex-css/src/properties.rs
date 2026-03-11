@@ -4,7 +4,13 @@
 //! CSS property enum covering ~50 most common properties.
 
 use crate::values::box_model::{BoxSizing, Visibility};
+use crate::values::animation::{
+    AnimationDirection, AnimationFillMode, AnimationIterationCount, AnimationPlayState,
+    TimingFunction, TransitionProperty,
+};
+use crate::values::grid::{GridAutoFlow, GridLine, TrackList};
 use crate::values::text::Cursor;
+use crate::values::transform::{FilterList, TransformList, TransformOrigin};
 use crate::values::*;
 
 /// A single CSS declaration (property + value).
@@ -95,6 +101,43 @@ pub enum Property {
 
     // Vertical align
     VerticalAlign(VerticalAlign),
+
+    // Float & clear
+    Float(Float),
+    Clear(Clear),
+
+    // Grid
+    GridTemplateColumns(TrackList),
+    GridTemplateRows(TrackList),
+    GridAutoFlow(GridAutoFlow),
+    GridColumnStart(GridLine),
+    GridColumnEnd(GridLine),
+    GridRowStart(GridLine),
+    GridRowEnd(GridLine),
+    GridColumnGap(f32),
+    GridRowGap(f32),
+
+    // Transitions
+    TransitionProperty(TransitionProperty),
+    TransitionDuration(f32),       // seconds
+    TransitionTimingFunction(TimingFunction),
+    TransitionDelay(f32),          // seconds
+
+    // Animations
+    AnimationName(String),
+    AnimationDuration(f32),        // seconds
+    AnimationTimingFunction(TimingFunction),
+    AnimationDelay(f32),           // seconds
+    AnimationIterationCount(AnimationIterationCount),
+    AnimationDirection(AnimationDirection),
+    AnimationFillMode(AnimationFillMode),
+    AnimationPlayState(AnimationPlayState),
+
+    // Transform & related
+    Transform(TransformList),
+    TransformOrigin(TransformOrigin),
+    Filter(FilterList),
+    BackdropFilter(FilterList),
 }
 
 /// A declaration with importance flag.
@@ -168,6 +211,33 @@ impl Property {
             Self::Bottom(_) => "bottom",
             Self::Left(_) => "left",
             Self::VerticalAlign(_) => "vertical-align",
+            Self::Float(_) => "float",
+            Self::Clear(_) => "clear",
+            Self::GridTemplateColumns(_) => "grid-template-columns",
+            Self::GridTemplateRows(_) => "grid-template-rows",
+            Self::GridAutoFlow(_) => "grid-auto-flow",
+            Self::GridColumnStart(_) => "grid-column-start",
+            Self::GridColumnEnd(_) => "grid-column-end",
+            Self::GridRowStart(_) => "grid-row-start",
+            Self::GridRowEnd(_) => "grid-row-end",
+            Self::GridColumnGap(_) => "column-gap",
+            Self::GridRowGap(_) => "row-gap",
+            Self::TransitionProperty(_) => "transition-property",
+            Self::TransitionDuration(_) => "transition-duration",
+            Self::TransitionTimingFunction(_) => "transition-timing-function",
+            Self::TransitionDelay(_) => "transition-delay",
+            Self::AnimationName(_) => "animation-name",
+            Self::AnimationDuration(_) => "animation-duration",
+            Self::AnimationTimingFunction(_) => "animation-timing-function",
+            Self::AnimationDelay(_) => "animation-delay",
+            Self::AnimationIterationCount(_) => "animation-iteration-count",
+            Self::AnimationDirection(_) => "animation-direction",
+            Self::AnimationFillMode(_) => "animation-fill-mode",
+            Self::AnimationPlayState(_) => "animation-play-state",
+            Self::Transform(_) => "transform",
+            Self::TransformOrigin(_) => "transform-origin",
+            Self::Filter(_) => "filter",
+            Self::BackdropFilter(_) => "backdrop-filter",
         }
     }
 
@@ -408,6 +478,103 @@ pub fn parse_declaration(name: &str, value: &str) -> Vec<Property> {
             .into_iter()
             .collect(),
 
+        "float" => Float::parse(value)
+            .map(Property::Float)
+            .into_iter()
+            .collect(),
+        "clear" => Clear::parse(value)
+            .map(Property::Clear)
+            .into_iter()
+            .collect(),
+
+        // Grid
+        "grid-template-columns" => vec![Property::GridTemplateColumns(TrackList::parse(value))],
+        "grid-template-rows" => vec![Property::GridTemplateRows(TrackList::parse(value))],
+        "grid-auto-flow" => GridAutoFlow::parse(value)
+            .map(Property::GridAutoFlow)
+            .into_iter()
+            .collect(),
+        "grid-column-start" => vec![Property::GridColumnStart(GridLine::parse(value))],
+        "grid-column-end" => vec![Property::GridColumnEnd(GridLine::parse(value))],
+        "grid-row-start" => vec![Property::GridRowStart(GridLine::parse(value))],
+        "grid-row-end" => vec![Property::GridRowEnd(GridLine::parse(value))],
+        "grid-column" => parse_grid_line_shorthand(
+            value,
+            Property::GridColumnStart,
+            Property::GridColumnEnd,
+        ),
+        "grid-row" => {
+            parse_grid_line_shorthand(value, Property::GridRowStart, Property::GridRowEnd)
+        }
+        "column-gap" | "grid-column-gap" => value
+            .strip_suffix("px")
+            .and_then(|v| v.trim().parse::<f32>().ok())
+            .map(Property::GridColumnGap)
+            .into_iter()
+            .collect(),
+        "row-gap" | "grid-row-gap" => value
+            .strip_suffix("px")
+            .and_then(|v| v.trim().parse::<f32>().ok())
+            .map(Property::GridRowGap)
+            .into_iter()
+            .collect(),
+        "gap" | "grid-gap" => parse_gap_shorthand(value),
+
+        // Transitions
+        "transition-property" => {
+            vec![Property::TransitionProperty(TransitionProperty::parse(value))]
+        }
+        "transition-duration" => crate::values::animation::parse_time(value)
+            .map(Property::TransitionDuration)
+            .into_iter()
+            .collect(),
+        "transition-timing-function" => TimingFunction::parse(value)
+            .map(Property::TransitionTimingFunction)
+            .into_iter()
+            .collect(),
+        "transition-delay" => crate::values::animation::parse_time(value)
+            .map(Property::TransitionDelay)
+            .into_iter()
+            .collect(),
+        "transition" => parse_transition_shorthand(value),
+
+        // Animations
+        "animation-name" => vec![Property::AnimationName(value.trim().to_string())],
+        "animation-duration" => crate::values::animation::parse_time(value)
+            .map(Property::AnimationDuration)
+            .into_iter()
+            .collect(),
+        "animation-timing-function" => TimingFunction::parse(value)
+            .map(Property::AnimationTimingFunction)
+            .into_iter()
+            .collect(),
+        "animation-delay" => crate::values::animation::parse_time(value)
+            .map(Property::AnimationDelay)
+            .into_iter()
+            .collect(),
+        "animation-iteration-count" => AnimationIterationCount::parse(value)
+            .map(Property::AnimationIterationCount)
+            .into_iter()
+            .collect(),
+        "animation-direction" => AnimationDirection::parse(value)
+            .map(Property::AnimationDirection)
+            .into_iter()
+            .collect(),
+        "animation-fill-mode" => AnimationFillMode::parse(value)
+            .map(Property::AnimationFillMode)
+            .into_iter()
+            .collect(),
+        "animation-play-state" => AnimationPlayState::parse(value)
+            .map(Property::AnimationPlayState)
+            .into_iter()
+            .collect(),
+
+        // Transform & filters
+        "transform" => vec![Property::Transform(TransformList::parse(value.trim()))],
+        "transform-origin" => vec![Property::TransformOrigin(TransformOrigin::parse(value.trim()))],
+        "filter" => vec![Property::Filter(FilterList::parse(value.trim()))],
+        "backdrop-filter" => vec![Property::BackdropFilter(FilterList::parse(value.trim()))],
+
         _ => vec![], // Unknown property — ignore
     }
 }
@@ -560,6 +727,100 @@ fn parse_border_shorthand(value: &str) -> Vec<Property> {
         result.push(Property::BorderBottomColor(c.clone()));
         result.push(Property::BorderLeftColor(c));
     }
+    result
+}
+
+/// Parse `grid-column` / `grid-row` shorthand: `start / end`.
+fn parse_grid_line_shorthand(
+    value: &str,
+    start_ctor: fn(GridLine) -> Property,
+    end_ctor: fn(GridLine) -> Property,
+) -> Vec<Property> {
+    if let Some((s, e)) = value.split_once('/') {
+        vec![
+            start_ctor(GridLine::parse(s.trim())),
+            end_ctor(GridLine::parse(e.trim())),
+        ]
+    } else {
+        vec![start_ctor(GridLine::parse(value))]
+    }
+}
+
+/// Parse `gap` shorthand: `row-gap column-gap` or single value for both.
+fn parse_gap_shorthand(value: &str) -> Vec<Property> {
+    let parts: Vec<&str> = value.split_whitespace().collect();
+    let parse_px = |s: &str| -> Option<f32> {
+        s.strip_suffix("px")
+            .and_then(|v| v.trim().parse::<f32>().ok())
+    };
+    match parts.len() {
+        1 => {
+            if let Some(v) = parse_px(parts[0]) {
+                vec![Property::GridRowGap(v), Property::GridColumnGap(v)]
+            } else {
+                vec![]
+            }
+        }
+        2 => {
+            let mut result = Vec::new();
+            if let Some(r) = parse_px(parts[0]) {
+                result.push(Property::GridRowGap(r));
+            }
+            if let Some(c) = parse_px(parts[1]) {
+                result.push(Property::GridColumnGap(c));
+            }
+            result
+        }
+        _ => vec![],
+    }
+}
+
+/// Parse the `transition` shorthand: `property duration timing-function delay`.
+///
+/// Example: `transition: opacity 0.3s ease 0s`
+fn parse_transition_shorthand(value: &str) -> Vec<Property> {
+    let parts: Vec<&str> = value.split_whitespace().collect();
+    let mut result = Vec::new();
+
+    // First non-time, non-timing-function token is the property
+    // Time values: durations/delays
+    // Timing function: keywords or cubic-bezier(...)
+    let mut times_found: Vec<f32> = Vec::new();
+    let mut timing_fn: Option<TimingFunction> = None;
+    let mut prop: Option<TransitionProperty> = None;
+
+    for part in &parts {
+        // Try as timing function keyword first
+        if timing_fn.is_none() {
+            if let Some(tf) = TimingFunction::parse(part) {
+                timing_fn = Some(tf);
+                continue;
+            }
+        }
+        // Try as time value
+        if let Some(t) = crate::values::animation::parse_time(part) {
+            times_found.push(t);
+            continue;
+        }
+        // Must be the property name
+        if prop.is_none() {
+            prop = Some(TransitionProperty::parse(part));
+        }
+    }
+
+    result.push(Property::TransitionProperty(
+        prop.unwrap_or(TransitionProperty::All),
+    ));
+    if let Some(dur) = times_found.first() {
+        result.push(Property::TransitionDuration(*dur));
+    }
+    if let Some(tf) = timing_fn {
+        result.push(Property::TransitionTimingFunction(tf));
+    }
+    if let Some(delay) = times_found.get(1) {
+        result.push(Property::TransitionDelay(*delay));
+    }
+
     result
 }
 

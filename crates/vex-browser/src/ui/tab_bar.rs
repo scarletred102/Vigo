@@ -187,8 +187,9 @@ mod tests {
     #[test]
     fn hit_test_new_tab_button() {
         let rect = Rect::new(0.0, 0.0, 1280.0, 36.0);
-        // With 1 tab of width ~220, the plus button starts around x=230.
-        let action = hit_test_tab_bar(240.0, 15.0, 1, rect);
+        // With 1 tab clamped to MAX_TAB_WIDTH=250, plus button starts at:
+        // 4 + (250+6)*1 + 4 = 264
+        let action = hit_test_tab_bar(270.0, 8.0, 1, rect);
         assert_eq!(action, TabBarAction::NewTab);
     }
 

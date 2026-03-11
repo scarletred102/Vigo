@@ -242,7 +242,7 @@ pub fn layout_flex(
                     height: child.dimensions.content.size.height,
                 };
                 for grandchild in &mut child.children {
-                    if matches!(grandchild.box_type, BoxType::Block | BoxType::Flex) {
+                    if matches!(grandchild.box_type, BoxType::Block | BoxType::Flex | BoxType::Grid) {
                         layout_block(grandchild, child_containing, styles);
                     }
                 }

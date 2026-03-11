@@ -7,7 +7,7 @@ use vex_core::VexId;
 
 use crate::arena::NodeArena;
 use crate::forms::FormStateMap;
-use crate::node::{ElementData, Namespace, NodeData};
+use crate::node::{ElementData, ElementState, Namespace, NodeData};
 use crate::traversal::{Children, Descendants};
 use crate::tree;
 
@@ -73,6 +73,7 @@ impl Document {
             attributes: Vec::new(),
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }))
     }
 

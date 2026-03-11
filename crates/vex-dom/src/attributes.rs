@@ -60,7 +60,7 @@ pub fn has_class(arena: &NodeArena, id: VexId, class_name: &str) -> bool {
 mod tests {
     use super::*;
     use crate::arena::NodeArena;
-    use crate::node::{ElementData, Namespace, NodeData};
+    use crate::node::{ElementData, ElementState, Namespace, NodeData};
 
     fn el(arena: &mut NodeArena) -> VexId {
         arena.alloc(NodeData::Element(ElementData {
@@ -69,6 +69,7 @@ mod tests {
             attributes: vec![],
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }))
     }
 

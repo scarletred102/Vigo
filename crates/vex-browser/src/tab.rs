@@ -143,6 +143,21 @@ impl Tab {
     /// executes blocking scripts → computes CSS cascade → layout → display list
     /// → executes deferred scripts → fires lifecycle events.
     pub fn load_html(&mut self, html: &str, viewport: Size) {
+        self.load_html_with_resources(html, viewport, &HashMap::new());
+    }
+
+    /// Like [`Self::load_html`], but with pre-fetched external resources.
+    ///
+    /// `resources` maps external URLs (as they appear in `src`/`href` attrs)
+    /// to their fetched content. External scripts and stylesheets whose URL
+    /// appears in this map will use the pre-fetched content instead of being
+    /// skipped.
+    pub fn load_html_with_resources(
+        &mut self,
+        html: &str,
+        viewport: Size,
+        resources: &HashMap<String, String>,
+    ) {
         self.loading = LoadingState::Loading { progress: 0.2 };
 
         let document = vex_html::parse_html(html);
@@ -158,15 +173,38 @@ impl Tab {
         let mut runtime = JsRuntime::with_request_queue(self.request_queue.clone());
         runtime.register_document(&shared_doc);
 
+        // Build the fetch closure that looks up pre-fetched resources.
+        let mut fetch_fn = |url: &str| -> Result<String, VexError> {
+            // Try exact URL first, then try resolving relative to page base.
+            if let Some(content) = resources.get(url) {
+                tracing::debug!(
+                    "Using pre-fetched resource for {url} ({} bytes)",
+                    content.len()
+                );
+                return Ok(content.clone());
+            }
+
+            // Try resolving the URL against the tab's base URL.
+            if let Ok(resolved) = self.url.join(url) {
+                let resolved_str = resolved.as_ref();
+                if let Some(content) = resources.get(resolved_str) {
+                    tracing::debug!(
+                        "Using pre-fetched resource for {resolved_str} ({} bytes)",
+                        content.len()
+                    );
+                    return Ok(content.clone());
+                }
+            }
+
+            tracing::warn!("External resource not available: {url}");
+            Err(VexError::Network(format!(
+                "external resource not pre-fetched: {url}"
+            )))
+        };
+
         // Execute blocking scripts (inline + synchronous external).
         if !plan.blocking.is_empty() {
             tracing::debug!("Executing {} blocking script(s)", plan.blocking.len());
-            let mut fetch_fn = |url: &str| -> Result<String, VexError> {
-                tracing::warn!("External script fetch not yet wired: {url}");
-                Err(VexError::Network(format!(
-                    "synchronous fetch not available for {url}"
-                )))
-            };
             for (i, result) in plan
                 .execute_blocking(&mut runtime, &mut fetch_fn)
                 .iter()
@@ -178,16 +216,51 @@ impl Tab {
             }
         }
 
-        // CSS pipeline: extract <style>, compute cascade, layout, display list.
+        // CSS pipeline: extract <style> and <link rel="stylesheet">,
+        // compute cascade, layout, display list.
         let (styles, layout_root, dl, title) = {
             let doc = shared_doc.borrow();
 
+            // Inline <style> elements.
             let style_ids = doc.get_elements_by_tag_name("style");
             let mut stylesheets = Vec::new();
             for id in &style_ids {
                 let css_text = doc.text_content(*id);
                 if !css_text.is_empty() {
                     stylesheets.push(vex_css::parse_stylesheet(&css_text));
+                }
+            }
+
+            // External <link rel="stylesheet" href="..."> elements.
+            let link_ids = doc.get_elements_by_tag_name("link");
+            for id in &link_ids {
+                let node = doc.arena().get(*id);
+                if let vex_dom::NodeData::Element(ref el) = node.data {
+                    let is_stylesheet = el
+                        .attributes
+                        .iter()
+                        .any(|a| a.name == "rel" && a.value.eq_ignore_ascii_case("stylesheet"));
+                    let href = el.attributes.iter().find(|a| a.name == "href");
+                    if is_stylesheet {
+                        if let Some(href_attr) = href {
+                            match fetch_fn(&href_attr.value) {
+                                Ok(css_text) => {
+                                    tracing::debug!(
+                                        "Loaded external stylesheet: {} ({} bytes)",
+                                        href_attr.value,
+                                        css_text.len()
+                                    );
+                                    stylesheets.push(vex_css::parse_stylesheet(&css_text));
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Failed to fetch stylesheet {}: {e}",
+                                        href_attr.value
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -217,12 +290,6 @@ impl Tab {
         // Execute deferred scripts (after DOM built, before DOMContentLoaded).
         if !plan.deferred.is_empty() {
             tracing::debug!("Executing {} deferred script(s)", plan.deferred.len());
-            let mut fetch_fn = |url: &str| -> Result<String, VexError> {
-                tracing::warn!("External script fetch not yet wired: {url}");
-                Err(VexError::Network(format!(
-                    "synchronous fetch not available for {url}"
-                )))
-            };
             for (i, result) in plan
                 .execute_deferred(&mut runtime, &mut fetch_fn)
                 .iter()
@@ -287,6 +354,29 @@ impl Tab {
         self.shared_doc.is_some()
     }
 
+    /// Run expired JS timers for this tab.
+    ///
+    /// Returns the number of timer callbacks fired. Call this once per
+    /// event-loop tick so that `setTimeout` / `setInterval` actually fire.
+    pub fn tick_timers(&mut self) -> u32 {
+        if let Some(ref mut runtime) = self.runtime {
+            let fired = runtime.run_pending_timers();
+            if fired > 0 {
+                self.dirty = true;
+            }
+            fired
+        } else {
+            0
+        }
+    }
+
+    /// Whether this tab has pending JS timers.
+    pub fn has_pending_timers(&self) -> bool {
+        self.runtime
+            .as_ref()
+            .is_some_and(|rt| rt.has_pending_timers())
+    }
+
     /// Begin loading a URL — resets tab state, sets loading to Connecting.
     pub fn start_load(&mut self, url: VexUrl) {
         self.url = url;
@@ -334,7 +424,12 @@ impl Tab {
                 }
                 self.loading = LoadingState::Loading { progress: 0.3 };
                 let html = String::from_utf8_lossy(&response.body).into_owned();
-                self.load_html(&html, viewport);
+
+                // Pre-fetch external resources (scripts and stylesheets)
+                // so that load_html can use them synchronously.
+                let resources = prefetch_external_resources(&client, &self.url, &html).await;
+
+                self.load_html_with_resources(&html, viewport, &resources);
                 tracing::info!("Tab {} loaded: {} ({})", self.id, self.url, self.title);
             }
             Err(e) => {
@@ -389,6 +484,121 @@ impl Tab {
     pub fn reload(&mut self) {
         let url = self.url.clone();
         self.start_load(url);
+    }
+}
+
+/// Pre-fetch external resources (scripts and stylesheets) referenced in the HTML.
+///
+/// Does a quick parse of the HTML to find `<script src="...">` and
+/// `<link rel="stylesheet" href="...">` tags, then fetches them all
+/// concurrently. Returns a map from URL → content for resources that
+/// were successfully fetched.
+async fn prefetch_external_resources(
+    client: &vex_net::HttpClient,
+    base_url: &VexUrl,
+    html: &str,
+) -> HashMap<String, String> {
+    let doc = vex_html::parse_html(html);
+    let mut urls_to_fetch: Vec<(String, String)> = Vec::new(); // (original_attr, resolved_url)
+
+    // Discover <script src="...">.
+    let scripts = vex_html::extract::extract_scripts(&doc);
+    for script in &scripts {
+        if let Some(ref url) = script.src {
+            let resolved = resolve_resource_url(base_url, url);
+            urls_to_fetch.push((url.clone(), resolved));
+        }
+    }
+
+    // Discover <link rel="stylesheet" href="...">.
+    let link_ids = doc.get_elements_by_tag_name("link");
+    for id in &link_ids {
+        let node = doc.arena().get(*id);
+        if let vex_dom::NodeData::Element(ref el) = node.data {
+            let is_stylesheet = el
+                .attributes
+                .iter()
+                .any(|a| a.name == "rel" && a.value.eq_ignore_ascii_case("stylesheet"));
+            let href = el
+                .attributes
+                .iter()
+                .find(|a| a.name == "href")
+                .map(|a| a.value.clone());
+            if is_stylesheet {
+                if let Some(href_val) = href {
+                    let resolved = resolve_resource_url(base_url, &href_val);
+                    urls_to_fetch.push((href_val, resolved));
+                }
+            }
+        }
+    }
+
+    if urls_to_fetch.is_empty() {
+        return HashMap::new();
+    }
+
+    tracing::debug!("Pre-fetching {} external resource(s)", urls_to_fetch.len());
+
+    let mut resources = HashMap::new();
+
+    for (original, resolved_str) in &urls_to_fetch {
+        let url = match VexUrl::parse(resolved_str) {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::warn!("Invalid resource URL {resolved_str}: {e}");
+                continue;
+            }
+        };
+
+        let request = vex_net::Request {
+            url: url.clone(),
+            method: vex_net::Method::Get,
+            headers: HashMap::new(),
+            body: None,
+        };
+
+        match client.fetch(request).await {
+            Ok(response) if response.status < 400 => {
+                let content = String::from_utf8_lossy(&response.body).into_owned();
+                tracing::debug!("Pre-fetched {resolved_str} ({} bytes)", content.len());
+                // Store under both the original attr value and the resolved URL
+                // so that the fetch_fn in load_html can find it either way.
+                resources.insert(original.clone(), content.clone());
+                if original != resolved_str {
+                    resources.insert(resolved_str.clone(), content);
+                }
+            }
+            Ok(response) => {
+                tracing::warn!("HTTP {} fetching resource {resolved_str}", response.status);
+            }
+            Err(e) => {
+                tracing::warn!("Failed to fetch resource {resolved_str}: {e}");
+            }
+        }
+    }
+
+    tracing::info!(
+        "Pre-fetched {}/{} external resources",
+        resources.len(),
+        urls_to_fetch.len()
+    );
+    resources
+}
+
+/// Resolve a potentially relative URL against a base URL.
+fn resolve_resource_url(base: &VexUrl, url: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        return url.to_string();
+    }
+    if url.starts_with("//") {
+        // Protocol-relative URL — use the base URL's scheme.
+        let scheme = base.scheme();
+        return format!("{scheme}:{url}");
+    }
+    // Relative URL — resolve against base.
+    match base.join(url) {
+        Ok(resolved) => resolved.as_ref().to_string(),
+        Err(_) => url.to_string(),
     }
 }
 
@@ -558,5 +768,75 @@ mod tests {
     fn tab_id_display() {
         let id = TabId::new(5);
         assert_eq!(format!("{id}"), "Tab(5)");
+    }
+
+    #[test]
+    fn resolve_resource_url_absolute() {
+        let base = VexUrl::parse("https://example.com/page/index.html").unwrap();
+        assert_eq!(
+            resolve_resource_url(&base, "https://cdn.example.com/app.js"),
+            "https://cdn.example.com/app.js"
+        );
+    }
+
+    #[test]
+    fn resolve_resource_url_relative_path() {
+        let base = VexUrl::parse("https://example.com/page/index.html").unwrap();
+        assert_eq!(
+            resolve_resource_url(&base, "scripts/app.js"),
+            "https://example.com/page/scripts/app.js"
+        );
+    }
+
+    #[test]
+    fn resolve_resource_url_root_relative() {
+        let base = VexUrl::parse("https://example.com/page/index.html").unwrap();
+        assert_eq!(
+            resolve_resource_url(&base, "/js/app.js"),
+            "https://example.com/js/app.js"
+        );
+    }
+
+    #[test]
+    fn resolve_resource_url_protocol_relative() {
+        let base = VexUrl::parse("https://example.com/page/index.html").unwrap();
+        assert_eq!(
+            resolve_resource_url(&base, "//cdn.example.com/app.js"),
+            "https://cdn.example.com/app.js"
+        );
+    }
+
+    #[test]
+    fn load_html_with_external_resources() {
+        let url = VexUrl::parse("https://example.com/page").unwrap();
+        let mut tab = Tab::new(TabId::new(1), url);
+
+        let html = r#"<html>
+            <head>
+                <link rel="stylesheet" href="https://example.com/style.css">
+                <script src="https://example.com/app.js"></script>
+            </head>
+            <body><p>Hello</p></body>
+        </html>"#;
+
+        let mut resources = HashMap::new();
+        resources.insert(
+            "https://example.com/style.css".to_string(),
+            "p { color: red; }".to_string(),
+        );
+        resources.insert(
+            "https://example.com/app.js".to_string(),
+            "var fromExternal = 'loaded';".to_string(),
+        );
+
+        tab.load_html_with_resources(html, Size::new(800.0, 600.0), &resources);
+
+        assert!(tab.has_document());
+        assert!(tab.is_complete());
+
+        // External script should have been executed.
+        let runtime = tab.runtime.as_mut().unwrap();
+        let val = runtime.eval("fromExternal").unwrap();
+        assert_eq!(val.as_string().unwrap(), "loaded");
     }
 }

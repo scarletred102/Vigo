@@ -116,7 +116,9 @@ impl FormHandler {
 
         if !is_text_like(&state.kind) {
             // Toggle checkbox/radio on Space.
-            if matches!(key, FormKey::Space) && state.kind == FormElementKind::Input(InputType::Checkbox) {
+            if matches!(key, FormKey::Space)
+                && state.kind == FormElementKind::Input(InputType::Checkbox)
+            {
                 state.checked = !state.checked;
                 return FormEditResult::Changed;
             }
@@ -251,7 +253,9 @@ fn collect_inputs_recursive(
             // Skip unchecked checkboxes/radios.
             let include = match state.kind {
                 FormElementKind::Input(InputType::Checkbox | InputType::Radio) => state.checked,
-                FormElementKind::Input(InputType::Submit | InputType::Button | InputType::Hidden) => {
+                FormElementKind::Input(
+                    InputType::Submit | InputType::Button | InputType::Hidden,
+                ) => {
                     // Submit buttons only included if they are the submitter.
                     // For simplicity, include hidden fields always.
                     matches!(state.kind, FormElementKind::Input(InputType::Hidden))
@@ -259,11 +263,16 @@ fn collect_inputs_recursive(
                 _ => true,
             };
             if include {
-                let value = if state.kind == FormElementKind::Input(InputType::Checkbox) && state.checked {
-                    if state.value.is_empty() { "on".to_string() } else { state.value.clone() }
-                } else {
-                    state.value.clone()
-                };
+                let value =
+                    if state.kind == FormElementKind::Input(InputType::Checkbox) && state.checked {
+                        if state.value.is_empty() {
+                            "on".to_string()
+                        } else {
+                            state.value.clone()
+                        }
+                    } else {
+                        state.value.clone()
+                    };
                 out.push((state.name.clone(), value));
             }
         }
@@ -281,13 +290,7 @@ fn collect_inputs_recursive(
 pub fn encode_form_data(pairs: &[(String, String)]) -> String {
     pairs
         .iter()
-        .map(|(k, v)| {
-            format!(
-                "{}={}",
-                percent_encode(k),
-                percent_encode(v)
-            )
-        })
+        .map(|(k, v)| format!("{}={}", percent_encode(k), percent_encode(v)))
         .collect::<Vec<_>>()
         .join("&")
 }
@@ -381,7 +384,10 @@ mod tests {
         let handler = FormHandler::new();
         let mut states = FormStateMap::new();
         let doc = Document::new();
-        assert_eq!(handler.handle_char('a', &mut states, &doc), FormEditResult::NoChange);
+        assert_eq!(
+            handler.handle_char('a', &mut states, &doc),
+            FormEditResult::NoChange
+        );
     }
 
     #[test]

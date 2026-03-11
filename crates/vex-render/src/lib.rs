@@ -5,6 +5,7 @@
 //!
 //! GPU rendering pipeline and platform windowing for the Vex browser engine.
 
+pub mod canvas2d;
 pub mod display_list;
 pub mod event;
 pub mod form_painter;

@@ -169,19 +169,23 @@ impl SyncClient {
     /// Encrypt a record payload for sync.
     ///
     /// Uses the sync encryption key derived from the user's password.
-    pub fn encrypt_payload(plaintext: &[u8], key: &vex_crypto::SymmetricKey) -> Result<String, SyncError> {
-        let encrypted = vex_crypto::encrypt(key, plaintext)
-            .map_err(|e| SyncError::Crypto(e.to_string()))?;
+    pub fn encrypt_payload(
+        plaintext: &[u8],
+        key: &vex_crypto::SymmetricKey,
+    ) -> Result<String, SyncError> {
+        let encrypted =
+            vex_crypto::encrypt(key, plaintext).map_err(|e| SyncError::Crypto(e.to_string()))?;
         // Encode as base64 for JSON transport.
         Ok(base64_encode(&encrypted))
     }
 
     /// Decrypt a record payload from sync.
-    pub fn decrypt_payload(encoded: &str, key: &vex_crypto::SymmetricKey) -> Result<Vec<u8>, SyncError> {
-        let data = base64_decode(encoded)
-            .map_err(|e| SyncError::Serialization(e.to_string()))?;
-        vex_crypto::decrypt(key, &data)
-            .map_err(|e| SyncError::Crypto(e.to_string()))
+    pub fn decrypt_payload(
+        encoded: &str,
+        key: &vex_crypto::SymmetricKey,
+    ) -> Result<Vec<u8>, SyncError> {
+        let data = base64_decode(encoded).map_err(|e| SyncError::Serialization(e.to_string()))?;
+        vex_crypto::decrypt(key, &data).map_err(|e| SyncError::Crypto(e.to_string()))
     }
 
     /// Build a sync record from plaintext data.
@@ -299,7 +303,9 @@ mod tests {
     #[test]
     fn sign_in_and_out() {
         let mut client = SyncClient::new();
-        client.sign_in("https://sync.example.com", "user1", "token123").unwrap();
+        client
+            .sign_in("https://sync.example.com", "user1", "token123")
+            .unwrap();
         assert!(client.is_authenticated());
         assert_eq!(client.server_url(), Some("https://sync.example.com"));
 
@@ -341,7 +347,8 @@ mod tests {
             SyncCollection::Bookmarks,
             b"{\"url\":\"https://example.com\"}",
             &key,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(record.id, "bm-001");
         assert!(!record.deleted);
         assert!(!record.payload.is_empty());

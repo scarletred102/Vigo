@@ -11,7 +11,7 @@ use selectors::matching::{matches_selector_list, ElementSelectorFlags};
 use selectors::OpaqueElement;
 
 use crate::arena::NodeArena;
-use crate::node::{Namespace, NodeData};
+use crate::node::{ElementState, Namespace, NodeData};
 use crate::selector_impl::{
     VexAttrValue, VexIdentifier, VexLocalName, VexNamespaceUrl, VexPseudoClass, VexPseudoElement,
     VexSelectorImpl,
@@ -64,6 +64,39 @@ impl<'a> VexElement<'a> {
             _ => unreachable!(),
         }
     }
+
+    /// Walk up the DOM to find the nearest `lang` attribute value.
+    fn find_lang(&self) -> String {
+        let mut nid = Some(self.id);
+        while let Some(current) = nid {
+            if let NodeData::Element(ref el) = self.arena.get(current).data {
+                if let Some(attr) = el.attributes.iter().find(|a| a.name == "lang") {
+                    return attr.value.clone();
+                }
+            }
+            nid = self.arena.get(current).parent;
+        }
+        String::new()
+    }
+}
+
+/// Check if `actual_lang` matches or is a sub-tag of `expected_lang`.
+///
+/// Per BCP 47 / CSS :lang() semantics: `"en-US"` matches `"en"`.
+fn lang_matches(actual: &str, expected: &str) -> bool {
+    if actual.is_empty() {
+        return false;
+    }
+    if actual.eq_ignore_ascii_case(expected) {
+        return true;
+    }
+    // Check prefix: "en-US" starts with "en-"
+    if actual.len() > expected.len() {
+        let prefix = &actual[..expected.len()];
+        let separator = actual.as_bytes()[expected.len()];
+        return prefix.eq_ignore_ascii_case(expected) && separator == b'-';
+    }
+    false
 }
 
 // ── selectors::Element ──────────────────────────────────────────────
@@ -199,11 +232,25 @@ impl<'a> selectors::Element for VexElement<'a> {
 
     fn match_non_ts_pseudo_class(
         &self,
-        _pc: &VexPseudoClass,
+        pc: &VexPseudoClass,
         _context: &mut MatchingContext<VexSelectorImpl>,
     ) -> bool {
-        // VexPseudoClass is uninhabited.
-        false
+        let el = self.elem_data();
+        match pc {
+            // Link pseudo-classes — :link and :any-link match unvisited links.
+            VexPseudoClass::AnyLink | VexPseudoClass::Link => self.is_link(),
+            // We never track visited state (privacy), so :visited always false.
+            VexPseudoClass::Visited => false,
+            // :lang() — walk up DOM looking for lang attribute.
+            VexPseudoClass::Lang(ref expected_lang) => {
+                let actual = self.find_lang();
+                lang_matches(&actual, expected_lang)
+            }
+            // :read-only is the inverse of :read-write
+            VexPseudoClass::ReadOnly => !el.state.contains(ElementState::READ_WRITE),
+            // All other pseudo-classes map to ElementState flags.
+            other => el.state.contains(other.state_flag()),
+        }
     }
 
     fn match_pseudo_element(
@@ -211,7 +258,10 @@ impl<'a> selectors::Element for VexElement<'a> {
         _pe: &VexPseudoElement,
         _context: &mut MatchingContext<VexSelectorImpl>,
     ) -> bool {
-        false
+        // Pseudo-elements are matched structurally by the `selectors` crate
+        // itself — we return true if the element supports the pseudo-element.
+        // For now, all elements can have ::before/::after/etc.
+        true
     }
 
     fn apply_selector_flags(&self, _flags: ElementSelectorFlags) {
@@ -375,7 +425,7 @@ pub fn query_selector(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::{ElementData, Namespace, NodeData};
+    use crate::node::{ElementData, ElementState, Namespace, NodeData};
     use crate::{attributes, tree};
 
     fn make_element(arena: &mut NodeArena, tag: &str) -> VexId {
@@ -385,6 +435,7 @@ mod tests {
             attributes: Vec::new(),
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }))
     }
 
@@ -501,5 +552,229 @@ mod tests {
     fn query_invalid_selector_returns_err() {
         let (arena, doc) = build_simple_tree();
         assert!(query_selector_all(&arena, doc, "!!!").is_err());
+    }
+
+    // ── Pseudo-class matching tests ─────────────────────────────────
+
+    #[test]
+    fn hover_matches_when_state_set() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let div = make_element(&mut arena, "div");
+        tree::append_child(&mut arena, doc, div);
+
+        // Set hover state
+        if let NodeData::Element(ref mut el) = arena.get_mut(div).data {
+            el.state.insert(ElementState::HOVER);
+        }
+
+        let result = query_selector_all(&arena, doc, "div:hover").unwrap();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn hover_does_not_match_without_state() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let div = make_element(&mut arena, "div");
+        tree::append_child(&mut arena, doc, div);
+
+        let result = query_selector_all(&arena, doc, "div:hover").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn focus_matches_when_state_set() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let input = make_element(&mut arena, "input");
+        tree::append_child(&mut arena, doc, input);
+
+        if let NodeData::Element(ref mut el) = arena.get_mut(input).data {
+            el.state.insert(ElementState::FOCUS);
+        }
+
+        let result = query_selector(&arena, doc, "input:focus").unwrap();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn checked_matches_when_state_set() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let input = make_element(&mut arena, "input");
+        tree::append_child(&mut arena, doc, input);
+        attributes::set_attribute(&mut arena, input, "type", "checkbox");
+
+        if let NodeData::Element(ref mut el) = arena.get_mut(input).data {
+            el.state.insert(ElementState::CHECKED);
+        }
+
+        let result = query_selector(&arena, doc, "input:checked").unwrap();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn disabled_matches_when_state_set() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let input = make_element(&mut arena, "input");
+        tree::append_child(&mut arena, doc, input);
+
+        if let NodeData::Element(ref mut el) = arena.get_mut(input).data {
+            el.state.insert(ElementState::DISABLED);
+        }
+
+        let result = query_selector(&arena, doc, "input:disabled").unwrap();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn link_matches_anchor_with_href() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let a = make_element(&mut arena, "a");
+        tree::append_child(&mut arena, doc, a);
+        attributes::set_attribute(&mut arena, a, "href", "https://example.com");
+
+        let result = query_selector(&arena, doc, "a:link").unwrap();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn link_does_not_match_anchor_without_href() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let a = make_element(&mut arena, "a");
+        tree::append_child(&mut arena, doc, a);
+
+        let result = query_selector(&arena, doc, "a:link").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn any_link_matches_anchor_with_href() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let a = make_element(&mut arena, "a");
+        tree::append_child(&mut arena, doc, a);
+        attributes::set_attribute(&mut arena, a, "href", "#foo");
+
+        let result = query_selector(&arena, doc, "a:any-link").unwrap();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn visited_never_matches() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let a = make_element(&mut arena, "a");
+        tree::append_child(&mut arena, doc, a);
+        attributes::set_attribute(&mut arena, a, "href", "https://example.com");
+
+        let result = query_selector(&arena, doc, "a:visited").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn read_only_matches_when_not_read_write() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let input = make_element(&mut arena, "input");
+        tree::append_child(&mut arena, doc, input);
+        // No READ_WRITE state → :read-only matches.
+
+        let result = query_selector(&arena, doc, "input:read-only").unwrap();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn read_only_does_not_match_when_read_write() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let input = make_element(&mut arena, "input");
+        tree::append_child(&mut arena, doc, input);
+
+        if let NodeData::Element(ref mut el) = arena.get_mut(input).data {
+            el.state.insert(ElementState::READ_WRITE);
+        }
+
+        let result = query_selector(&arena, doc, "input:read-only").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn lang_matches_element_with_lang_attr() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let html = make_element(&mut arena, "html");
+        let p = make_element(&mut arena, "p");
+        tree::append_child(&mut arena, doc, html);
+        tree::append_child(&mut arena, html, p);
+        attributes::set_attribute(&mut arena, html, "lang", "en-US");
+
+        let result = query_selector(&arena, doc, "p:lang(en)").unwrap();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn lang_matches_exact() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let p = make_element(&mut arena, "p");
+        tree::append_child(&mut arena, doc, p);
+        attributes::set_attribute(&mut arena, p, "lang", "fr");
+
+        let result = query_selector(&arena, doc, "p:lang(fr)").unwrap();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn lang_does_not_match_different_lang() {
+        let mut arena = NodeArena::new();
+        let doc = arena.alloc(NodeData::Document);
+        let p = make_element(&mut arena, "p");
+        tree::append_child(&mut arena, doc, p);
+        attributes::set_attribute(&mut arena, p, "lang", "fr");
+
+        let result = query_selector(&arena, doc, "p:lang(de)").unwrap();
+        assert!(result.is_none());
+    }
+
+    // ── ElementState unit tests ─────────────────────────────────────
+
+    #[test]
+    fn element_state_insert_contains() {
+        let mut s = ElementState::default();
+        assert!(!s.contains(ElementState::HOVER));
+        s.insert(ElementState::HOVER);
+        assert!(s.contains(ElementState::HOVER));
+    }
+
+    #[test]
+    fn element_state_remove() {
+        let mut s = ElementState::default();
+        s.insert(ElementState::FOCUS);
+        s.remove(ElementState::FOCUS);
+        assert!(!s.contains(ElementState::FOCUS));
+    }
+
+    #[test]
+    fn element_state_set() {
+        let mut s = ElementState::default();
+        s.set(ElementState::ACTIVE, true);
+        assert!(s.contains(ElementState::ACTIVE));
+        s.set(ElementState::ACTIVE, false);
+        assert!(!s.contains(ElementState::ACTIVE));
+    }
+
+    #[test]
+    fn element_state_multiple_flags() {
+        let mut s = ElementState::default();
+        s.insert(ElementState::HOVER);
+        s.insert(ElementState::FOCUS);
+        assert!(s.contains(ElementState::HOVER));
+        assert!(s.contains(ElementState::FOCUS));
+        assert!(!s.contains(ElementState::ACTIVE));
     }
 }

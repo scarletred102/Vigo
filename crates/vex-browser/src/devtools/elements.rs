@@ -776,7 +776,7 @@ fn expand_rect(r: Rect, i: Insets) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vex_dom::node::Namespace;
+    use vex_dom::node::{ElementState, Namespace};
 
     fn build_test_doc() -> Document {
         let mut doc = Document::new();
@@ -805,6 +805,7 @@ mod tests {
             ],
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         });
         doc.append_child(body, div);
 

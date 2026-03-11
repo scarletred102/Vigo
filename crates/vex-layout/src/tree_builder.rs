@@ -82,7 +82,7 @@ fn build_box_for_node(
 
             // Anonymous block wrapping: if a block container has mixed
             // block + inline children, wrap inline runs in anonymous blocks.
-            if box_type == BoxType::Block || box_type == BoxType::Flex {
+            if box_type == BoxType::Block || box_type == BoxType::Flex || box_type == BoxType::Grid {
                 layout_box.children = wrap_anonymous_blocks(child_boxes);
             } else {
                 layout_box.children = child_boxes;
@@ -121,10 +121,9 @@ fn display_to_box_type(display: Display) -> BoxType {
         Display::Block | Display::ListItem | Display::Table => BoxType::Block,
         Display::Inline => BoxType::Inline,
         Display::InlineBlock => BoxType::InlineBlock,
-        Display::Flex => BoxType::Flex,
-        Display::InlineFlex => BoxType::Flex,
-        Display::Grid | Display::InlineGrid => BoxType::Block, // Grid → block for now
-        Display::None => BoxType::Block,                       // Shouldn't reach here
+        Display::Flex | Display::InlineFlex => BoxType::Flex,
+        Display::Grid | Display::InlineGrid => BoxType::Grid,
+        Display::None => BoxType::Block,     // Shouldn't reach here
         Display::Contents => BoxType::Block,
         Display::TableRow | Display::TableCell => BoxType::Block,
     }
@@ -133,8 +132,10 @@ fn display_to_box_type(display: Display) -> BoxType {
 /// If a list of child boxes has a mix of block and inline children,
 /// wrap consecutive inline children in anonymous block boxes.
 fn wrap_anonymous_blocks(children: Vec<LayoutBox>) -> Vec<LayoutBox> {
-    let has_block = children.iter().any(|c| c.box_type == BoxType::Block);
-    let has_inline = children.iter().any(|c| c.box_type != BoxType::Block);
+    let is_block_level =
+        |bt: BoxType| matches!(bt, BoxType::Block | BoxType::Flex | BoxType::Grid);
+    let has_block = children.iter().any(|c| is_block_level(c.box_type));
+    let has_inline = children.iter().any(|c| !is_block_level(c.box_type));
 
     // No mixing — return as-is
     if !has_block || !has_inline {
@@ -145,7 +146,7 @@ fn wrap_anonymous_blocks(children: Vec<LayoutBox>) -> Vec<LayoutBox> {
     let mut inline_run: Vec<LayoutBox> = Vec::new();
 
     for child in children {
-        if child.box_type == BoxType::Block || child.box_type == BoxType::Flex {
+        if is_block_level(child.box_type) {
             // Flush any accumulated inline run
             if !inline_run.is_empty() {
                 let mut anon = LayoutBox::new(None, BoxType::Anonymous);

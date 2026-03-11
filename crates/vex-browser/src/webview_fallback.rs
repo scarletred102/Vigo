@@ -259,8 +259,7 @@ impl WebViewFallback {
                 return Self::check_webview2_registry();
             }
 
-            type GetVersionFn =
-                unsafe extern "system" fn(*const u16, *mut *mut u16) -> i32;
+            type GetVersionFn = unsafe extern "system" fn(*const u16, *mut *mut u16) -> i32;
             let proc_name = b"GetAvailableCoreWebView2BrowserVersionString\0";
             let proc = GetProcAddress(handle, proc_name.as_ptr().cast());
             if proc.is_null() {

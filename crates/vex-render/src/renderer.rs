@@ -22,9 +22,9 @@ const INITIAL_MAX_GLYPHS: usize = 8192;
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct RectInstance {
-    rect: [f32; 4],   // x, y, width, height
-    color: [f32; 4],  // r, g, b, a
-    extra: [f32; 4],  // border_radius, _pad, _pad, _pad
+    rect: [f32; 4],  // x, y, width, height
+    color: [f32; 4], // r, g, b, a
+    extra: [f32; 4], // border_radius, _pad, _pad, _pad
 }
 
 /// Instance data for one glyph: rect + atlas UV + color.
@@ -587,7 +587,11 @@ fn collect_rect_instances(dl: &DisplayList) -> Vec<RectInstance> {
             DisplayCommand::PopOpacity => {
                 current_opacity = opacity_stack.pop().unwrap_or(1.0);
             }
-            DisplayCommand::FillRect { rect, color, border_radius } => {
+            DisplayCommand::FillRect {
+                rect,
+                color,
+                border_radius,
+            } => {
                 let mut c = color.to_f32_array();
                 c[3] *= current_opacity;
                 instances.push(RectInstance {

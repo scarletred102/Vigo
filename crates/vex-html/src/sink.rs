@@ -14,7 +14,7 @@ use html5ever::{
 use tendril::StrTendril;
 
 use vex_core::VexId;
-use vex_dom::node::{Attribute, ElementData, Namespace, NodeData};
+use vex_dom::node::{Attribute, ElementData, ElementState, Namespace, NodeData};
 use vex_dom::{tree, Document};
 
 // ── Owned ElemName wrapper (avoids lifetime issues with RefCell) ──────
@@ -151,6 +151,7 @@ impl TreeSink for VexSink {
             attributes: dom_attrs,
             template_contents: None,
             mathml_annotation_xml_integration_point: flags.mathml_annotation_xml_integration_point,
+            state: ElementState::default(),
         }));
 
         // Store QualName for later `elem_name` lookups.

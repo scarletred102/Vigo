@@ -108,3 +108,13 @@ boa_gc = "0.19"
 
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
+
+# WebSocket
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+
+# Base64
+base64 = "0.22"
+
+# SHA-1 for WebSocket handshake
+sha1 = "0.10"

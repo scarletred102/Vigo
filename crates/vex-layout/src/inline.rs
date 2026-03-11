@@ -268,9 +268,27 @@ mod tests {
     fn justify_distributes_space_between_fragments() {
         let mut line = LineBox {
             fragments: vec![
-                InlineFragment { child_index: 0, x: 0.0, y: 0.0, width: 100.0, height: 20.0 },
-                InlineFragment { child_index: 1, x: 100.0, y: 0.0, width: 100.0, height: 20.0 },
-                InlineFragment { child_index: 2, x: 200.0, y: 0.0, width: 100.0, height: 20.0 },
+                InlineFragment {
+                    child_index: 0,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 20.0,
+                },
+                InlineFragment {
+                    child_index: 1,
+                    x: 100.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 20.0,
+                },
+                InlineFragment {
+                    child_index: 2,
+                    x: 200.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 20.0,
+                },
             ],
             width: 300.0,
             height: 20.0,
@@ -286,8 +304,20 @@ mod tests {
     fn justify_last_line_not_justified() {
         let mut line = LineBox {
             fragments: vec![
-                InlineFragment { child_index: 0, x: 0.0, y: 0.0, width: 100.0, height: 20.0 },
-                InlineFragment { child_index: 1, x: 100.0, y: 0.0, width: 100.0, height: 20.0 },
+                InlineFragment {
+                    child_index: 0,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 20.0,
+                },
+                InlineFragment {
+                    child_index: 1,
+                    x: 100.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 20.0,
+                },
             ],
             width: 200.0,
             height: 20.0,

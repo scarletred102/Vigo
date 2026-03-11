@@ -133,7 +133,16 @@ fn calculate_block_width(
 }
 
 /// Layout block children vertically, stacking them top-to-bottom.
+///
+/// If any child has `float` or `clear` set, delegates to the float-aware
+/// layout path in [`crate::float`].
 fn layout_block_children(layout_box: &mut LayoutBox, styles: &HashMap<VexId, ComputedStyle>) {
+    // Check if any child uses floats or clears — if so, use the float layout path.
+    if crate::float::has_floats_or_clears(layout_box, styles) {
+        crate::float::layout_block_children_with_floats(layout_box, styles);
+        return;
+    }
+
     let d = &layout_box.dimensions;
     let containing = ContainingBlock {
         width: d.content.size.width,
@@ -149,7 +158,7 @@ fn layout_block_children(layout_box: &mut LayoutBox, styles: &HashMap<VexId, Com
 
     for child in &mut children {
         match child.box_type {
-            BoxType::Block | BoxType::Anonymous | BoxType::Flex => {
+            BoxType::Block | BoxType::Anonymous | BoxType::Flex | BoxType::Grid => {
                 // Recursively layout the child
                 layout_block(child, containing, styles);
 
@@ -269,7 +278,7 @@ fn clamp_dimension(value: f32, min: f32, max: f32) -> f32 {
 
 /// Collapse two adjacent vertical margins per CSS 2.1 §8.3.1.
 /// Returns the effective margin (max of both, respecting negative margins).
-fn collapse_margins(margin_a: f32, margin_b: f32) -> f32 {
+pub fn collapse_margins(margin_a: f32, margin_b: f32) -> f32 {
     if margin_a >= 0.0 && margin_b >= 0.0 {
         margin_a.max(margin_b)
     } else if margin_a < 0.0 && margin_b < 0.0 {

@@ -19,6 +19,8 @@
 pub mod block;
 pub mod box_model;
 pub mod flex;
+pub mod float;
+pub mod grid;
 pub mod hit_test;
 pub mod inline;
 pub mod positioned;
@@ -88,6 +90,9 @@ fn layout_recursive(
         }
         BoxType::Flex => {
             flex::layout_flex(layout_box, containing, styles);
+        }
+        BoxType::Grid => {
+            grid::layout_grid(layout_box, containing, styles);
         }
         BoxType::Inline => {
             // Inline boxes are sized during inline formatting context.

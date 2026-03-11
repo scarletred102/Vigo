@@ -5,12 +5,17 @@
 
 use vex_core::Color;
 
-use crate::values::box_model::{BorderStyle, BoxSizing, Visibility};
+use crate::values::animation::{
+    AnimationDirection, AnimationFillMode, AnimationIterationCount, AnimationPlayState,
+    TimingFunction, TransitionProperty,
+};
+use crate::values::box_model::{BorderStyle, BoxSizing, Clear, Float, Visibility};
 use crate::values::display::Display;
 use crate::values::flex::{
     AlignContent, AlignItems, AlignSelf, FlexDirection, FlexWrap, JustifyContent,
 };
 use crate::values::font::{FontFamily, FontStyle, FontWeight};
+use crate::values::grid::{GridAutoFlow, GridLine, TrackList};
 use crate::values::position::Position;
 use crate::values::text::{Cursor, Overflow, TextAlign, TextDecoration, VerticalAlign, WhiteSpace};
 
@@ -103,6 +108,43 @@ pub struct ComputedStyle {
 
     // Vertical align
     pub vertical_align: VerticalAlign,
+
+    // Float & clear
+    pub float: Float,
+    pub clear: Clear,
+
+    // Grid
+    pub grid_template_columns: TrackList,
+    pub grid_template_rows: TrackList,
+    pub grid_auto_flow: GridAutoFlow,
+    pub grid_column_start: GridLine,
+    pub grid_column_end: GridLine,
+    pub grid_row_start: GridLine,
+    pub grid_row_end: GridLine,
+    pub grid_column_gap: f32,
+    pub grid_row_gap: f32,
+
+    // Transitions
+    pub transition_property: TransitionProperty,
+    pub transition_duration: f32,
+    pub transition_timing_function: TimingFunction,
+    pub transition_delay: f32,
+
+    // Animations
+    pub animation_name: String,
+    pub animation_duration: f32,
+    pub animation_timing_function: TimingFunction,
+    pub animation_delay: f32,
+    pub animation_iteration_count: AnimationIterationCount,
+    pub animation_direction: AnimationDirection,
+    pub animation_fill_mode: AnimationFillMode,
+    pub animation_play_state: AnimationPlayState,
+
+    // Transform & filters
+    pub transform: crate::values::transform::TransformList,
+    pub transform_origin: crate::values::transform::TransformOrigin,
+    pub filter: crate::values::transform::FilterList,
+    pub backdrop_filter: crate::values::transform::FilterList,
 }
 
 impl Default for ComputedStyle {
@@ -180,6 +222,38 @@ impl Default for ComputedStyle {
             left: f32::NAN,
 
             vertical_align: VerticalAlign::Baseline,
+
+            float: Float::None,
+            clear: Clear::None,
+
+            grid_template_columns: TrackList::default(),
+            grid_template_rows: TrackList::default(),
+            grid_auto_flow: GridAutoFlow::Row,
+            grid_column_start: GridLine::Auto,
+            grid_column_end: GridLine::Auto,
+            grid_row_start: GridLine::Auto,
+            grid_row_end: GridLine::Auto,
+            grid_column_gap: 0.0,
+            grid_row_gap: 0.0,
+
+            transition_property: TransitionProperty::All,
+            transition_duration: 0.0,
+            transition_timing_function: TimingFunction::Ease,
+            transition_delay: 0.0,
+
+            animation_name: String::new(),
+            animation_duration: 0.0,
+            animation_timing_function: TimingFunction::Ease,
+            animation_delay: 0.0,
+            animation_iteration_count: AnimationIterationCount::Number(1.0),
+            animation_direction: AnimationDirection::Normal,
+            animation_fill_mode: AnimationFillMode::None,
+            animation_play_state: AnimationPlayState::Running,
+
+            transform: crate::values::transform::TransformList::new(),
+            transform_origin: crate::values::transform::TransformOrigin::default(),
+            filter: crate::values::transform::FilterList::new(),
+            backdrop_filter: crate::values::transform::FilterList::new(),
         }
     }
 }
@@ -272,6 +346,38 @@ impl ComputedStyle {
             Property::Left(l) => self.left = px(l),
 
             Property::VerticalAlign(v) => self.vertical_align = *v,
+
+            Property::Float(v) => self.float = *v,
+            Property::Clear(v) => self.clear = *v,
+
+            Property::GridTemplateColumns(v) => self.grid_template_columns = v.clone(),
+            Property::GridTemplateRows(v) => self.grid_template_rows = v.clone(),
+            Property::GridAutoFlow(v) => self.grid_auto_flow = *v,
+            Property::GridColumnStart(v) => self.grid_column_start = *v,
+            Property::GridColumnEnd(v) => self.grid_column_end = *v,
+            Property::GridRowStart(v) => self.grid_row_start = *v,
+            Property::GridRowEnd(v) => self.grid_row_end = *v,
+            Property::GridColumnGap(v) => self.grid_column_gap = *v,
+            Property::GridRowGap(v) => self.grid_row_gap = *v,
+
+            Property::TransitionProperty(v) => self.transition_property = v.clone(),
+            Property::TransitionDuration(v) => self.transition_duration = *v,
+            Property::TransitionTimingFunction(v) => self.transition_timing_function = *v,
+            Property::TransitionDelay(v) => self.transition_delay = *v,
+
+            Property::AnimationName(v) => self.animation_name = v.clone(),
+            Property::AnimationDuration(v) => self.animation_duration = *v,
+            Property::AnimationTimingFunction(v) => self.animation_timing_function = *v,
+            Property::AnimationDelay(v) => self.animation_delay = *v,
+            Property::AnimationIterationCount(v) => self.animation_iteration_count = *v,
+            Property::AnimationDirection(v) => self.animation_direction = *v,
+            Property::AnimationFillMode(v) => self.animation_fill_mode = *v,
+            Property::AnimationPlayState(v) => self.animation_play_state = *v,
+
+            Property::Transform(v) => self.transform = v.clone(),
+            Property::TransformOrigin(v) => self.transform_origin = v.clone(),
+            Property::Filter(v) => self.filter = v.clone(),
+            Property::BackdropFilter(v) => self.backdrop_filter = v.clone(),
         }
     }
 }

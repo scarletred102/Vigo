@@ -115,10 +115,7 @@ impl StreamingSession {
         self.total_segments = playlist.segments.len();
         self.segment_durations = playlist.segments.iter().map(|s| s.duration).collect();
         self.state = SessionState::Active;
-        tracing::info!(
-            segments = self.total_segments,
-            "HLS media playlist loaded"
-        );
+        tracing::info!(segments = self.total_segments, "HLS media playlist loaded");
     }
 
     // ── DASH ───────────────────────────────────────────────────

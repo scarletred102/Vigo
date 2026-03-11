@@ -32,6 +32,69 @@ pub struct Attribute {
     pub value: String,
 }
 
+/// Bit-flags tracking dynamic interaction / form state on an element.
+///
+/// Used by the CSS selector engine to match pseudo-classes like `:hover`,
+/// `:focus`, `:checked`, etc.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ElementState(pub u32);
+
+impl ElementState {
+    pub const HOVER: u32 = 1 << 0;
+    pub const ACTIVE: u32 = 1 << 1;
+    pub const FOCUS: u32 = 1 << 2;
+    pub const FOCUS_WITHIN: u32 = 1 << 3;
+    pub const ENABLED: u32 = 1 << 4;
+    pub const DISABLED: u32 = 1 << 5;
+    pub const CHECKED: u32 = 1 << 6;
+    pub const INDETERMINATE: u32 = 1 << 7;
+    pub const READ_ONLY: u32 = 1 << 8;
+    pub const READ_WRITE: u32 = 1 << 9;
+    pub const PLACEHOLDER_SHOWN: u32 = 1 << 10;
+    pub const DEFAULT: u32 = 1 << 11;
+    pub const REQUIRED: u32 = 1 << 12;
+    pub const OPTIONAL: u32 = 1 << 13;
+    pub const VALID: u32 = 1 << 14;
+    pub const INVALID: u32 = 1 << 15;
+    pub const IN_RANGE: u32 = 1 << 16;
+    pub const OUT_OF_RANGE: u32 = 1 << 17;
+    pub const VISITED: u32 = 1 << 18;
+    pub const TARGET: u32 = 1 << 19;
+    pub const FOCUS_VISIBLE: u32 = 1 << 20;
+    pub const OPEN: u32 = 1 << 21;
+    pub const DEFINED: u32 = 1 << 22;
+    pub const FULLSCREEN: u32 = 1 << 23;
+    pub const AUTOFILL: u32 = 1 << 24;
+
+    /// Returns `true` if this state contains the given flag.
+    #[inline]
+    pub fn contains(self, flag: u32) -> bool {
+        self.0 & flag != 0
+    }
+
+    /// Insert (set) a flag.
+    #[inline]
+    pub fn insert(&mut self, flag: u32) {
+        self.0 |= flag;
+    }
+
+    /// Remove (clear) a flag.
+    #[inline]
+    pub fn remove(&mut self, flag: u32) {
+        self.0 &= !flag;
+    }
+
+    /// Set or clear a flag depending on `value`.
+    #[inline]
+    pub fn set(&mut self, flag: u32, value: bool) {
+        if value {
+            self.insert(flag);
+        } else {
+            self.remove(flag);
+        }
+    }
+}
+
 /// Data specific to element nodes.
 #[derive(Debug, Clone)]
 pub struct ElementData {
@@ -45,6 +108,8 @@ pub struct ElementData {
     pub template_contents: Option<VexId>,
     /// MathML annotation-xml integration point flag (used by html5ever).
     pub mathml_annotation_xml_integration_point: bool,
+    /// Dynamic interaction / form state flags (`:hover`, `:focus`, etc.).
+    pub state: ElementState,
 }
 
 /// The payload carried by each DOM node.

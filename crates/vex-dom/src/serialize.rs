@@ -103,7 +103,7 @@ fn is_void(tag: &str) -> bool {
 mod tests {
     use super::*;
     use crate::arena::NodeArena;
-    use crate::node::{Attribute, ElementData, Namespace, NodeData};
+    use crate::node::{Attribute, ElementData, ElementState, Namespace, NodeData};
     use crate::tree::append_child;
 
     fn make_element(arena: &mut NodeArena, tag: &str, attrs: Vec<(&str, &str)>) -> VexId {
@@ -119,6 +119,7 @@ mod tests {
                 .collect(),
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }))
     }
 

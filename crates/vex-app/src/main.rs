@@ -497,6 +497,14 @@ fn run() {
             &sources_state,
         );
 
+        // ── Tick JS timers for active tab (Task: timer queue) ────
+        {
+            let active_id = tab_mgr.active_tab().id;
+            if let Some(tab) = tab_mgr.tab_mut(active_id) {
+                tab.tick_timers();
+            }
+        }
+
         // ── Render ──────────────────────────────────────────────
         renderer.prepare(&gpu.device, &gpu.queue, &dl, vp_w, vp_h);
 
@@ -903,9 +911,7 @@ fn handle_browser_action(
                 navigate_tab(tab_mgr, &url, vp_w, vp_h);
             }
         }
-        BrowserAction::DevTools
-        | BrowserAction::Fullscreen
-         => {
+        BrowserAction::DevTools | BrowserAction::Fullscreen => {
             tracing::info!("{action:?} (UI not yet wired)");
         }
     }
@@ -1168,15 +1174,9 @@ fn compose_frame(
                 let mut entry_y = body.origin.y + 4.0;
                 for entry in entries.iter().rev().take(30) {
                     let color = match entry.level {
-                        vex_browser::devtools::console::LogLevel::Error => {
-                            Color::rgb(220, 80, 80)
-                        }
-                        vex_browser::devtools::console::LogLevel::Warn => {
-                            Color::rgb(220, 180, 60)
-                        }
-                        vex_browser::devtools::console::LogLevel::Info => {
-                            Color::rgb(100, 180, 220)
-                        }
+                        vex_browser::devtools::console::LogLevel::Error => Color::rgb(220, 80, 80),
+                        vex_browser::devtools::console::LogLevel::Warn => Color::rgb(220, 180, 60),
+                        vex_browser::devtools::console::LogLevel::Info => Color::rgb(100, 180, 220),
                         vex_browser::devtools::console::LogLevel::Debug => {
                             Color::rgb(120, 120, 140)
                         }
@@ -1507,7 +1507,11 @@ fn offset_command(
     use vex_render::display_list::DisplayCommand;
 
     match cmd {
-        DisplayCommand::FillRect { rect, color, border_radius } => DisplayCommand::FillRect {
+        DisplayCommand::FillRect {
+            rect,
+            color,
+            border_radius,
+        } => DisplayCommand::FillRect {
             rect: Rect::new(
                 rect.origin.x + dx,
                 rect.origin.y + dy,

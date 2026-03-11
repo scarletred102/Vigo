@@ -229,7 +229,7 @@ const HEX_UPPER: &[u8; 16] = b"0123456789ABCDEF";
 mod tests {
     use super::*;
     use crate::forms::{InputState, InputType};
-    use crate::node::Namespace;
+    use crate::node::{ElementState, Namespace};
     use crate::tree;
 
     fn make_doc_with_form() -> (NodeArena, FormStateMap, VexId) {
@@ -252,6 +252,7 @@ mod tests {
             ],
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }));
 
         // <input type="text" name="username">
@@ -270,6 +271,7 @@ mod tests {
             ],
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }));
         tree::append_child(&mut arena, form, input_text);
 
@@ -294,6 +296,7 @@ mod tests {
             ],
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }));
         tree::append_child(&mut arena, form, input_cb);
 
@@ -329,6 +332,7 @@ mod tests {
             attributes: Vec::new(),
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }));
 
         let cb = arena.alloc(NodeData::Element(crate::node::ElementData {
@@ -346,6 +350,7 @@ mod tests {
             ],
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }));
         tree::append_child(&mut arena, form, cb);
 
@@ -368,6 +373,7 @@ mod tests {
             attributes: Vec::new(),
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }));
 
         let input = arena.alloc(NodeData::Element(crate::node::ElementData {
@@ -385,6 +391,7 @@ mod tests {
             ],
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }));
         tree::append_child(&mut arena, form, input);
 
@@ -463,6 +470,7 @@ mod tests {
             attributes: Vec::new(),
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }));
 
         // Hidden input with value attribute only
@@ -485,6 +493,7 @@ mod tests {
             ],
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }));
         tree::append_child(&mut arena, form, hidden);
 

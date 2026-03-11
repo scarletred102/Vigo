@@ -19,8 +19,8 @@ use std::collections::HashMap;
 use tracing::{debug, warn};
 use vex_core::{VexError, VexResult, VexUrl};
 use vex_security::{
-    classify_cors, classify_fetch, validate_response, CorsMode, CorsRequest, CspPolicy, FetchType,
-    Origin, ResourceType,
+    build_preflight_headers, classify_cors, classify_fetch, validate_preflight, validate_response,
+    CorsMode, CorsRequest, CspPolicy, FetchType, Origin, ResourceType,
 };
 
 /// Security context for the current page load.
@@ -99,30 +99,70 @@ pub async fn secure_fetch(
     let fetch_type = classify_fetch(&ctx.page_origin, &request.url);
     debug!(url = %request.url, ?fetch_type, "security classification");
 
-    // ── Step 3: Fetch (with CORS handling for cross-origin) ──────────
-    let response = client.fetch(request.clone()).await?;
-
-    if fetch_type == FetchType::CrossOrigin {
-        // Build a CORS request descriptor from what we sent
-        let cors_req = CorsRequest {
+    // ── Step 3: CORS classification ────────────────────────────────────
+    let cors_req = if fetch_type == FetchType::CrossOrigin {
+        let req = CorsRequest {
             origin: ctx.page_origin_str.clone(),
             method: request.method.to_http().to_string(),
             headers: request.headers.keys().map(|k| k.to_lowercase()).collect(),
             with_credentials: request.headers.contains_key("cookie")
                 || request.headers.contains_key("authorization"),
         };
+        Some(req)
+    } else {
+        None
+    };
 
-        let cors_mode = classify_cors(&cors_req);
+    // ── Step 4: Preflight (if needed) ────────────────────────────────
+    if let Some(ref cors_req) = cors_req {
+        let cors_mode = classify_cors(cors_req);
         debug!(?cors_mode, "CORS classification");
 
-        // For preflight requests we'd need to send an OPTIONS first.
-        // Log the classification — full preflight implementation requires
-        // another round-trip which we defer until integration testing.
         if cors_mode == CorsMode::Preflight {
-            debug!(url = %request.url, "CORS preflight would be required");
-        }
+            let preflight_headers = build_preflight_headers(cors_req);
 
-        // Validate the actual response CORS headers
+            let mut pf_hdrs = HashMap::new();
+            pf_hdrs.insert("origin".to_string(), preflight_headers.origin.clone());
+            pf_hdrs.insert(
+                "access-control-request-method".to_string(),
+                preflight_headers.request_method.clone(),
+            );
+            if let Some(ref h) = preflight_headers.request_headers {
+                pf_hdrs.insert("access-control-request-headers".to_string(), h.clone());
+            }
+
+            let preflight_req = vex_net::Request {
+                url: request.url.clone(),
+                method: vex_net::Method::Options,
+                headers: pf_hdrs,
+                body: None,
+            };
+
+            debug!(url = %request.url, "sending CORS preflight OPTIONS request");
+            let pf_response = client.fetch(preflight_req).await?;
+
+            if let Err(e) = validate_preflight(cors_req, &pf_response.headers) {
+                warn!(url = %request.url, "CORS preflight rejected: {e}");
+                return Err(VexError::Network(format!("CORS preflight error: {e}")));
+            }
+            debug!(url = %request.url, "CORS preflight succeeded");
+        }
+    }
+
+    // ── Step 5: Actual fetch ─────────────────────────────────────────
+    // Inject Origin header for cross-origin requests.
+    let mut actual_request = request.clone();
+    if let Some(ref cors_req) = cors_req {
+        actual_request
+            .headers
+            .entry("origin".to_string())
+            .or_insert_with(|| cors_req.origin.clone());
+    }
+
+    let response = client.fetch(actual_request).await?;
+
+    // ── Step 6: Validate CORS response headers ───────────────────────
+    if let Some(ref cors_req) = cors_req {
         if let Err(e) = validate_response(
             &ctx.page_origin_str,
             cors_req.with_credentials,
