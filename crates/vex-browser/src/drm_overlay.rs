@@ -13,12 +13,12 @@
 
 use vex_core::geometry::Rect;
 
-use crate::ui::chrome;
+use crate::ui::toolbar;
 use crate::webview_fallback::{WebViewConfig, WebViewFallback};
 
 /// Default chrome height offset (tab bar + nav bar + accent line, no bookmarks).
-fn default_chrome_height() -> f32 {
-    chrome::chrome_height(false)
+fn default_toolbar_height() -> f32 {
+    toolbar::toolbar_height(false)
 }
 
 /// Manages the seamless overlay of a WebView2 over the page content.
@@ -44,7 +44,7 @@ impl OverlayManager {
             fallback: WebViewFallback::new(),
             video_layout_rect: None,
             scroll_y: 0.0,
-            chrome_offset_y: default_chrome_height(),
+            chrome_offset_y: default_toolbar_height(),
             tab_active: true,
         }
     }
@@ -177,7 +177,7 @@ mod tests {
             assert!(mgr.is_rendering());
             let screen = mgr.screen_rect().unwrap();
             // Y = 200 (layout) - 0 (scroll) + 77 (chrome) = 277
-            let expected_y = 200.0 + default_chrome_height();
+            let expected_y = 200.0 + default_toolbar_height();
             assert!((screen.origin.y - expected_y).abs() < 0.1);
         }
     }
@@ -191,7 +191,7 @@ mod tests {
         mgr.on_scroll(200.0);
         let screen = mgr.screen_rect().unwrap();
         // Y = 500 - 200 + chrome_height
-        let expected_y = 500.0 - 200.0 + default_chrome_height();
+        let expected_y = 500.0 - 200.0 + default_toolbar_height();
         assert!((screen.origin.y - expected_y).abs() < 0.1);
     }
 

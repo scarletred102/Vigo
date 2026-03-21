@@ -85,21 +85,37 @@ async fn fetch_ten_https_sites() {
         "https://www.gnu.org/",
     ];
 
-    for url in urls {
-        let request = Request::get(url).expect("URL should parse");
-        let response = client.fetch(request).await.expect("fetch should succeed");
-        assert!(
-            response.is_success(),
-            "expected success for {url}, got {}",
-            response.status
-        );
+    let mut failures = Vec::new();
 
-        let body = response.text().expect("body should be UTF-8");
-        assert!(
-            body.contains('<') && body.contains('>'),
-            "expected HTML-ish body for {url}"
-        );
+    for url in urls {
+        eprintln!("[fetch_ten_https_sites] fetching {url}");
+
+        let request = Request::get(url).expect("URL should parse");
+        match client.fetch(request).await {
+            Ok(response) => {
+                if !response.is_success() {
+                    failures.push(format!("{url}: non-success status {}", response.status));
+                    continue;
+                }
+
+                match response.text() {
+                    Ok(body) => {
+                        if !(body.contains('<') && body.contains('>')) {
+                            failures.push(format!("{url}: response did not look like HTML"));
+                        }
+                    }
+                    Err(e) => failures.push(format!("{url}: utf8 decode failed: {e}")),
+                }
+            }
+            Err(e) => failures.push(format!("{url}: fetch error: {e}")),
+        }
     }
+
+    assert!(
+        failures.is_empty(),
+        "one or more fetches failed:\n{}",
+        failures.join("\n")
+    );
 }
 
 #[tokio::test]

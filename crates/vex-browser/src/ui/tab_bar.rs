@@ -20,8 +20,10 @@ const NEW_TAB_BTN_COLOR: Color = Color::rgb(196, 202, 226);
 
 /// Maximum tab width in pixels.
 const MAX_TAB_WIDTH: f32 = 250.0;
-/// Minimum tab width before text is hidden.
-const MIN_TAB_WIDTH: f32 = 84.0;
+/// Minimum tab width for a visible tab.
+const MIN_TAB_WIDTH: f32 = 120.0;
+/// Absolute minimum width allowed under extreme tab counts.
+const ABS_MIN_TAB_WIDTH: f32 = 56.0;
 /// Padding between tabs.
 const TAB_GAP: f32 = 6.0;
 /// Tab height.
@@ -30,6 +32,8 @@ const TAB_HEIGHT: f32 = 32.0;
 const TAB_TOP: f32 = 4.0;
 /// Width of the new-tab (+) button.
 const NEW_TAB_BTN_WIDTH: f32 = 32.0;
+/// Left/right padding inside the tab strip.
+const TAB_STRIP_PADDING: f32 = 4.0;
 
 /// Render the tab bar into a display list.
 pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, tab_bar_rect: Rect) {
@@ -40,19 +44,18 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
         border_radius: 0.0,
     });
 
-    let available_width = tab_bar_rect.size.width - NEW_TAB_BTN_WIDTH - 8.0;
-    let tab_count = tabs.len().max(1) as f32;
-    let tab_width =
-        ((available_width - TAB_GAP * tab_count) / tab_count).clamp(MIN_TAB_WIDTH, MAX_TAB_WIDTH);
+    let geom = tab_strip_geometry(tab_bar_rect, tabs.len(), active_index);
 
-    for (i, tab) in tabs.iter().enumerate() {
-        let is_active = i == active_index;
-        let x = tab_bar_rect.origin.x + 4.0 + (tab_width + TAB_GAP) * i as f32;
+    for (slot, tab_index) in (geom.start_index..geom.end_index).enumerate() {
+        let tab = &tabs[tab_index];
+        let is_active = tab_index == active_index;
+        let x =
+            tab_bar_rect.origin.x + TAB_STRIP_PADDING + (geom.tab_width + TAB_GAP) * slot as f32;
         let y = tab_bar_rect.origin.y + TAB_TOP;
 
         // Tab background.
         dl.push(DisplayCommand::FillRect {
-            rect: Rect::new(x, y, tab_width, TAB_HEIGHT),
+            rect: Rect::new(x, y, geom.tab_width, TAB_HEIGHT),
             color: if is_active {
                 ACTIVE_TAB_BG
             } else {
@@ -61,11 +64,33 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
             border_radius: 8.0,
         });
 
+        // Active tab top accent.
+        if is_active {
+            dl.push(DisplayCommand::FillRect {
+                rect: Rect::new(x + 8.0, y + 2.0, (geom.tab_width - 16.0).max(0.0), 2.0),
+                color: Color::rgb(124, 88, 255),
+                border_radius: 1.0,
+            });
+        }
+
+        // Favicon placeholder dot.
+        dl.push(DisplayCommand::DrawText {
+            position: Point::new(x + 8.0, y + 8.0),
+            text: "•".into(),
+            color: if is_active {
+                Color::rgb(176, 183, 217)
+            } else {
+                Color::rgb(108, 115, 145)
+            },
+            font_size: 12.0,
+            line_height: 14.0,
+        });
+
         // Tab title (truncated).
-        let max_text_width = tab_width - 30.0; // leave room for close button
+        let max_text_width = geom.tab_width - 46.0; // favicon + close button + padding
         let title = truncate_title(&tab.title, max_text_width);
         dl.push(DisplayCommand::DrawText {
-            position: Point::new(x + 10.0, y + 8.0),
+            position: Point::new(x + 18.0, y + 8.0),
             text: title,
             color: if is_active {
                 TAB_TEXT_COLOR
@@ -78,7 +103,7 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
 
         // Close button (×).
         dl.push(DisplayCommand::DrawText {
-            position: Point::new(x + tab_width - 18.0, y + 7.0),
+            position: Point::new(x + geom.tab_width - 18.0, y + 7.0),
             text: "×".into(),
             color: CLOSE_BTN_COLOR,
             font_size: 14.0,
@@ -87,7 +112,7 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
     }
 
     // New tab (+) button.
-    let plus_x = tab_bar_rect.origin.x + 4.0 + (tab_width + TAB_GAP) * tabs.len() as f32 + 4.0;
+    let plus_x = geom.plus_x;
     let plus_y = tab_bar_rect.origin.y + TAB_TOP;
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(plus_x, plus_y, NEW_TAB_BTN_WIDTH, TAB_HEIGHT),
@@ -118,38 +143,84 @@ pub enum TabBarAction {
 }
 
 /// Determine what was clicked in the tab bar.
-pub fn hit_test_tab_bar(x: f32, y: f32, tab_count: usize, tab_bar_rect: Rect) -> TabBarAction {
+pub fn hit_test_tab_bar(
+    x: f32,
+    y: f32,
+    tab_count: usize,
+    active_index: usize,
+    tab_bar_rect: Rect,
+) -> TabBarAction {
     // Check if click is within the tab bar.
     if y < tab_bar_rect.origin.y || y > tab_bar_rect.origin.y + tab_bar_rect.size.height {
         return TabBarAction::None;
     }
 
-    let available_width = tab_bar_rect.size.width - NEW_TAB_BTN_WIDTH - 8.0;
-    let count = tab_count.max(1) as f32;
-    let tab_width =
-        ((available_width - TAB_GAP * count) / count).clamp(MIN_TAB_WIDTH, MAX_TAB_WIDTH);
+    let geom = tab_strip_geometry(tab_bar_rect, tab_count, active_index);
 
-    for i in 0..tab_count {
-        let tab_x = tab_bar_rect.origin.x + 4.0 + (tab_width + TAB_GAP) * i as f32;
+    for (slot, tab_index) in (geom.start_index..geom.end_index).enumerate() {
+        let tab_x =
+            tab_bar_rect.origin.x + TAB_STRIP_PADDING + (geom.tab_width + TAB_GAP) * slot as f32;
         let tab_y = tab_bar_rect.origin.y + TAB_TOP;
 
-        if x >= tab_x && x <= tab_x + tab_width && y >= tab_y && y <= tab_y + TAB_HEIGHT {
+        if x >= tab_x && x <= tab_x + geom.tab_width && y >= tab_y && y <= tab_y + TAB_HEIGHT {
             // Check if close button was clicked (rightmost 20px).
-            if x >= tab_x + tab_width - 20.0 {
-                return TabBarAction::CloseTab(i);
+            if x >= tab_x + geom.tab_width - 20.0 {
+                return TabBarAction::CloseTab(tab_index);
             }
-            return TabBarAction::SwitchTab(i);
+            return TabBarAction::SwitchTab(tab_index);
         }
     }
 
     // Check new-tab button.
-    let plus_x = tab_bar_rect.origin.x + 4.0 + (tab_width + TAB_GAP) * tab_count as f32 + 4.0;
-    let plus_y = tab_bar_rect.origin.y + TAB_TOP;
-    if x >= plus_x && x <= plus_x + NEW_TAB_BTN_WIDTH && y >= plus_y && y <= plus_y + TAB_HEIGHT {
+    if x >= geom.plus_x
+        && x <= geom.plus_x + NEW_TAB_BTN_WIDTH
+        && y >= tab_bar_rect.origin.y + TAB_TOP
+        && y <= tab_bar_rect.origin.y + TAB_TOP + TAB_HEIGHT
+    {
         return TabBarAction::NewTab;
     }
 
     TabBarAction::None
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TabStripGeometry {
+    start_index: usize,
+    end_index: usize,
+    tab_width: f32,
+    plus_x: f32,
+}
+
+fn tab_strip_geometry(
+    tab_bar_rect: Rect,
+    tab_count: usize,
+    active_index: usize,
+) -> TabStripGeometry {
+    let total = tab_count.max(1);
+    let tabs_area_width =
+        (tab_bar_rect.size.width - TAB_STRIP_PADDING * 2.0 - NEW_TAB_BTN_WIDTH - TAB_GAP).max(0.0);
+
+    let max_visible = ((tabs_area_width + TAB_GAP) / (MIN_TAB_WIDTH + TAB_GAP)).floor() as usize;
+    let visible = max_visible.max(1).min(total);
+
+    let mut start = active_index.saturating_add(1).saturating_sub(visible);
+    if start + visible > total {
+        start = total.saturating_sub(visible);
+    }
+    let end = (start + visible).min(total);
+    let visible_count = (end - start).max(1) as f32;
+
+    let raw_width = (tabs_area_width - TAB_GAP * (visible_count - 1.0)).max(0.0) / visible_count;
+    let tab_width = raw_width.clamp(ABS_MIN_TAB_WIDTH, MAX_TAB_WIDTH);
+
+    let plus_x = tab_bar_rect.origin.x + TAB_STRIP_PADDING + (tab_width + TAB_GAP) * visible_count;
+
+    TabStripGeometry {
+        start_index: start,
+        end_index: end,
+        tab_width,
+        plus_x,
+    }
 }
 
 /// Truncate a title to approximately fit within `max_width` pixels.
@@ -180,23 +251,21 @@ mod tests {
     #[test]
     fn hit_test_switch_tab() {
         let rect = Rect::new(0.0, 0.0, 1280.0, 36.0);
-        let action = hit_test_tab_bar(20.0, 15.0, 2, rect);
+        let action = hit_test_tab_bar(20.0, 15.0, 2, 0, rect);
         assert_eq!(action, TabBarAction::SwitchTab(0));
     }
 
     #[test]
     fn hit_test_new_tab_button() {
         let rect = Rect::new(0.0, 0.0, 1280.0, 36.0);
-        // With 1 tab clamped to MAX_TAB_WIDTH=250, plus button starts at:
-        // 4 + (250+6)*1 + 4 = 264
-        let action = hit_test_tab_bar(270.0, 8.0, 1, rect);
+        let action = hit_test_tab_bar(280.0, 8.0, 1, 0, rect);
         assert_eq!(action, TabBarAction::NewTab);
     }
 
     #[test]
     fn hit_test_outside_returns_none() {
         let rect = Rect::new(0.0, 0.0, 1280.0, 36.0);
-        let action = hit_test_tab_bar(50.0, 100.0, 1, rect);
+        let action = hit_test_tab_bar(50.0, 100.0, 1, 0, rect);
         assert_eq!(action, TabBarAction::None);
     }
 
@@ -206,5 +275,19 @@ mod tests {
         let truncated = truncate_title(title, 100.0);
         assert!(truncated.len() < title.len());
         assert!(truncated.ends_with('…'));
+    }
+
+    #[test]
+    fn geometry_keeps_plus_button_inside_bar() {
+        let rect = Rect::new(0.0, 0.0, 1024.0, 40.0);
+        let geom = tab_strip_geometry(rect, 24, 12);
+        assert!(geom.plus_x + NEW_TAB_BTN_WIDTH <= rect.origin.x + rect.size.width + 0.1);
+    }
+
+    #[test]
+    fn geometry_keeps_active_tab_visible_windowed() {
+        let rect = Rect::new(0.0, 0.0, 900.0, 40.0);
+        let geom = tab_strip_geometry(rect, 30, 22);
+        assert!(22 >= geom.start_index && 22 < geom.end_index);
     }
 }

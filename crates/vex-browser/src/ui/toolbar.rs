@@ -1,7 +1,11 @@
 // Copyright (c) Vigo Contributors
 // SPDX-License-Identifier: MPL-2.0
 
-//! Chrome layout model — defines the fixed regions of the browser chrome.
+//! Toolbar layout model — defines the fixed regions of the browser toolbar.
+//!
+//! Servo calls this the "embedder" layer. We avoid the term "chrome" to prevent
+//! confusion with Google Chrome. This module computes the geometry of: tab bar,
+//! navigation bar, bookmark bar, accent line, and content area.
 
 use vex_core::geometry::Rect;
 
@@ -14,8 +18,8 @@ pub const FIND_BAR_HEIGHT: f32 = 40.0;
 /// Accent line between chrome and content.
 pub const ACCENT_LINE_HEIGHT: f32 = 2.0;
 
-/// Total fixed chrome height (tab bar + nav bar + accent line).
-pub fn chrome_height(show_bookmarks: bool) -> f32 {
+/// Total fixed toolbar height (tab bar + nav bar + accent line).
+pub fn toolbar_height(show_bookmarks: bool) -> f32 {
     let mut h = TAB_BAR_HEIGHT + NAV_BAR_HEIGHT + ACCENT_LINE_HEIGHT;
     if show_bookmarks {
         h += BOOKMARK_BAR_HEIGHT;
@@ -25,7 +29,7 @@ pub fn chrome_height(show_bookmarks: bool) -> f32 {
 
 /// Layout regions computed for a given viewport size.
 #[derive(Debug, Clone)]
-pub struct ChromeLayout {
+pub struct ToolbarLayout {
     /// Tab bar region.
     pub tab_bar: Rect,
     /// Navigation bar region.
@@ -40,7 +44,7 @@ pub struct ChromeLayout {
     pub find_bar: Option<Rect>,
 }
 
-impl ChromeLayout {
+impl ToolbarLayout {
     /// Compute the chrome layout for the given viewport dimensions.
     pub fn compute(vp_w: f32, vp_h: f32, show_bookmarks: bool, show_find: bool) -> Self {
         let mut y = 0.0;
@@ -80,8 +84,8 @@ impl ChromeLayout {
         }
     }
 
-    /// Total chrome height above the content area.
-    pub fn chrome_height(&self) -> f32 {
+    /// Total toolbar height above the content area.
+    pub fn toolbar_height(&self) -> f32 {
         self.content_area.origin.y
     }
 }
@@ -91,8 +95,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chrome_layout_without_bookmarks() {
-        let layout = ChromeLayout::compute(1280.0, 720.0, false, false);
+    fn toolbar_layout_without_bookmarks() {
+        let layout = ToolbarLayout::compute(1280.0, 720.0, false, false);
         assert_eq!(layout.tab_bar.size.height, TAB_BAR_HEIGHT);
         assert_eq!(layout.nav_bar.size.height, NAV_BAR_HEIGHT);
         assert_eq!(layout.bookmark_bar.size.height, 0.0);
@@ -101,16 +105,16 @@ mod tests {
     }
 
     #[test]
-    fn chrome_layout_with_bookmarks() {
-        let layout = ChromeLayout::compute(1280.0, 720.0, true, false);
+    fn toolbar_layout_with_bookmarks() {
+        let layout = ToolbarLayout::compute(1280.0, 720.0, true, false);
         assert_eq!(layout.bookmark_bar.size.height, BOOKMARK_BAR_HEIGHT);
         let expected_h = TAB_BAR_HEIGHT + NAV_BAR_HEIGHT + BOOKMARK_BAR_HEIGHT + ACCENT_LINE_HEIGHT;
-        assert!((layout.chrome_height() - expected_h).abs() < 0.1);
+        assert!((layout.toolbar_height() - expected_h).abs() < 0.1);
     }
 
     #[test]
-    fn chrome_layout_with_find_bar() {
-        let layout = ChromeLayout::compute(1280.0, 720.0, false, true);
+    fn toolbar_layout_with_find_bar() {
+        let layout = ToolbarLayout::compute(1280.0, 720.0, false, true);
         assert!(layout.find_bar.is_some());
         let fb = layout.find_bar.unwrap();
         assert_eq!(fb.size.height, FIND_BAR_HEIGHT);
@@ -118,7 +122,7 @@ mod tests {
 
     #[test]
     fn content_area_fills_remaining() {
-        let layout = ChromeLayout::compute(1280.0, 720.0, false, false);
+        let layout = ToolbarLayout::compute(1280.0, 720.0, false, false);
         let expected = 720.0 - TAB_BAR_HEIGHT - NAV_BAR_HEIGHT - ACCENT_LINE_HEIGHT;
         assert!((layout.content_area.size.height - expected).abs() < 0.1);
     }

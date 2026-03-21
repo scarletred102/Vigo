@@ -180,11 +180,19 @@ pub fn layout_grid(
         child.dimensions.padding = padding;
         child.dimensions.border = borders;
 
-        let content_w = (w - margins.left - margins.right - padding.left - padding.right
+        let content_w = (w
+            - margins.left
+            - margins.right
+            - padding.left
+            - padding.right
             - borders.left
             - borders.right)
             .max(0.0);
-        let content_h = (h - margins.top - margins.bottom - padding.top - padding.bottom
+        let content_h = (h
+            - margins.top
+            - margins.bottom
+            - padding.top
+            - padding.bottom
             - borders.top
             - borders.bottom)
             .max(0.0);
@@ -358,7 +366,10 @@ fn resolve_track_sizes(template: &[TrackSize], count: usize, available: f32) -> 
     }
 
     // Count auto tracks.
-    let auto_count = sizes.iter().filter(|s| matches!(s, SizeEntry::Auto)).count();
+    let auto_count = sizes
+        .iter()
+        .filter(|s| matches!(s, SizeEntry::Auto))
+        .count();
 
     // Available space for fr and auto tracks.
     let remaining = (available - total_fixed).max(0.0);
@@ -473,7 +484,11 @@ fn resolve_grid_container_size(
             }
         }
     } else {
-        (containing.width - margins.left - margins.right - padding.left - padding.right
+        (containing.width
+            - margins.left
+            - margins.right
+            - padding.left
+            - padding.right
             - borders.left
             - borders.right)
             .max(0.0)
@@ -543,11 +558,15 @@ fn resolve_edges(style: Option<&ComputedStyle>) -> (Insets, Insets, Insets) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::box_model::{BoxType, Dimensions};
-    use vex_core::{Point, Rect, Size, VexId};
+    use crate::box_model::BoxType;
+    use vex_core::{Point, VexId};
     use vex_css::values::grid::TrackList;
 
-    fn make_grid_container(cols: &str, rows: &str, child_count: usize) -> (LayoutBox, HashMap<VexId, ComputedStyle>) {
+    fn make_grid_container(
+        cols: &str,
+        rows: &str,
+        child_count: usize,
+    ) -> (LayoutBox, HashMap<VexId, ComputedStyle>) {
         let container_id = VexId::new(1);
         let mut container = LayoutBox::new(Some(container_id), BoxType::Grid);
 
@@ -681,7 +700,9 @@ mod tests {
         child_style.grid_row_end = GridLine::Line(2);
         styles.insert(child_id, child_style);
 
-        container.children.push(LayoutBox::new(Some(child_id), BoxType::Block));
+        container
+            .children
+            .push(LayoutBox::new(Some(child_id), BoxType::Block));
 
         let containing = ContainingBlock {
             width: 300.0,
@@ -714,7 +735,9 @@ mod tests {
         child_style.grid_column_end = GridLine::Span(2);
         styles.insert(child_id, child_style);
 
-        container.children.push(LayoutBox::new(Some(child_id), BoxType::Block));
+        container
+            .children
+            .push(LayoutBox::new(Some(child_id), BoxType::Block));
 
         let containing = ContainingBlock {
             width: 300.0,
@@ -767,21 +790,13 @@ mod tests {
 
     #[test]
     fn resolve_track_sizes_all_fixed() {
-        let sizes = resolve_track_sizes(
-            &[TrackSize::Px(100.0), TrackSize::Px(200.0)],
-            2,
-            400.0,
-        );
+        let sizes = resolve_track_sizes(&[TrackSize::Px(100.0), TrackSize::Px(200.0)], 2, 400.0);
         assert_eq!(sizes, vec![100.0, 200.0]);
     }
 
     #[test]
     fn resolve_track_sizes_all_fr() {
-        let sizes = resolve_track_sizes(
-            &[TrackSize::Fr(1.0), TrackSize::Fr(2.0)],
-            2,
-            300.0,
-        );
+        let sizes = resolve_track_sizes(&[TrackSize::Fr(1.0), TrackSize::Fr(2.0)], 2, 300.0);
         assert!((sizes[0] - 100.0).abs() < 0.1);
         assert!((sizes[1] - 200.0).abs() < 0.1);
     }

@@ -172,6 +172,7 @@ impl Tab {
         // Create JS runtime with all Web APIs.
         let mut runtime = JsRuntime::with_request_queue(self.request_queue.clone());
         runtime.register_document(&shared_doc);
+        vex_js::api::window::update_location(self.url.as_ref(), runtime.context_mut());
 
         // Build the fetch closure that looks up pre-fetched resources.
         let mut fetch_fn = |url: &str| -> Result<String, VexError> {

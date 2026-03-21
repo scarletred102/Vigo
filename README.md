@@ -13,7 +13,7 @@ Vigo is an open-source web browser with its own rendering engine, written in **R
 
 ## Current Status
 
-Vigo is in active development. The engine can fetch any HTTPS page, parse HTML, build a DOM, compute CSS styles, and lay out the page (block, inline, flex, positioned). The window opens with GPU acceleration via wgpu. Privacy filters are baked into the network stack.
+Vigo is in active development. The engine can fetch HTTPS pages, parse HTML, build a DOM, compute CSS styles, lay out content, execute JavaScript, and render through a GPU pipeline. The browser shell includes tabs, address bar navigation, DevTools panels, downloads, find-in-page, and extension loading.
 
 | Phase | Status | What |
 |------:|--------|------|
@@ -23,14 +23,14 @@ Vigo is in active development. The engine can fetch any HTTPS page, parse HTML, 
 | 3 | ✅ Done | HTML5 parser (html5ever), full DOM tree, selectors |
 | 4 | ✅ Done | CSS tokenizer/parser, cascade, computed styles |
 | 5 | ✅ Done | Block, inline, flex, positioned layout, stacking |
-| 6 | 🔜 Next | GPU rendering pipeline (display lists, shaders) |
-| 7 | ⬜ | JavaScript engine (Boa) |
-| 8 | ⬜ | Browser chrome (tabs, URL bar, navigation) |
-| 9 | ⬜ | Media pipeline + DRM hybrid |
-| 10 | ⬜ | Security hardening, storage, web compat |
-| 11 | ⬜ | Extensions & DevTools |
+| 6 | ✅ Done | GPU rendering pipeline (display lists, shaders) |
+| 7 | ✅ Done | JavaScript engine integration (Boa) |
+| 8 | ✅ Done | Browser toolbar (tabs, URL bar, navigation) |
+| 9 | ✅ Done | Media pipeline + DRM fallback |
+| 10 | ✅ Done | Security hardening and storage APIs |
+| 11 | 🔶 In Progress | Extensions and DevTools depth/coverage |
 
-**341 Rust tests, 22 Zig tests, 0 failures.**
+**Workspace tests and Zig tests are part of routine local/CI validation.**
 
 See [PLAN.md](PLAN.md) for the full architecture plan and [TASKS.md](TASKS.md) for the task breakdown.
 
@@ -70,13 +70,13 @@ crates/              16 Rust crates
   vex-layout/        Block, inline, flex, positioned, stacking
   vex-render/        GPU context (wgpu), Zig FFI bridge
   vex-privacy/       Ad blocking, tracker stripping, HTTPS-only
-  vex-js/            JavaScript engine (Boa) — planned
-  vex-media/         Audio/video, codec FFI — planned
-  vex-storage/       Cookies, localStorage, IndexedDB — planned
-  vex-security/      SOP, CORS, CSP — planned
-  vex-crypto/        ChaCha20, Argon2, Ed25519 — planned
-  vex-sync/          E2E encrypted sync — planned
-  vex-browser/       Tab management, navigation, UI — planned
+  vex-js/            JavaScript engine (Boa) + browser Web APIs
+  vex-media/         Audio/video pipeline, playback controls, streaming
+  vex-storage/       Cookies, localStorage, sessionStorage, IndexedDB
+  vex-security/      SOP, CORS, CSP enforcement
+  vex-crypto/        ChaCha20-Poly1305, Argon2id, Ed25519, X25519
+  vex-sync/          E2E sync client primitives
+  vex-browser/       Tab management, navigation, UI, DevTools, extensions
   vex-app/           Binary entry point
 
 zig/                 5 Zig modules → static libs → C ABI → Rust FFI
@@ -117,7 +117,7 @@ cargo run -p vex-app
 ### Test
 
 ```bash
-# All tests (341 passing)
+# All workspace tests
 cargo test --workspace
 
 # Zig tests (22 passing)
@@ -148,11 +148,11 @@ Contributions are welcome! Vigo is licensed under the [Mozilla Public License 2.
 
 ### Areas Where Help Is Needed
 
-- **Phase 6**: GPU rendering pipeline — display list generation, WGSL shaders
-- **Phase 7**: JavaScript engine integration (Boa)
-- **Web compatibility**: Test against real websites, report rendering bugs
-- **Platform support**: macOS (Cocoa) and Linux (X11/Wayland) windowing
-- **Performance**: Profile and optimize layout/parsing hot paths
+- **Web compatibility**: run against more real-world sites and reduce breakage
+- **Cross-platform support**: macOS (Cocoa) and Linux (X11/Wayland) windowing
+- **Performance**: profile and optimize layout/render/JS hot paths
+- **Hardening**: strengthen process isolation and sandbox boundaries
+- **DevTools and extensions**: expand API coverage and debugging ergonomics
 
 ## Design Principles
 

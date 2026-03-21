@@ -5,9 +5,11 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
+use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use tracing::{debug, warn};
@@ -71,12 +73,18 @@ impl HttpClient {
         let tls = tls::tls_config()?;
         let dns_resolver = DnsResolver::new(config.dns_mode.clone())?;
 
+        let mut http = HttpConnector::new();
+        http.enforce_http(false);
+        http.set_nodelay(true);
+        http.set_happy_eyeballs_timeout(Some(Duration::from_millis(300)));
+        http.set_connect_timeout(Some(Duration::from_secs(config.timeout_secs)));
+
         let https = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config((*tls).clone())
             .https_or_http()
             .enable_http1()
             .enable_http2()
-            .build();
+            .wrap_connector(http);
 
         let inner = Client::builder(TokioExecutor::new()).build(https);
 
@@ -136,14 +144,28 @@ impl HttpClient {
         let mut redirects = 0u8;
 
         loop {
-            let resp = self
+            let resp = match self
                 .do_fetch(
                     &current_url,
                     current_method,
                     &request.headers,
                     &request.body,
                 )
-                .await?;
+                .await
+            {
+                Ok(resp) => resp,
+                Err(err) if current_method == Method::Get && is_connect_error(&err) => {
+                    warn!(url = %current_url, "transient connect failure, retrying once");
+                    self.do_fetch(
+                        &current_url,
+                        current_method,
+                        &request.headers,
+                        &request.body,
+                    )
+                    .await?
+                }
+                Err(err) => return Err(err),
+            };
 
             // Handle redirects
             if self.config.follow_redirects
@@ -278,7 +300,7 @@ impl HttpClient {
                 self.config.timeout_secs
             ))
         })?
-        .map_err(|e| VexError::Network(format!("request failed: {e}")))?;
+        .map_err(|e| VexError::Network(format!("request failed: {e}; debug={e:?}")))?;
 
         let status = hyper_resp.status().as_u16();
 
@@ -360,6 +382,22 @@ impl HttpClient {
 
 fn is_redirect(status: u16) -> bool {
     matches!(status, 301 | 302 | 303 | 307 | 308)
+}
+
+/// Check whether the error looks like a transient TCP/TLS connect failure.
+fn is_connect_error(err: &VexError) -> bool {
+    match err {
+        VexError::Network(msg) => {
+            let m = msg.to_lowercase();
+            m.contains("connect")
+                || m.contains("tcp")
+                || m.contains("reset")
+                || m.contains("refused")
+                || m.contains("timed out")
+        }
+        VexError::Io(_) => true,
+        _ => false,
+    }
 }
 
 fn resolve_redirect(base: &VexUrl, location: &str) -> VexResult<VexUrl> {

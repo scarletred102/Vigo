@@ -47,7 +47,7 @@ fn test_drm_fallback_pipeline() {
         assert!(overlay.is_rendering());
 
         // Verify positioning (chrome offset = chrome_height(false) = 77px)
-        let chrome_h = vex_browser::ui::chrome::chrome_height(false);
+        let chrome_h = vex_browser::ui::toolbar::toolbar_height(false);
         let screen = overlay.screen_rect().unwrap();
         assert!((screen.origin.x - 0.0).abs() < 0.1);
         // Y = 120 (layout) + chrome_h (chrome)

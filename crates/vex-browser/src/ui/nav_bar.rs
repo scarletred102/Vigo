@@ -11,14 +11,21 @@ use vex_render::display_list::{DisplayCommand, DisplayList};
 const NAV_BUTTON_SIZE: f32 = 28.0;
 const NAV_BUTTON_GAP: f32 = 4.0;
 const BUTTON_TOP_OFFSET: f32 = 8.0;
+const NAV_LEFT_PADDING: f32 = 8.0;
+const NAV_RIGHT_PADDING: f32 = 8.0;
+const ADDRESS_SCHEME_ICON_WIDTH: f32 = 18.0;
 
 /// Colors.
 const NAV_BAR_BG: Color = Color::rgb(20, 23, 32);
 const BUTTON_BG: Color = Color::rgb(42, 47, 66);
 const BUTTON_TEXT: Color = Color::rgb(220, 224, 240);
 const BUTTON_DISABLED: Color = Color::rgb(105, 110, 130);
+const BUTTON_ACTIVE: Color = Color::rgb(58, 66, 92);
+const ADDRESS_BAR_BORDER: Color = Color::rgb(56, 63, 88);
+const ADDRESS_BAR_BORDER_FOCUSED: Color = Color::rgb(99, 127, 255);
 const ADDRESS_BAR_BG: Color = Color::rgb(14, 17, 25);
 const ADDRESS_TEXT: Color = Color::rgb(228, 231, 245);
+const ADDRESS_PLACEHOLDER: Color = Color::rgb(126, 134, 160);
 const HTTPS_COLOR: Color = Color::rgb(86, 204, 138);
 const HTTP_COLOR: Color = Color::rgb(238, 116, 116);
 
@@ -34,6 +41,8 @@ pub struct NavBarState<'a> {
     pub is_loading: bool,
     /// Whether the URL uses HTTPS.
     pub is_https: bool,
+    /// Whether the address bar currently has keyboard focus.
+    pub is_address_focused: bool,
 }
 
 /// Render the navigation bar into a display list.
@@ -45,14 +54,18 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
         border_radius: 0.0,
     });
 
-    let left = nav_rect.origin.x + 8.0;
+    let left = nav_rect.origin.x + NAV_LEFT_PADDING;
     let btn_y = nav_rect.origin.y + BUTTON_TOP_OFFSET;
     let mut x = left;
 
     // Back button (◀).
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(x, btn_y, NAV_BUTTON_SIZE, NAV_BUTTON_SIZE),
-        color: BUTTON_BG,
+        color: if state.can_go_back {
+            BUTTON_BG
+        } else {
+            BUTTON_ACTIVE
+        },
         border_radius: 8.0,
     });
     dl.push(DisplayCommand::DrawText {
@@ -71,7 +84,11 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     // Forward button (▶).
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(x, btn_y, NAV_BUTTON_SIZE, NAV_BUTTON_SIZE),
-        color: BUTTON_BG,
+        color: if state.can_go_forward {
+            BUTTON_BG
+        } else {
+            BUTTON_ACTIVE
+        },
         border_radius: 8.0,
     });
     dl.push(DisplayCommand::DrawText {
@@ -90,7 +107,11 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     // Reload / stop button.
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(x, btn_y, NAV_BUTTON_SIZE, NAV_BUTTON_SIZE),
-        color: BUTTON_BG,
+        color: if state.is_loading {
+            BUTTON_ACTIVE
+        } else {
+            BUTTON_BG
+        },
         border_radius: 8.0,
     });
     dl.push(DisplayCommand::DrawText {
@@ -100,15 +121,29 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
         font_size: 13.0,
         line_height: 16.0,
     });
-    x += NAV_BUTTON_SIZE + NAV_BUTTON_GAP + 4.0;
-
-    // Address bar.
-    let address_bar_width = nav_rect.size.width - (x - nav_rect.origin.x) - 8.0;
-    let address_bar_height = NAV_BUTTON_SIZE;
+    // Address bar (outer border + inner fill).
+    let address_outer = address_bar_rect(nav_rect);
+    let address_bar_width = address_outer.size.width;
     dl.push(DisplayCommand::FillRect {
-        rect: Rect::new(x, btn_y, address_bar_width, address_bar_height),
-        color: ADDRESS_BAR_BG,
+        rect: address_outer,
+        color: if state.is_address_focused {
+            ADDRESS_BAR_BORDER_FOCUSED
+        } else {
+            ADDRESS_BAR_BORDER
+        },
         border_radius: 10.0,
+    });
+
+    let address_inner = Rect::new(
+        address_outer.origin.x + 1.0,
+        address_outer.origin.y + 1.0,
+        (address_outer.size.width - 2.0).max(0.0),
+        (address_outer.size.height - 2.0).max(0.0),
+    );
+    dl.push(DisplayCommand::FillRect {
+        rect: address_inner,
+        color: ADDRESS_BAR_BG,
+        border_radius: 9.0,
     });
 
     // HTTPS indicator.
@@ -117,26 +152,60 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     } else {
         HTTP_COLOR
     };
-    let scheme_text = if state.is_https { "🔒 " } else { "⚠ " };
+    let scheme_text = if state.is_https { "●" } else { "!" };
     dl.push(DisplayCommand::DrawText {
-        position: Point::new(x + 8.0, btn_y + 6.0),
+        position: Point::new(address_inner.origin.x + 8.0, btn_y + 6.0),
         text: scheme_text.into(),
         color: scheme_color,
         font_size: 12.0,
         line_height: 16.0,
     });
 
-    // URL text.
-    let url_x = x + 26.0;
-    let max_url_width = address_bar_width - 36.0;
-    let url_text = truncate_url(state.url, max_url_width);
+    // URL / placeholder text.
+    let url_x = address_inner.origin.x + 8.0 + ADDRESS_SCHEME_ICON_WIDTH;
+    let max_url_width = (address_bar_width - 36.0).max(0.0);
+    let display_source = if state.is_address_focused {
+        state.url.to_string()
+    } else {
+        pretty_display_url(state.url)
+    };
+    let show_placeholder = display_source.trim().is_empty();
+    let display_text = if show_placeholder {
+        "Search or enter address".to_string()
+    } else {
+        display_source
+    };
+    let url_text = truncate_url(&display_text, max_url_width);
     dl.push(DisplayCommand::DrawText {
         position: Point::new(url_x, btn_y + 6.0),
         text: url_text,
-        color: ADDRESS_TEXT,
+        color: if show_placeholder {
+            ADDRESS_PLACEHOLDER
+        } else {
+            ADDRESS_TEXT
+        },
         font_size: 13.0,
         line_height: 16.0,
     });
+}
+
+/// Compute the address bar rectangle for this nav bar rect.
+#[must_use]
+pub fn address_bar_rect(nav_rect: Rect) -> Rect {
+    let left = nav_rect.origin.x + NAV_LEFT_PADDING;
+    let btn_y = nav_rect.origin.y + BUTTON_TOP_OFFSET;
+    let x = left + (NAV_BUTTON_SIZE + NAV_BUTTON_GAP) * 3.0 + 4.0;
+    let width = (nav_rect.size.width - (x - nav_rect.origin.x) - NAV_RIGHT_PADDING).max(0.0);
+    Rect::new(x, btn_y, width, NAV_BUTTON_SIZE)
+}
+
+/// Estimate x-position for text cursor inside the address bar.
+#[must_use]
+pub fn address_cursor_x(nav_rect: Rect, text: &str) -> f32 {
+    let address_rect = address_bar_rect(nav_rect);
+    let text_start = address_rect.origin.x + 8.0 + ADDRESS_SCHEME_ICON_WIDTH;
+    let content_right = address_rect.origin.x + address_rect.size.width - 10.0;
+    (text_start + estimate_text_width(text)).min(content_right)
 }
 
 /// What was clicked in the navigation bar.
@@ -160,7 +229,7 @@ pub fn hit_test_nav_bar(x: f32, y: f32, nav_rect: Rect) -> NavBarAction {
         return NavBarAction::None;
     }
 
-    let left = nav_rect.origin.x + 8.0;
+    let left = nav_rect.origin.x + NAV_LEFT_PADDING;
     let btn_y = nav_rect.origin.y + BUTTON_TOP_OFFSET;
     let mut bx = left;
 
@@ -182,7 +251,17 @@ pub fn hit_test_nav_bar(x: f32, y: f32, nav_rect: Rect) -> NavBarAction {
     }
     bx += NAV_BUTTON_SIZE + NAV_BUTTON_GAP + 4.0;
 
-    // Address bar — everything to the right.
+    // Address bar region.
+    let address = address_bar_rect(nav_rect);
+    if x >= address.origin.x
+        && x <= address.origin.x + address.size.width
+        && y >= address.origin.y
+        && y <= address.origin.y + address.size.height
+    {
+        return NavBarAction::AddressBar;
+    }
+
+    // Fallback: right side where the address bar is expected.
     if x >= bx {
         return NavBarAction::AddressBar;
     }
@@ -204,6 +283,28 @@ fn truncate_url(url: &str, max_width: f32) -> String {
     }
 }
 
+fn pretty_display_url(url: &str) -> String {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let mut out = trimmed
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .to_string();
+    if out.ends_with('/') {
+        out.pop();
+    }
+    out
+}
+
+fn estimate_text_width(text: &str) -> f32 {
+    text.chars()
+        .map(|ch| if ch == 'i' || ch == 'l' { 4.0 } else { 7.2 })
+        .sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,6 +318,7 @@ mod tests {
             can_go_forward: false,
             is_loading: false,
             is_https: true,
+            is_address_focused: false,
         };
         let rect = Rect::new(0.0, 36.0, 1280.0, 40.0);
         render_nav_bar(&mut dl, &state, rect);
@@ -258,5 +360,31 @@ mod tests {
         let truncated = truncate_url(url, 200.0);
         assert!(truncated.len() < url.len());
         assert!(truncated.ends_with('…'));
+    }
+
+    #[test]
+    fn pretty_display_strips_scheme() {
+        assert_eq!(
+            pretty_display_url("https://example.com/path"),
+            "example.com/path"
+        );
+        assert_eq!(pretty_display_url("http://example.com/"), "example.com");
+    }
+
+    #[test]
+    fn address_rect_is_inside_nav_rect() {
+        let nav = Rect::new(0.0, 40.0, 1200.0, 46.0);
+        let addr = address_bar_rect(nav);
+        assert!(addr.origin.x >= nav.origin.x);
+        assert!(addr.origin.y >= nav.origin.y);
+        assert!(addr.origin.x + addr.size.width <= nav.origin.x + nav.size.width);
+    }
+
+    #[test]
+    fn cursor_x_clamps_to_address_right_edge() {
+        let nav = Rect::new(0.0, 40.0, 360.0, 46.0);
+        let x = address_cursor_x(nav, "very long address text that should clamp hard");
+        let addr = address_bar_rect(nav);
+        assert!(x <= addr.origin.x + addr.size.width);
     }
 }

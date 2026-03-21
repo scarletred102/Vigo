@@ -4,7 +4,7 @@
 //! Vigo Browser — powered by the Vex engine.
 //!
 //! Entry point: creates the window, initializes GPU, sets up the tab manager,
-//! and runs the main browser event loop with full chrome wiring.
+//! and runs the main browser event loop with full toolbar wiring.
 
 use vex_core::{engine_name, engine_version};
 
@@ -38,11 +38,11 @@ fn run() {
     use vex_browser::settings::BrowserSettings;
     use vex_browser::tab::TabId;
     use vex_browser::tab_manager::TabManager;
-    use vex_browser::ui::chrome::ChromeLayout;
     use vex_browser::ui::context_menu::ContextMenu;
     use vex_browser::ui::nav_bar::hit_test_nav_bar;
     use vex_browser::ui::shortcuts::match_shortcut;
     use vex_browser::ui::tab_bar::{hit_test_tab_bar, TabBarAction};
+    use vex_browser::ui::toolbar::ToolbarLayout;
     use vex_browser::zoom::ZoomState;
     use vex_core::geometry::{Point, Size};
     use vex_core::VexUrl;
@@ -188,7 +188,7 @@ fn run() {
     // ── Main event loop ──────────────────────────────────────────
     loop {
         let show_bookmarks = settings.show_bookmarks_bar;
-        let chrome = ChromeLayout::compute(vp_w, vp_h, show_bookmarks, find_bar_visible);
+        let toolbar = ToolbarLayout::compute(vp_w, vp_h, show_bookmarks, find_bar_visible);
 
         while let Some(ev) = window.poll_event() {
             match ev {
@@ -250,8 +250,13 @@ fn run() {
                     match button {
                         MouseButton::Left => {
                             // Task 31: Tab bar clicks.
-                            let tab_action =
-                                hit_test_tab_bar(fx, fy, tab_mgr.tab_count(), chrome.tab_bar);
+                            let tab_action = hit_test_tab_bar(
+                                fx,
+                                fy,
+                                tab_mgr.tab_count(),
+                                tab_mgr.active_index(),
+                                toolbar.tab_bar,
+                            );
                             match tab_action {
                                 TabBarAction::SwitchTab(idx) => {
                                     let id = tab_mgr.tabs()[idx].id;
@@ -269,7 +274,7 @@ fn run() {
                                 }
                                 TabBarAction::None => {
                                     // Task 32: Nav bar clicks.
-                                    let nav_action = hit_test_nav_bar(fx, fy, chrome.nav_bar);
+                                    let nav_action = hit_test_nav_bar(fx, fy, toolbar.nav_bar);
                                     handle_nav_action(
                                         nav_action,
                                         &mut tab_mgr,
@@ -278,7 +283,7 @@ fn run() {
                                         &mut address_bar_text,
                                         &bookmarks,
                                         show_bookmarks,
-                                        &chrome,
+                                        &toolbar,
                                         fx,
                                         fy,
                                         vp_w,
@@ -453,8 +458,91 @@ fn run() {
                     BrowserRequest::Alert(msg) => {
                         console_state.log_message(LogLevel::System, &format!("alert: {msg}"));
                     }
-                    _ => {
-                        // Navigate, Reload, Back, Forward, PushState handled elsewhere.
+                    BrowserRequest::Navigate(raw_url) => {
+                        let current_url = tab_mgr.active_tab().url.clone();
+                        let Some(url) = resolve_browser_request_url(&raw_url, &current_url) else {
+                            tracing::warn!(
+                                target: "vigo::browser_loop",
+                                raw_url,
+                                "ignoring invalid BrowserRequest::Navigate URL"
+                            );
+                            continue;
+                        };
+
+                        let tab_id = tab_mgr.active_tab_id();
+                        let title = tab_mgr.active_tab().title.clone();
+                        let scroll = Point::new(
+                            tab_mgr.active_tab().scroll.offset_x,
+                            tab_mgr.active_tab().scroll.offset_y,
+                        );
+                        nav_histories
+                            .entry(tab_id)
+                            .or_default()
+                            .push(url.clone(), title, scroll);
+
+                        navigate_tab(&mut tab_mgr, &url, vp_w, vp_h);
+                    }
+                    BrowserRequest::Reload => {
+                        reload_active_tab(&mut tab_mgr, vp_w, vp_h);
+                    }
+                    BrowserRequest::Back => {
+                        let tab_id = tab_mgr.active_tab_id();
+                        let target = nav_histories
+                            .get_mut(&tab_id)
+                            .and_then(|h| h.back().map(|entry| entry.url.clone()));
+                        if let Some(url) = target {
+                            navigate_tab(&mut tab_mgr, &url, vp_w, vp_h);
+                        }
+                    }
+                    BrowserRequest::Forward => {
+                        let tab_id = tab_mgr.active_tab_id();
+                        let target = nav_histories
+                            .get_mut(&tab_id)
+                            .and_then(|h| h.forward().map(|entry| entry.url.clone()));
+                        if let Some(url) = target {
+                            navigate_tab(&mut tab_mgr, &url, vp_w, vp_h);
+                        }
+                    }
+                    BrowserRequest::PushState { url } => {
+                        let tab_id = tab_mgr.active_tab_id();
+                        let current_url = tab_mgr.active_tab().url.clone();
+
+                        let next_url = match url {
+                            Some(raw) => match resolve_browser_request_url(&raw, &current_url) {
+                                Some(resolved) => resolved,
+                                None => {
+                                    tracing::warn!(
+                                        target: "vigo::browser_loop",
+                                        raw,
+                                        "ignoring invalid BrowserRequest::PushState URL"
+                                    );
+                                    continue;
+                                }
+                            },
+                            None => current_url.clone(),
+                        };
+
+                        let title = tab_mgr.active_tab().title.clone();
+                        let scroll = Point::new(
+                            tab_mgr.active_tab().scroll.offset_x,
+                            tab_mgr.active_tab().scroll.offset_y,
+                        );
+                        nav_histories.entry(tab_id).or_default().push(
+                            next_url.clone(),
+                            title,
+                            scroll,
+                        );
+
+                        if let Some(tab) = tab_mgr.tab_mut(tab_id) {
+                            tab.url = next_url.clone();
+                            if let Some(runtime) = tab.runtime.as_mut() {
+                                vex_js::api::window::update_location(
+                                    next_url.as_ref(),
+                                    runtime.context_mut(),
+                                );
+                            }
+                            tab.mark_dirty();
+                        }
                     }
                 }
             }
@@ -479,7 +567,7 @@ fn run() {
         let frame_start = Instant::now();
         let dl = compose_frame(
             &tab_mgr,
-            &chrome,
+            &toolbar,
             &bookmarks,
             &find,
             find_bar_visible,
@@ -577,6 +665,56 @@ fn data_dir() -> std::path::PathBuf {
         std::path::PathBuf::from(home).join(".vigo")
     } else {
         std::path::PathBuf::from(".vigo")
+    }
+}
+
+/// Resolve a JavaScript-requested URL against the current tab URL.
+///
+/// `location.assign()` and `history.pushState()` may provide absolute or
+/// relative URLs. Relative URLs are resolved against `base`.
+#[cfg(target_os = "windows")]
+fn resolve_browser_request_url(raw: &str, base: &vex_core::VexUrl) -> Option<vex_core::VexUrl> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if trimmed.contains("://") || trimmed.starts_with("about:") || trimmed.starts_with("vex:") {
+        return vex_core::VexUrl::parse(trimmed).ok();
+    }
+
+    if let Ok(url) = base.join(trimmed) {
+        return Some(url);
+    }
+
+    vex_core::VexUrl::parse(trimmed).ok()
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::resolve_browser_request_url;
+    use vex_core::VexUrl;
+
+    #[test]
+    fn resolves_absolute_url() {
+        let base = VexUrl::parse("https://example.com/page").expect("valid URL");
+        let resolved = resolve_browser_request_url("https://vigo.dev/docs", &base)
+            .expect("absolute URL should parse");
+        assert_eq!(resolved.as_ref(), "https://vigo.dev/docs");
+    }
+
+    #[test]
+    fn resolves_relative_url_against_base() {
+        let base = VexUrl::parse("https://example.com/dir/index.html").expect("valid URL");
+        let resolved =
+            resolve_browser_request_url("next/page", &base).expect("relative URL should resolve");
+        assert_eq!(resolved.as_ref(), "https://example.com/dir/next/page");
+    }
+
+    #[test]
+    fn rejects_empty_input() {
+        let base = VexUrl::parse("https://example.com/").expect("valid URL");
+        assert!(resolve_browser_request_url("   ", &base).is_none());
     }
 }
 
@@ -731,7 +869,7 @@ fn handle_nav_action(
     address_bar_text: &mut String,
     bookmarks: &vex_browser::BookmarkManager,
     show_bookmarks: bool,
-    chrome: &vex_browser::ChromeLayout,
+    toolbar: &vex_browser::ToolbarLayout,
     fx: f32,
     fy: f32,
     vp_w: f32,
@@ -775,8 +913,9 @@ fn handle_nav_action(
         }
         NavBarAction::None => {
             // Task 35: Bookmark bar clicks.
-            if show_bookmarks && chrome.bookmark_bar.size.height > 0.0 {
-                if let Some(url_str) = hit_test_bookmark_bar(fx, fy, bookmarks, chrome.bookmark_bar)
+            if show_bookmarks && toolbar.bookmark_bar.size.height > 0.0 {
+                if let Some(url_str) =
+                    hit_test_bookmark_bar(fx, fy, bookmarks, toolbar.bookmark_bar)
                 {
                     if let Ok(url) = vex_core::VexUrl::parse(&url_str) {
                         navigate_tab(tab_mgr, &url, vp_w, vp_h);
@@ -963,7 +1102,7 @@ fn handle_menu_action(
 #[allow(clippy::too_many_arguments)]
 fn compose_frame(
     tab_mgr: &vex_browser::TabManager,
-    chrome: &vex_browser::ChromeLayout,
+    toolbar: &vex_browser::ToolbarLayout,
     bookmarks: &vex_browser::BookmarkManager,
     find: &vex_browser::FindState,
     find_bar_visible: bool,
@@ -983,7 +1122,7 @@ fn compose_frame(
     perf_state: &vex_browser::devtools::performance::PerformanceState,
     sources_state: &vex_browser::devtools::sources::SourcesState,
 ) -> vex_render::display_list::DisplayList {
-    use vex_browser::ui::nav_bar::{render_nav_bar, NavBarState};
+    use vex_browser::ui::nav_bar::{address_cursor_x, render_nav_bar, NavBarState};
     use vex_browser::ui::tab_bar::render_tab_bar;
     use vex_core::color::Color;
     use vex_core::geometry::{Point, Rect};
@@ -1002,7 +1141,7 @@ fn compose_frame(
         &mut dl,
         tab_mgr.tabs(),
         tab_mgr.active_index(),
-        chrome.tab_bar,
+        toolbar.tab_bar,
     );
 
     // ── Nav bar (Task 32) ───────────────────────────────────────
@@ -1018,18 +1157,19 @@ fn compose_frame(
         can_go_forward: history.is_some_and(|h| h.can_go_forward()),
         is_loading: tab.is_loading(),
         is_https: tab.url.as_ref().starts_with("https://"),
+        is_address_focused: address_bar_focused,
     };
-    render_nav_bar(&mut dl, &nav_state, chrome.nav_bar);
+    render_nav_bar(&mut dl, &nav_state, toolbar.nav_bar);
 
     // Cursor blink when address bar is focused.
     if address_bar_focused {
-        let cursor_x = 108.0 + address_bar_text.len() as f32 * 7.5;
+        let cursor_x = address_cursor_x(toolbar.nav_bar, address_bar_text);
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(
                 cursor_x.min(vp_w - 40.0),
-                chrome.nav_bar.origin.y + 10.0,
+                toolbar.nav_bar.origin.y + 12.0,
                 1.0,
-                18.0,
+                16.0,
             ),
             color: Color::rgb(200, 200, 220),
             border_radius: 0.0,
@@ -1037,23 +1177,23 @@ fn compose_frame(
     }
 
     // ── Bookmark bar (Task 35) ──────────────────────────────────
-    if settings.show_bookmarks_bar && chrome.bookmark_bar.size.height > 0.0 {
-        render_bookmark_bar(&mut dl, bookmarks, chrome.bookmark_bar);
+    if settings.show_bookmarks_bar && toolbar.bookmark_bar.size.height > 0.0 {
+        render_bookmark_bar(&mut dl, bookmarks, toolbar.bookmark_bar);
     }
 
     // ── Accent line ─────────────────────────────────────────────
     dl.push(DisplayCommand::FillRect {
-        rect: chrome.accent_line,
+        rect: toolbar.accent_line,
         color: Color::rgb(124, 88, 255),
         border_radius: 0.0,
     });
 
     // ── Page content (clipped + scrolled) ───────────────────────
-    let content_y = chrome.content_area.origin.y;
+    let content_y = toolbar.content_area.origin.y;
     let scroll_y = tab.scroll.offset_y;
 
     dl.push(DisplayCommand::PushClip {
-        rect: chrome.content_area,
+        rect: toolbar.content_area,
     });
 
     if let Some(ref page_dl) = tab.display_list {
@@ -1066,7 +1206,7 @@ fn compose_frame(
 
     // ── Find bar overlay (Task 36) ──────────────────────────────
     if find_bar_visible {
-        if let Some(ref find_rect) = chrome.find_bar {
+        if let Some(ref find_rect) = toolbar.find_bar {
             render_find_bar(&mut dl, find, find_bar_text, *find_rect);
         }
     }
@@ -1090,8 +1230,8 @@ fn compose_frame(
 
     // ── DevTools panel (Tasks 51-56) ──────────────────────────
     if devtools.is_open() {
-        let vp_h = chrome.content_area.origin.y + chrome.content_area.size.height;
-        let available = Rect::new(0.0, chrome.content_area.origin.y, vp_w, vp_h);
+        let vp_h = toolbar.content_area.origin.y + toolbar.content_area.size.height;
+        let available = Rect::new(0.0, toolbar.content_area.origin.y, vp_w, vp_h);
         let dt_layout = devtools.layout(available);
 
         // Background for DevTools area.
@@ -1304,7 +1444,7 @@ fn compose_frame(
     dl
 }
 
-// ─── Chrome sub-renderers ─────────────────────────────────────────────
+// ─── toolbar sub-renderers ─────────────────────────────────────────────
 
 /// Render the bookmark bar (Task 35).
 #[cfg(target_os = "windows")]
@@ -1319,26 +1459,39 @@ fn render_bookmark_bar(
 
     dl.push(DisplayCommand::FillRect {
         rect,
-        color: Color::rgb(22, 25, 34),
+        color: Color::rgb(18, 21, 30),
+        border_radius: 0.0,
+    });
+
+    // Subtle top separator for depth.
+    dl.push(DisplayCommand::FillRect {
+        rect: Rect::new(rect.origin.x, rect.origin.y, rect.size.width, 1.0),
+        color: Color::rgb(44, 49, 66),
         border_radius: 0.0,
     });
 
     let items = bookmarks.bar_bookmarks();
     let mut x = rect.origin.x + 8.0;
     for bm in items.iter().take(12) {
-        let title = if bm.title.len() > 16 {
-            format!("{}…", &bm.title[..15])
-        } else {
-            bm.title.clone()
-        };
-        let w = (title.len() as f32 * 7.0 + 16.0).min(150.0);
+        let title = clamp_title_for_chip(&bm.title);
+        let w = bookmark_chip_width(&title);
         dl.push(DisplayCommand::FillRect {
-            rect: Rect::new(x, rect.origin.y + 3.0, w, 22.0),
-            color: Color::rgb(40, 44, 60),
-            border_radius: 8.0,
+            rect: Rect::new(x, rect.origin.y + 4.0, w, 22.0),
+            color: Color::rgb(34, 39, 54),
+            border_radius: 9.0,
         });
+
+        // Small glyph marker.
         dl.push(DisplayCommand::DrawText {
-            position: Point::new(x + 8.0, rect.origin.y + 7.0),
+            position: Point::new(x + 7.0, rect.origin.y + 8.0),
+            text: "•".into(),
+            color: Color::rgb(140, 146, 176),
+            font_size: 11.0,
+            line_height: 14.0,
+        });
+
+        dl.push(DisplayCommand::DrawText {
+            position: Point::new(x + 14.0, rect.origin.y + 8.0),
             text: title,
             color: Color::rgb(216, 220, 235),
             font_size: 11.0,
@@ -1365,8 +1518,9 @@ fn hit_test_bookmark_bar(
     let items = bookmarks.bar_bookmarks();
     let mut bx = rect.origin.x + 8.0;
     for bm in items.iter().take(12) {
-        let w = (bm.title.len().min(16) as f32 * 7.0 + 16.0).min(150.0);
-        if x >= bx && x <= bx + w && y >= rect.origin.y + 3.0 && y <= rect.origin.y + 25.0 {
+        let title = clamp_title_for_chip(&bm.title);
+        let w = bookmark_chip_width(&title);
+        if x >= bx && x <= bx + w && y >= rect.origin.y + 4.0 && y <= rect.origin.y + 26.0 {
             return Some(bm.url.clone());
         }
         bx += w + 4.0;
@@ -1391,15 +1545,26 @@ fn render_find_bar(
 
     dl.push(DisplayCommand::FillRect {
         rect,
-        color: Color::rgb(34, 37, 52),
-        border_radius: 10.0,
+        color: Color::rgb(27, 30, 43),
+        border_radius: 0.0,
     });
 
     // Input area
+    let input_rect = Rect::new(rect.origin.x + 12.0, rect.origin.y + 6.0, 300.0, 24.0);
     dl.push(DisplayCommand::FillRect {
-        rect: Rect::new(rect.origin.x + 8.0, rect.origin.y + 6.0, 250.0, 24.0),
-        color: Color::rgb(20, 23, 33),
+        rect: input_rect,
+        color: Color::rgb(70, 82, 130),
         border_radius: 8.0,
+    });
+    dl.push(DisplayCommand::FillRect {
+        rect: Rect::new(
+            input_rect.origin.x + 1.0,
+            input_rect.origin.y + 1.0,
+            input_rect.size.width - 2.0,
+            input_rect.size.height - 2.0,
+        ),
+        color: Color::rgb(20, 23, 33),
+        border_radius: 7.0,
     });
 
     let text = if query.is_empty() {
@@ -1408,10 +1573,10 @@ fn render_find_bar(
         query
     };
     dl.push(DisplayCommand::DrawText {
-        position: Point::new(rect.origin.x + 16.0, rect.origin.y + 11.0),
+        position: Point::new(rect.origin.x + 20.0, rect.origin.y + 11.0),
         text: text.to_string(),
         color: if query.is_empty() {
-            Color::rgb(100, 100, 120)
+            Color::rgb(112, 118, 145)
         } else {
             Color::rgb(210, 210, 225)
         },
@@ -1422,22 +1587,58 @@ fn render_find_bar(
     let status = find.status();
     if !status.is_empty() {
         dl.push(DisplayCommand::DrawText {
-            position: Point::new(rect.origin.x + 270.0, rect.origin.y + 11.0),
+            position: Point::new(rect.origin.x + 326.0, rect.origin.y + 11.0),
             text: status,
-            color: Color::rgb(140, 140, 160),
+            color: Color::rgb(160, 166, 194),
             font_size: 12.0,
             line_height: 16.0,
         });
     }
 
-    // Close button
+    // Keyboard hints.
     dl.push(DisplayCommand::DrawText {
-        position: Point::new(rect.origin.x + rect.size.width - 28.0, rect.origin.y + 10.0),
+        position: Point::new(
+            rect.origin.x + rect.size.width - 180.0,
+            rect.origin.y + 11.0,
+        ),
+        text: "Enter/Shift+Enter to navigate".into(),
+        color: Color::rgb(130, 136, 164),
+        font_size: 11.0,
+        line_height: 14.0,
+    });
+
+    // Close button
+    dl.push(DisplayCommand::FillRect {
+        rect: Rect::new(
+            rect.origin.x + rect.size.width - 34.0,
+            rect.origin.y + 8.0,
+            22.0,
+            20.0,
+        ),
+        color: Color::rgb(40, 44, 60),
+        border_radius: 6.0,
+    });
+    dl.push(DisplayCommand::DrawText {
+        position: Point::new(rect.origin.x + rect.size.width - 27.0, rect.origin.y + 10.0),
         text: "✕".into(),
-        color: Color::rgb(140, 140, 160),
+        color: Color::rgb(180, 186, 210),
         font_size: 13.0,
         line_height: 16.0,
     });
+}
+
+#[cfg(target_os = "windows")]
+fn clamp_title_for_chip(title: &str) -> String {
+    if title.len() > 16 {
+        format!("{}…", &title[..15])
+    } else {
+        title.to_string()
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn bookmark_chip_width(clamped_title: &str) -> f32 {
+    (clamped_title.len() as f32 * 7.0 + 24.0).min(170.0)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
