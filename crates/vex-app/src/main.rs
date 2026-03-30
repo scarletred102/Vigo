@@ -25,11 +25,17 @@ fn run() {
     use std::time::Instant;
 
     use vex_browser::bookmarks::BookmarkManager;
-    use vex_browser::devtools::console::{ConsoleState, LogLevel};
+    use vex_browser::devtools::console::ConsoleState;
     use vex_browser::devtools::performance::PerformanceState;
     use vex_browser::devtools::sources::{SourceKind, SourcesState};
     use vex_browser::devtools::DevToolsState;
     use vex_browser::downloads::DownloadManager;
+    use vex_browser::embedder::{
+        ConsoleLevel as EmbedderConsoleLevel, DialogRequest, EmbedderBus, EmbedderCommand,
+        EmbedderMsg,
+    };
+    use vex_browser::event_handler;
+    use vex_browser::event_handler::KeyResult;
     use vex_browser::extensions::loader::ExtensionLoader;
     use vex_browser::find::FindState;
     use vex_browser::links;
@@ -58,6 +64,9 @@ fn run() {
         engine_name(),
         engine_version()
     );
+
+    // A-004 (KPI): measure cold start from `run()` entry to first presented frame.
+    let app_start = Instant::now();
 
     // ── Settings ─────────────────────────────────────────────────
     let settings = BrowserSettings::default();
@@ -97,10 +106,14 @@ fn run() {
     let mut downloads = DownloadManager::new();
     let mut find = FindState::new();
     let mut context_menu: Option<ContextMenu> = None;
+    let mut embedder_bus = EmbedderBus::new();
 
     // Address bar editing state.
     let mut address_bar_focused = false;
     let mut address_bar_text = String::new();
+
+    // Focused form control inside page content.
+    let mut focused_node: Option<vex_core::VexId> = None;
 
     // Find bar state.
     let mut find_bar_visible = false;
@@ -137,6 +150,8 @@ fn run() {
     let _ = std::fs::create_dir_all(&data);
     let session_path = data.join("session.json");
     let bookmarks_path = data.join("bookmarks.json");
+    let kpi_path = data.join("kpi_latest.json");
+    let mut cold_start_recorded = false;
 
     if let Ok(bm) = BookmarkManager::load(&bookmarks_path) {
         bookmarks = bm;
@@ -275,6 +290,16 @@ fn run() {
                                 TabBarAction::None => {
                                     // Task 32: Nav bar clicks.
                                     let nav_action = hit_test_nav_bar(fx, fy, toolbar.nav_bar);
+                                    let nav_action_after = nav_action.clone();
+                                    let bookmark_hit = show_bookmarks
+                                        && hit_test_bookmark_bar(
+                                            fx,
+                                            fy,
+                                            &bookmarks,
+                                            toolbar.bookmark_bar,
+                                        )
+                                        .is_some();
+                                    let prev_focus_state = address_bar_focused;
                                     handle_nav_action(
                                         nav_action,
                                         &mut tab_mgr,
@@ -289,6 +314,38 @@ fn run() {
                                         vp_w,
                                         vp_h,
                                     );
+
+                                    // If nav handling did not consume this click,
+                                    // forward to page content hit-test + DOM events.
+                                    if matches!(nav_action_after, vex_browser::NavBarAction::None)
+                                        && !bookmark_hit
+                                    {
+                                        let content = toolbar.content_area;
+                                        if fx >= content.origin.x
+                                            && fx <= content.origin.x + content.size.width
+                                            && fy >= content.origin.y
+                                            && fy <= content.origin.y + content.size.height
+                                        {
+                                            address_bar_focused = false;
+                                            handle_content_click(
+                                                &mut tab_mgr,
+                                                &mut nav_histories,
+                                                &mut focused_node,
+                                                fx,
+                                                fy,
+                                                content.origin.x,
+                                                content.origin.y,
+                                                vp_w,
+                                                vp_h,
+                                            );
+                                        }
+                                    } else if !matches!(
+                                        nav_action_after,
+                                        vex_browser::NavBarAction::AddressBar
+                                    ) && prev_focus_state
+                                    {
+                                        address_bar_focused = false;
+                                    }
                                 }
                             }
                         }
@@ -315,6 +372,37 @@ fn run() {
                     let ctrl = modifiers & 0x01 != 0;
                     let shift = modifiers & 0x02 != 0;
                     let alt = modifiers & 0x04 != 0;
+
+                    if !address_bar_focused {
+                        if let Some(focused) = focused_node {
+                            let char_value = vk_to_char(keycode, shift);
+                            let key_result = {
+                                let tab = tab_mgr.active_tab_mut();
+                                match (&tab.shared_doc, tab.runtime.as_mut()) {
+                                    (Some(shared), Some(runtime)) => {
+                                        Some(event_handler::process_key_down(
+                                            focused, keycode, char_value, shared, runtime,
+                                        ))
+                                    }
+                                    _ => None,
+                                }
+                            };
+
+                            if let Some(result) = key_result {
+                                match result {
+                                    KeyResult::InputChanged => {
+                                        let viewport = Size::new(vp_w, vp_h);
+                                        tab_mgr.active_tab_mut().relayout(viewport);
+                                        continue;
+                                    }
+                                    KeyResult::Handled => continue,
+                                    KeyResult::NoFocus => {
+                                        focused_node = None;
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     // Address bar input handling (Task 32).
                     if address_bar_focused && !ctrl && !alt {
@@ -439,24 +527,30 @@ fn run() {
             }
         }
 
-        // ── Drain JS request queue → DevTools console (Task 53) ──
+        // ── Drain JS request queue → Embedder bus (Servo-style) ──
         {
             let queue = tab_mgr.active_tab().request_queue.clone();
             let requests: Vec<BrowserRequest> = queue.borrow_mut().drain(..).collect();
             for req in requests {
+                let active_tab_id = tab_mgr.active_tab_id();
                 match req {
                     BrowserRequest::ConsoleLog { level, message } => {
-                        let log_level = match level.as_str() {
-                            "warn" => LogLevel::Warn,
-                            "error" => LogLevel::Error,
-                            "info" => LogLevel::Info,
-                            "debug" => LogLevel::Debug,
-                            _ => LogLevel::Log,
+                        let embedder_level = match level.as_str() {
+                            "warn" => EmbedderConsoleLevel::Warn,
+                            "error" => EmbedderConsoleLevel::Error,
+                            "info" => EmbedderConsoleLevel::Info,
+                            "debug" => EmbedderConsoleLevel::Debug,
+                            _ => EmbedderConsoleLevel::Log,
                         };
-                        console_state.log_message(log_level, &message);
+                        embedder_bus.push_message(EmbedderMsg::ConsoleMessage(
+                            active_tab_id,
+                            embedder_level,
+                            message,
+                        ));
                     }
                     BrowserRequest::Alert(msg) => {
-                        console_state.log_message(LogLevel::System, &format!("alert: {msg}"));
+                        embedder_bus
+                            .push_message(EmbedderMsg::ShowDialog(active_tab_id, DialogRequest::Alert(msg)));
                     }
                     BrowserRequest::Navigate(raw_url) => {
                         let current_url = tab_mgr.active_tab().url.clone();
@@ -468,43 +562,19 @@ fn run() {
                             );
                             continue;
                         };
-
-                        let tab_id = tab_mgr.active_tab_id();
-                        let title = tab_mgr.active_tab().title.clone();
-                        let scroll = Point::new(
-                            tab_mgr.active_tab().scroll.offset_x,
-                            tab_mgr.active_tab().scroll.offset_y,
-                        );
-                        nav_histories
-                            .entry(tab_id)
-                            .or_default()
-                            .push(url.clone(), title, scroll);
-
-                        navigate_tab(&mut tab_mgr, &url, vp_w, vp_h);
+                        embedder_bus.push_command(EmbedderCommand::Navigate(active_tab_id, url));
                     }
                     BrowserRequest::Reload => {
-                        reload_active_tab(&mut tab_mgr, vp_w, vp_h);
+                        embedder_bus.push_command(EmbedderCommand::Reload(active_tab_id));
                     }
                     BrowserRequest::Back => {
-                        let tab_id = tab_mgr.active_tab_id();
-                        let target = nav_histories
-                            .get_mut(&tab_id)
-                            .and_then(|h| h.back().map(|entry| entry.url.clone()));
-                        if let Some(url) = target {
-                            navigate_tab(&mut tab_mgr, &url, vp_w, vp_h);
-                        }
+                        embedder_bus.push_command(EmbedderCommand::GoBack(active_tab_id));
                     }
                     BrowserRequest::Forward => {
-                        let tab_id = tab_mgr.active_tab_id();
-                        let target = nav_histories
-                            .get_mut(&tab_id)
-                            .and_then(|h| h.forward().map(|entry| entry.url.clone()));
-                        if let Some(url) = target {
-                            navigate_tab(&mut tab_mgr, &url, vp_w, vp_h);
-                        }
+                        embedder_bus.push_command(EmbedderCommand::GoForward(active_tab_id));
                     }
                     BrowserRequest::PushState { url } => {
-                        let tab_id = tab_mgr.active_tab_id();
+                        let tab_id = active_tab_id;
                         let current_url = tab_mgr.active_tab().url.clone();
 
                         let next_url = match url {
@@ -543,10 +613,22 @@ fn run() {
                             }
                             tab.mark_dirty();
                         }
+
+                        embedder_bus.push_message(EmbedderMsg::UrlChanged(tab_id, next_url));
+                        push_history_changed_message(&mut embedder_bus, tab_id, &nav_histories);
                     }
                 }
             }
         }
+
+        process_embedder_bus(
+            &mut embedder_bus,
+            &mut tab_mgr,
+            &mut nav_histories,
+            &mut console_state,
+            vp_w,
+            vp_h,
+        );
 
         // ── Extension content script injection (Task 58) ────────
         {
@@ -617,6 +699,20 @@ fn run() {
         gpu.queue.submit(std::iter::once(encoder.finish()));
         output.present();
 
+        // A-004 (KPI): write one cold-start snapshot after the first frame is presented.
+        if !cold_start_recorded {
+            cold_start_recorded = true;
+            let cold_start_ms = app_start.elapsed().as_secs_f64() * 1000.0;
+            let working_set_bytes = current_process_working_set_bytes();
+            write_kpi_snapshot(&kpi_path, cold_start_ms, vp_w, vp_h, working_set_bytes);
+            tracing::info!(
+                cold_start_ms,
+                working_set_bytes,
+                path = %kpi_path.display(),
+                "Captured cold-start KPI snapshot"
+            );
+        }
+
         // ── Performance recording (Task 55) ─────────────────────
         let frame_elapsed = frame_start.elapsed();
         perf_state.record_frame_timings(
@@ -668,6 +764,99 @@ fn data_dir() -> std::path::PathBuf {
     }
 }
 
+/// Write a lightweight KPI snapshot JSON file used by benchmark/report tooling.
+#[cfg(target_os = "windows")]
+fn write_kpi_snapshot(
+    path: &std::path::Path,
+    cold_start_ms: f64,
+    viewport_w: f32,
+    viewport_h: f32,
+    working_set_bytes: Option<u64>,
+) {
+    let unix_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    let working_set_json = working_set_bytes
+        .map(|bytes| bytes.to_string())
+        .unwrap_or_else(|| "null".to_string());
+
+    let payload = format!(
+        "{{\n  \"captured_at_unix_ms\": {},\n  \"cold_start_ms\": {:.2},\n  \"viewport_width\": {:.0},\n  \"viewport_height\": {:.0},\n  \"working_set_bytes\": {}\n}}\n",
+        unix_ms,
+        cold_start_ms,
+        viewport_w,
+        viewport_h,
+        working_set_json
+    );
+
+    if let Err(e) = std::fs::write(path, payload) {
+        tracing::warn!(path = %path.display(), "Failed to write KPI snapshot: {e}");
+    }
+}
+
+/// Snapshot current process working set (resident memory) on Windows.
+#[cfg(target_os = "windows")]
+fn current_process_working_set_bytes() -> Option<u64> {
+    use std::ffi::c_void;
+
+    #[repr(C)]
+    struct ProcessMemoryCounters {
+        cb: u32,
+        page_fault_count: u32,
+        peak_working_set_size: usize,
+        working_set_size: usize,
+        quota_peak_paged_pool_usage: usize,
+        quota_paged_pool_usage: usize,
+        quota_peak_non_paged_pool_usage: usize,
+        quota_non_paged_pool_usage: usize,
+        pagefile_usage: usize,
+        peak_pagefile_usage: usize,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentProcess() -> *mut c_void;
+    }
+
+    #[link(name = "psapi")]
+    unsafe extern "system" {
+        fn GetProcessMemoryInfo(
+            process: *mut c_void,
+            counters: *mut ProcessMemoryCounters,
+            cb: u32,
+        ) -> i32;
+    }
+
+    unsafe {
+        let process = GetCurrentProcess();
+        if process.is_null() {
+            return None;
+        }
+
+        let mut counters = ProcessMemoryCounters {
+            cb: std::mem::size_of::<ProcessMemoryCounters>() as u32,
+            page_fault_count: 0,
+            peak_working_set_size: 0,
+            working_set_size: 0,
+            quota_peak_paged_pool_usage: 0,
+            quota_paged_pool_usage: 0,
+            quota_peak_non_paged_pool_usage: 0,
+            quota_non_paged_pool_usage: 0,
+            pagefile_usage: 0,
+            peak_pagefile_usage: 0,
+        };
+
+        let ok = GetProcessMemoryInfo(process, &mut counters, counters.cb);
+        if ok == 0 {
+            None
+        } else {
+            Some(counters.working_set_size as u64)
+        }
+    }
+}
+
 /// Resolve a JavaScript-requested URL against the current tab URL.
 ///
 /// `location.assign()` and `history.pushState()` may provide absolute or
@@ -690,9 +879,209 @@ fn resolve_browser_request_url(raw: &str, base: &vex_core::VexUrl) -> Option<vex
     vex_core::VexUrl::parse(trimmed).ok()
 }
 
+/// Emit a `HistoryChanged` embedder message for a tab when history mutates.
+#[cfg(target_os = "windows")]
+fn push_history_changed_message(
+    embedder_bus: &mut vex_browser::EmbedderBus,
+    tab_id: vex_browser::tab::TabId,
+    nav_histories: &std::collections::HashMap<vex_browser::tab::TabId, vex_browser::NavigationHistory>,
+) {
+    if let Some(history) = nav_histories.get(&tab_id) {
+        let (urls, current_index) = history.snapshot();
+        embedder_bus.push_message(vex_browser::EmbedderMsg::HistoryChanged(
+            tab_id,
+            urls,
+            current_index,
+        ));
+    }
+}
+
+/// Process queued embedder commands and messages (Servo-style embedder bridge).
+#[cfg(target_os = "windows")]
+#[allow(clippy::too_many_arguments)]
+fn process_embedder_bus(
+    embedder_bus: &mut vex_browser::EmbedderBus,
+    tab_mgr: &mut vex_browser::TabManager,
+    nav_histories: &mut std::collections::HashMap<vex_browser::tab::TabId, vex_browser::NavigationHistory>,
+    console_state: &mut vex_browser::devtools::console::ConsoleState,
+    vp_w: f32,
+    vp_h: f32,
+) {
+    use vex_browser::devtools::console::LogLevel;
+
+    // 1) Commands: embedder/UI -> engine actions.
+    while let Some(command) = embedder_bus.pop_command() {
+        match command {
+            vex_browser::EmbedderCommand::Navigate(tab_id, url) => {
+                if !tab_mgr.switch_to(tab_id) {
+                    continue;
+                }
+
+                let title = tab_mgr.active_tab().title.clone();
+                let scroll = vex_core::geometry::Point::new(
+                    tab_mgr.active_tab().scroll.offset_x,
+                    tab_mgr.active_tab().scroll.offset_y,
+                );
+                nav_histories
+                    .entry(tab_id)
+                    .or_default()
+                    .push(url.clone(), title, scroll);
+
+                navigate_tab(tab_mgr, &url, vp_w, vp_h);
+                embedder_bus.push_message(vex_browser::EmbedderMsg::UrlChanged(tab_id, url));
+                embedder_bus.push_message(vex_browser::EmbedderMsg::TitleChanged(
+                    tab_id,
+                    Some(tab_mgr.active_tab().title.clone()),
+                ));
+                embedder_bus.push_message(vex_browser::EmbedderMsg::LoadStatusChanged(
+                    tab_id,
+                    vex_browser::LoadStatus::Complete,
+                ));
+                push_history_changed_message(embedder_bus, tab_id, nav_histories);
+            }
+            vex_browser::EmbedderCommand::GoBack(tab_id) => {
+                if !tab_mgr.switch_to(tab_id) {
+                    continue;
+                }
+                let target = nav_histories
+                    .get_mut(&tab_id)
+                    .and_then(|h| h.back().map(|entry| entry.url.clone()));
+                if let Some(url) = target {
+                    navigate_tab(tab_mgr, &url, vp_w, vp_h);
+                    embedder_bus.push_message(vex_browser::EmbedderMsg::UrlChanged(tab_id, url));
+                    push_history_changed_message(embedder_bus, tab_id, nav_histories);
+                }
+            }
+            vex_browser::EmbedderCommand::GoForward(tab_id) => {
+                if !tab_mgr.switch_to(tab_id) {
+                    continue;
+                }
+                let target = nav_histories
+                    .get_mut(&tab_id)
+                    .and_then(|h| h.forward().map(|entry| entry.url.clone()));
+                if let Some(url) = target {
+                    navigate_tab(tab_mgr, &url, vp_w, vp_h);
+                    embedder_bus.push_message(vex_browser::EmbedderMsg::UrlChanged(tab_id, url));
+                    push_history_changed_message(embedder_bus, tab_id, nav_histories);
+                }
+            }
+            vex_browser::EmbedderCommand::Reload(tab_id) => {
+                if !tab_mgr.switch_to(tab_id) {
+                    continue;
+                }
+                reload_active_tab(tab_mgr, vp_w, vp_h);
+                embedder_bus.push_message(vex_browser::EmbedderMsg::LoadStatusChanged(
+                    tab_id,
+                    vex_browser::LoadStatus::Complete,
+                ));
+            }
+            vex_browser::EmbedderCommand::Stop(tab_id) => {
+                if !tab_mgr.switch_to(tab_id) {
+                    continue;
+                }
+                tab_mgr.active_tab_mut().stop();
+                embedder_bus.push_message(vex_browser::EmbedderMsg::LoadStatusChanged(
+                    tab_id,
+                    vex_browser::LoadStatus::Complete,
+                ));
+            }
+            vex_browser::EmbedderCommand::NewTab(url_opt) => {
+                match url_opt {
+                    Some(url) => {
+                        let id = tab_mgr.new_tab(url.clone());
+                        navigate_tab(tab_mgr, &url, vp_w, vp_h);
+                        embedder_bus.push_message(vex_browser::EmbedderMsg::UrlChanged(id, url));
+                    }
+                    None => {
+                        load_welcome_tab(tab_mgr, vp_w, vp_h);
+                        let id = tab_mgr.active_tab_id();
+                        embedder_bus.push_message(vex_browser::EmbedderMsg::UrlChanged(
+                            id,
+                            tab_mgr.active_tab().url.clone(),
+                        ));
+                    }
+                }
+            }
+            vex_browser::EmbedderCommand::CloseTab(tab_id) => {
+                if tab_mgr.close_tab(tab_id) {
+                    embedder_bus.push_message(vex_browser::EmbedderMsg::TabClosed(tab_id));
+                    let active_id = tab_mgr.active_tab_id();
+                    embedder_bus.push_message(vex_browser::EmbedderMsg::UrlChanged(
+                        active_id,
+                        tab_mgr.active_tab().url.clone(),
+                    ));
+                }
+            }
+            vex_browser::EmbedderCommand::SwitchTab(tab_id) => {
+                if tab_mgr.switch_to(tab_id) {
+                    embedder_bus.push_message(vex_browser::EmbedderMsg::UrlChanged(
+                        tab_id,
+                        tab_mgr.active_tab().url.clone(),
+                    ));
+                    embedder_bus.push_message(vex_browser::EmbedderMsg::TitleChanged(
+                        tab_id,
+                        Some(tab_mgr.active_tab().title.clone()),
+                    ));
+                }
+            }
+            vex_browser::EmbedderCommand::EvaluateJs(tab_id, code) => {
+                let msg = format!("EvaluateJs request for {tab_id}: {} bytes", code.len());
+                console_state.log_message(LogLevel::System, &msg);
+            }
+            vex_browser::EmbedderCommand::SetViewport(tab_id, width, height) => {
+                if let Some(tab) = tab_mgr.tab_mut(tab_id) {
+                    tab.relayout(vex_core::geometry::Size::new(width, height));
+                }
+            }
+            vex_browser::EmbedderCommand::Scroll(tab_id, dx, dy) => {
+                if let Some(tab) = tab_mgr.tab_mut(tab_id) {
+                    tab.scroll.scroll_by(dx, dy);
+                }
+            }
+            vex_browser::EmbedderCommand::Shutdown => {
+                embedder_bus.push_message(vex_browser::EmbedderMsg::ShutdownComplete);
+            }
+        }
+    }
+
+    // 2) Messages: engine -> embedder/UI reactions.
+    while let Some(message) = embedder_bus.pop_message() {
+        match message {
+            vex_browser::EmbedderMsg::ConsoleMessage(_, level, message) => {
+                let log_level = match level {
+                    vex_browser::ConsoleLevel::Warn => LogLevel::Warn,
+                    vex_browser::ConsoleLevel::Error => LogLevel::Error,
+                    vex_browser::ConsoleLevel::Info => LogLevel::Info,
+                    vex_browser::ConsoleLevel::Debug => LogLevel::Debug,
+                    vex_browser::ConsoleLevel::Log => LogLevel::Log,
+                };
+                console_state.log_message(log_level, &message);
+            }
+            vex_browser::EmbedderMsg::ShowDialog(_, request) => match request {
+                vex_browser::DialogRequest::Alert(msg) => {
+                    console_state.log_message(LogLevel::System, &format!("alert: {msg}"));
+                }
+                vex_browser::DialogRequest::Confirm(msg) => {
+                    console_state.log_message(LogLevel::System, &format!("confirm: {msg}"));
+                }
+                vex_browser::DialogRequest::Prompt(msg, default) => {
+                    let default = default.unwrap_or_default();
+                    console_state
+                        .log_message(LogLevel::System, &format!("prompt: {msg} (default={default})"));
+                }
+            },
+            other => {
+                tracing::debug!(target: "vigo::embedder", "embedder msg: {other:?}");
+            }
+        }
+    }
+}
+
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
-    use super::resolve_browser_request_url;
+    use super::{
+        current_process_working_set_bytes, resolve_browser_request_url, write_kpi_snapshot,
+    };
     use vex_core::VexUrl;
 
     #[test]
@@ -715,6 +1104,33 @@ mod tests {
     fn rejects_empty_input() {
         let base = VexUrl::parse("https://example.com/").expect("valid URL");
         assert!(resolve_browser_request_url("   ", &base).is_none());
+    }
+
+    #[test]
+    fn writes_kpi_snapshot_json() {
+        let mut path = std::env::temp_dir();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_millis();
+        path.push(format!("vigo-kpi-{ts}.json"));
+
+        write_kpi_snapshot(&path, 123.45, 1280.0, 720.0, Some(42));
+
+        let json = std::fs::read_to_string(&path).expect("snapshot file should exist");
+        assert!(json.contains("\"cold_start_ms\": 123.45"));
+        assert!(json.contains("\"viewport_width\": 1280"));
+        assert!(json.contains("\"viewport_height\": 720"));
+        assert!(json.contains("\"working_set_bytes\": 42"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn reads_current_process_working_set() {
+        let value = current_process_working_set_bytes();
+        assert!(value.is_some(), "working-set lookup should succeed on Windows");
+        assert!(value.expect("has value") > 0);
     }
 }
 
@@ -1090,6 +1506,148 @@ fn handle_menu_action(
         }
         MenuAction::Reload => reload_active_tab(tab_mgr, vp_w, vp_h),
         _ => tracing::debug!("Context menu: {action:?}"),
+    }
+}
+
+/// Handle a click inside the page content area: DOM events, focus, and link actions.
+#[cfg(target_os = "windows")]
+#[allow(clippy::too_many_arguments)]
+fn handle_content_click(
+    tab_mgr: &mut vex_browser::TabManager,
+    nav_histories: &mut std::collections::HashMap<
+        vex_browser::tab::TabId,
+        vex_browser::NavigationHistory,
+    >,
+    focused_node: &mut Option<vex_core::VexId>,
+    mouse_x: f32,
+    mouse_y: f32,
+    content_origin_x: f32,
+    content_origin_y: f32,
+    vp_w: f32,
+    vp_h: f32,
+) {
+    let local_x = (mouse_x - content_origin_x).max(0.0);
+    let local_y = (mouse_y - content_origin_y).max(0.0);
+
+    // Determine hit target for focus updates.
+    let hit_target = {
+        let tab = tab_mgr.active_tab();
+        tab.layout.as_ref().and_then(|layout| {
+            vex_layout::hit_test(
+                layout,
+                local_x + tab.scroll.offset_x,
+                local_y + tab.scroll.offset_y,
+            )
+        })
+    };
+
+    let click_result = {
+        let tab = tab_mgr.active_tab_mut();
+        match (&tab.layout, &tab.shared_doc, tab.runtime.as_mut()) {
+            (Some(layout), Some(shared), Some(runtime)) => {
+                let doc = shared.borrow();
+                Some(vex_browser::event_handler::process_click(
+                    local_x,
+                    local_y,
+                    layout,
+                    &tab.scroll,
+                    &doc,
+                    shared,
+                    &tab.url,
+                    runtime,
+                ))
+            }
+            _ => None,
+        }
+    };
+
+    // Focus follows click target (if any).
+    if let Some(target) = hit_target {
+        let maybe_focus = {
+            let tab = tab_mgr.active_tab_mut();
+            match (&tab.shared_doc, tab.runtime.as_mut()) {
+                (Some(shared), Some(runtime)) => vex_browser::event_handler::process_focus_change(
+                    target,
+                    *focused_node,
+                    shared,
+                    runtime,
+                ),
+                _ => None,
+            }
+        };
+        if let Some(new_focus) = maybe_focus {
+            *focused_node = Some(new_focus);
+        }
+    } else {
+        *focused_node = None;
+    }
+
+    match click_result {
+        Some(vex_browser::event_handler::ClickResult::Navigate(
+            vex_browser::links::LinkAction::Navigate(url),
+        )) => {
+            let tab_id = tab_mgr.active_tab_id();
+            let title = tab_mgr.active_tab().title.clone();
+            let scroll = vex_core::geometry::Point::new(
+                tab_mgr.active_tab().scroll.offset_x,
+                tab_mgr.active_tab().scroll.offset_y,
+            );
+            nav_histories
+                .entry(tab_id)
+                .or_default()
+                .push(url.clone(), title, scroll);
+            navigate_tab(tab_mgr, &url, vp_w, vp_h);
+            *focused_node = None;
+        }
+        Some(vex_browser::event_handler::ClickResult::Navigate(
+            vex_browser::links::LinkAction::NewTab(url),
+        )) => {
+            tab_mgr.new_tab(url.clone());
+            let tab_id = tab_mgr.active_tab_id();
+            nav_histories.entry(tab_id).or_default().push(
+                url.clone(),
+                "New Tab".to_string(),
+                vex_core::geometry::Point::new(0.0, 0.0),
+            );
+            navigate_tab(tab_mgr, &url, vp_w, vp_h);
+            *focused_node = None;
+        }
+        Some(vex_browser::event_handler::ClickResult::Navigate(
+            vex_browser::links::LinkAction::RunScript(script),
+        )) => {
+            let script_ran = {
+                let tab = tab_mgr.active_tab_mut();
+                if let Some(runtime) = tab.runtime.as_mut() {
+                    match runtime.execute(&script) {
+                        Ok(()) => true,
+                        Err(e) => {
+                            tracing::warn!("javascript: URL execution failed: {e}");
+                            false
+                        }
+                    }
+                } else {
+                    false
+                }
+            };
+
+            if script_ran {
+                let tab = tab_mgr.active_tab_mut();
+                tab.relayout(vex_core::geometry::Size::new(vp_w, vp_h));
+                let content_height = tab
+                    .layout
+                    .as_ref()
+                    .map(estimated_layout_height)
+                    .unwrap_or(vp_h)
+                    .max(vp_h);
+                tab.set_content_size(vp_w, content_height + 32.0);
+            }
+        }
+        Some(vex_browser::event_handler::ClickResult::Handled)
+        | Some(vex_browser::event_handler::ClickResult::Miss)
+        | None => {}
+        Some(vex_browser::event_handler::ClickResult::Navigate(
+            vex_browser::links::LinkAction::None,
+        )) => {}
     }
 }
 

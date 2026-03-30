@@ -80,7 +80,7 @@ async fn fetch_ten_https_sites() {
         "https://www.wikipedia.org/",
         "https://www.github.com/",
         "https://docs.rs/",
-        "https://crates.io/",
+        "https://www.w3.org/",
         "https://www.cloudflare.com/",
         "https://www.gnu.org/",
     ];
@@ -100,7 +100,7 @@ async fn fetch_ten_https_sites() {
 
                 match response.text() {
                     Ok(body) => {
-                        if !(body.contains('<') && body.contains('>')) {
+                        if !looks_like_html(&body) {
                             failures.push(format!("{url}: response did not look like HTML"));
                         }
                     }
@@ -116,6 +116,14 @@ async fn fetch_ten_https_sites() {
         "one or more fetches failed:\n{}",
         failures.join("\n")
     );
+}
+
+fn looks_like_html(body: &str) -> bool {
+    let lower = body.to_ascii_lowercase();
+    lower.contains("<html")
+        || lower.contains("<!doctype html")
+        || lower.contains("<head")
+        || lower.contains("<body")
 }
 
 #[tokio::test]

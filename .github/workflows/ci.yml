@@ -58,6 +58,36 @@ jobs:
       - name: Format check
         run: cargo fmt --all -- --check
 
+  kpi-gate:
+    name: KPI Gate (windows)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run KPI gate
+        shell: pwsh
+        run: ./scripts/kpi-gate.ps1
+
+      - name: Upload KPI report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kpi-report-windows
+          path: target/kpi-report.json
+
   zig:
     name: Zig (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

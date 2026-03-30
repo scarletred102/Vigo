@@ -3,6 +3,8 @@
 
 //! Navigation bar rendering — address bar, back/forward, reload buttons.
 
+use std::fmt::Write;
+
 use vex_core::color::Color;
 use vex_core::geometry::{Point, Rect};
 use vex_render::display_list::{DisplayCommand, DisplayList};
@@ -16,18 +18,22 @@ const NAV_RIGHT_PADDING: f32 = 8.0;
 const ADDRESS_SCHEME_ICON_WIDTH: f32 = 18.0;
 
 /// Colors.
-const NAV_BAR_BG: Color = Color::rgb(20, 23, 32);
-const BUTTON_BG: Color = Color::rgb(42, 47, 66);
-const BUTTON_TEXT: Color = Color::rgb(220, 224, 240);
-const BUTTON_DISABLED: Color = Color::rgb(105, 110, 130);
-const BUTTON_ACTIVE: Color = Color::rgb(58, 66, 92);
-const ADDRESS_BAR_BORDER: Color = Color::rgb(56, 63, 88);
-const ADDRESS_BAR_BORDER_FOCUSED: Color = Color::rgb(99, 127, 255);
-const ADDRESS_BAR_BG: Color = Color::rgb(14, 17, 25);
-const ADDRESS_TEXT: Color = Color::rgb(228, 231, 245);
-const ADDRESS_PLACEHOLDER: Color = Color::rgb(126, 134, 160);
-const HTTPS_COLOR: Color = Color::rgb(86, 204, 138);
-const HTTP_COLOR: Color = Color::rgb(238, 116, 116);
+const NAV_BAR_BG: Color = Color::rgb(241, 243, 248);
+const NAV_BAR_BOTTOM_LINE: Color = Color::rgb(211, 217, 228);
+const BUTTON_BG: Color = Color::rgb(228, 233, 242);
+const BUTTON_TEXT: Color = Color::rgb(57, 68, 89);
+const BUTTON_DISABLED: Color = Color::rgb(151, 161, 180);
+const BUTTON_ACTIVE: Color = Color::rgb(214, 221, 234);
+const ADDRESS_BAR_BORDER: Color = Color::rgb(186, 196, 215);
+const ADDRESS_BAR_BORDER_FOCUSED: Color = Color::rgb(53, 119, 246);
+const ADDRESS_BAR_BG: Color = Color::rgb(255, 255, 255);
+const ADDRESS_TEXT: Color = Color::rgb(42, 50, 67);
+const ADDRESS_PLACEHOLDER: Color = Color::rgb(123, 134, 155);
+const HTTPS_COLOR: Color = Color::rgb(28, 148, 93);
+const HTTP_COLOR: Color = Color::rgb(210, 77, 77);
+const URL_PATH_COLOR: Color = Color::rgb(92, 104, 126);
+const URL_SCHEME_COLOR: Color = Color::rgb(120, 132, 154);
+const URL_QUERY_COLOR: Color = Color::rgb(97, 119, 156);
 
 /// State for rendering the navigation bar.
 pub struct NavBarState<'a> {
@@ -51,6 +57,16 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     dl.push(DisplayCommand::FillRect {
         rect: nav_rect,
         color: NAV_BAR_BG,
+        border_radius: 0.0,
+    });
+    dl.push(DisplayCommand::FillRect {
+        rect: Rect::new(
+            nav_rect.origin.x,
+            nav_rect.origin.y + nav_rect.size.height - 1.0,
+            nav_rect.size.width,
+            1.0,
+        ),
+        color: NAV_BAR_BOTTOM_LINE,
         border_radius: 0.0,
     });
 
@@ -175,18 +191,45 @@ pub fn render_nav_bar(dl: &mut DisplayList, state: &NavBarState<'_>, nav_rect: R
     } else {
         display_source
     };
-    let url_text = truncate_url(&display_text, max_url_width);
-    dl.push(DisplayCommand::DrawText {
-        position: Point::new(url_x, btn_y + 6.0),
-        text: url_text,
-        color: if show_placeholder {
-            ADDRESS_PLACEHOLDER
-        } else {
-            ADDRESS_TEXT
-        },
-        font_size: 13.0,
-        line_height: 16.0,
-    });
+    if show_placeholder {
+        let url_text = truncate_url(&display_text, max_url_width);
+        dl.push(DisplayCommand::DrawText {
+            position: Point::new(url_x, btn_y + 6.0),
+            text: url_text,
+            color: ADDRESS_PLACEHOLDER,
+            font_size: 13.0,
+            line_height: 16.0,
+        });
+    } else {
+        let styled = styled_url_segments(&display_text);
+        let max_chars = (max_url_width / 7.5).max(10.0) as usize;
+        let mut cursor_x = url_x;
+        let mut consumed = 0usize;
+        for (segment, color) in styled {
+            if consumed >= max_chars {
+                break;
+            }
+            let remaining = max_chars - consumed;
+            let rendered = if segment.chars().count() <= remaining {
+                segment
+            } else {
+                truncate_to_chars(&segment, remaining.saturating_sub(1)) + "…"
+            };
+            let seg_width = estimate_text_width(&rendered);
+            dl.push(DisplayCommand::DrawText {
+                position: Point::new(cursor_x, btn_y + 6.0),
+                text: rendered.clone(),
+                color,
+                font_size: 13.0,
+                line_height: 16.0,
+            });
+            cursor_x += seg_width;
+            consumed += rendered.chars().count();
+            if rendered.ends_with('…') {
+                break;
+            }
+        }
+    }
 }
 
 /// Compute the address bar rectangle for this nav bar rect.
@@ -296,6 +339,85 @@ fn pretty_display_url(url: &str) -> String {
     if out.ends_with('/') {
         out.pop();
     }
+    out
+}
+
+fn styled_url_segments(url: &str) -> Vec<(String, Color)> {
+    if url.starts_with("vex://") || url.starts_with("about:") {
+        return vec![(url.to_string(), ADDRESS_TEXT)];
+    }
+
+    let mut out = Vec::new();
+    let mut rest = url;
+    if let Some(stripped) = rest.strip_prefix("https://") {
+        out.push(("https://".to_string(), URL_SCHEME_COLOR));
+        rest = stripped;
+    } else if let Some(stripped) = rest.strip_prefix("http://") {
+        out.push(("http://".to_string(), URL_SCHEME_COLOR));
+        rest = stripped;
+    }
+
+    let host_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    if host_end > 0 {
+        out.push((rest[..host_end].to_string(), ADDRESS_TEXT));
+        rest = &rest[host_end..];
+    }
+
+    if rest.is_empty() {
+        return out;
+    }
+
+    let query_start = rest.find('?').unwrap_or(rest.len());
+    let hash_start = rest.find('#').unwrap_or(rest.len());
+    let path_end = query_start.min(hash_start);
+
+    if path_end > 0 {
+        out.push((rest[..path_end].to_string(), URL_PATH_COLOR));
+    }
+
+    if query_start < rest.len() {
+        let query_end = hash_start.min(rest.len());
+        if query_end > query_start {
+            out.push((rest[query_start..query_end].to_string(), URL_QUERY_COLOR));
+        }
+    }
+
+    if hash_start < rest.len() {
+        out.push((rest[hash_start..].to_string(), URL_PATH_COLOR));
+    }
+
+    out
+}
+
+fn truncate_to_chars(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
+}
+
+/// Format a host/path pair into a friendlier title when tab has no title.
+#[must_use]
+pub fn friendly_title_from_url(url: &str) -> String {
+    let pretty = pretty_display_url(url);
+    if pretty.is_empty() {
+        return "New Tab".to_string();
+    }
+
+    if let Some((host, _path)) = pretty.split_once('/') {
+        let mut title = host.to_string();
+        if title.starts_with("www.") {
+            title = title.trim_start_matches("www.").to_string();
+        }
+        if let Some(dot) = title.find('.') {
+            let mut first = title[..dot].to_string();
+            if let Some(ch) = first.chars().next() {
+                first.replace_range(..ch.len_utf8(), &ch.to_uppercase().to_string());
+            }
+            return first;
+        }
+        return title;
+    }
+
+    let mut out = String::new();
+    let _ = write!(&mut out, "{}", pretty);
     out
 }
 

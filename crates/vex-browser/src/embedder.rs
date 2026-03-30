@@ -16,7 +16,71 @@
 
 use vex_core::VexUrl;
 
+use std::collections::VecDeque;
+
 use crate::tab::TabId;
+
+/// Servo-style bridge between embedder UI and engine.
+///
+/// The embedder pushes [`EmbedderCommand`] values for engine execution,
+/// and the engine pushes [`EmbedderMsg`] values back for UI updates.
+#[derive(Debug, Default)]
+pub struct EmbedderBus {
+    commands: VecDeque<EmbedderCommand>,
+    messages: VecDeque<EmbedderMsg>,
+}
+
+impl EmbedderBus {
+    /// Create an empty embedder bus.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Queue a command from UI → engine.
+    pub fn push_command(&mut self, command: EmbedderCommand) {
+        self.commands.push_back(command);
+    }
+
+    /// Queue a message from engine → UI.
+    pub fn push_message(&mut self, message: EmbedderMsg) {
+        self.messages.push_back(message);
+    }
+
+    /// Pop the next queued command (FIFO).
+    pub fn pop_command(&mut self) -> Option<EmbedderCommand> {
+        self.commands.pop_front()
+    }
+
+    /// Pop the next queued message (FIFO).
+    pub fn pop_message(&mut self) -> Option<EmbedderMsg> {
+        self.messages.pop_front()
+    }
+
+    /// Whether any pending commands exist.
+    #[must_use]
+    pub fn has_commands(&self) -> bool {
+        !self.commands.is_empty()
+    }
+
+    /// Whether any pending messages exist.
+    #[must_use]
+    pub fn has_messages(&self) -> bool {
+        !self.messages.is_empty()
+    }
+
+    /// Total queued item count (commands + messages).
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.commands.len() + self.messages.len()
+    }
+
+    /// Whether the bus has no queued items.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.commands.is_empty() && self.messages.is_empty()
+    }
+}
 
 // ──── Engine → Embedder (notifications) ──────────────────────────────
 
@@ -279,5 +343,48 @@ mod tests {
     fn embedder_command_shutdown() {
         let cmd = EmbedderCommand::Shutdown;
         assert!(format!("{cmd:?}").contains("Shutdown"));
+    }
+
+    #[test]
+    fn bus_command_fifo_order() {
+        let mut bus = EmbedderBus::new();
+        bus.push_command(EmbedderCommand::Shutdown);
+        bus.push_command(EmbedderCommand::NewTab(None));
+
+        assert!(matches!(bus.pop_command(), Some(EmbedderCommand::Shutdown)));
+        assert!(matches!(bus.pop_command(), Some(EmbedderCommand::NewTab(None))));
+        assert!(bus.pop_command().is_none());
+    }
+
+    #[test]
+    fn bus_message_fifo_order() {
+        let mut bus = EmbedderBus::new();
+        let tab = TabId(1);
+
+        bus.push_message(EmbedderMsg::LoadStatusChanged(tab, LoadStatus::Started));
+        bus.push_message(EmbedderMsg::LoadStatusChanged(tab, LoadStatus::Complete));
+
+        assert!(matches!(
+            bus.pop_message(),
+            Some(EmbedderMsg::LoadStatusChanged(_, LoadStatus::Started))
+        ));
+        assert!(matches!(
+            bus.pop_message(),
+            Some(EmbedderMsg::LoadStatusChanged(_, LoadStatus::Complete))
+        ));
+        assert!(bus.pop_message().is_none());
+    }
+
+    #[test]
+    fn bus_len_and_empty() {
+        let mut bus = EmbedderBus::new();
+        assert!(bus.is_empty());
+        assert_eq!(bus.len(), 0);
+
+        bus.push_command(EmbedderCommand::Shutdown);
+        bus.push_message(EmbedderMsg::ShutdownComplete);
+
+        assert!(!bus.is_empty());
+        assert_eq!(bus.len(), 2);
     }
 }

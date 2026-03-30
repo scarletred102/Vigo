@@ -37,7 +37,7 @@ pub struct JsRuntime {
     /// Shared tokio runtime handle for async operations (fetch, etc.).
     tokio_handle: tokio::runtime::Handle,
     /// Owned tokio runtime (kept alive for the handle).
-    _tokio_runtime: tokio::runtime::Runtime,
+    tokio_runtime: Option<tokio::runtime::Runtime>,
 }
 
 impl JsRuntime {
@@ -69,7 +69,7 @@ impl JsRuntime {
             request_queue: queue,
             event_bridge: EventBridge::new(),
             tokio_handle: handle,
-            _tokio_runtime: rt,
+            tokio_runtime: Some(rt),
         }
     }
 
@@ -340,6 +340,17 @@ impl Default for JsRuntime {
     }
 }
 
+impl Drop for JsRuntime {
+    fn drop(&mut self) {
+        // JsRuntime can be dropped from within another tokio async context
+        // (e.g. during page reload inside an async load pipeline).
+        // Dropping Runtime directly there panics because shutdown may block.
+        if let Some(runtime) = self.tokio_runtime.take() {
+            runtime.shutdown_background();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,5 +377,18 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(matches!(err, VexError::Js(_)));
+    }
+
+    #[test]
+    fn dropping_inside_async_context_does_not_panic() {
+        let outer = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("outer runtime should build");
+
+        outer.block_on(async {
+            let _js = JsRuntime::new();
+            // Dropped at end of async scope.
+        });
     }
 }

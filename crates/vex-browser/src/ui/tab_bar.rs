@@ -9,14 +9,18 @@ use vex_render::display_list::{DisplayCommand, DisplayList};
 
 use crate::tab::Tab;
 
+use super::nav_bar::friendly_title_from_url;
+
 /// Colors for the tab bar.
-const TAB_BAR_BG: Color = Color::rgb(20, 23, 32);
-const ACTIVE_TAB_BG: Color = Color::rgb(44, 49, 67);
-const INACTIVE_TAB_BG: Color = Color::rgb(30, 34, 48);
-const TAB_TEXT_COLOR: Color = Color::rgb(230, 234, 247);
-const INACTIVE_TAB_TEXT: Color = Color::rgb(156, 162, 188);
-const CLOSE_BTN_COLOR: Color = Color::rgb(182, 188, 212);
-const NEW_TAB_BTN_COLOR: Color = Color::rgb(196, 202, 226);
+const TAB_BAR_BG: Color = Color::rgb(231, 236, 246);
+const ACTIVE_TAB_BG: Color = Color::rgb(255, 255, 255);
+const INACTIVE_TAB_BG: Color = Color::rgb(216, 224, 238);
+const TAB_TEXT_COLOR: Color = Color::rgb(39, 49, 68);
+const INACTIVE_TAB_TEXT: Color = Color::rgb(96, 107, 129);
+const CLOSE_BTN_COLOR: Color = Color::rgb(113, 124, 146);
+const NEW_TAB_BTN_COLOR: Color = Color::rgb(86, 102, 132);
+const TAB_ACTIVE_ACCENT: Color = Color::rgb(48, 112, 244);
+const TAB_BAR_BOTTOM_LINE: Color = Color::rgb(194, 205, 224);
 
 /// Maximum tab width in pixels.
 const MAX_TAB_WIDTH: f32 = 250.0;
@@ -41,6 +45,16 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
     dl.push(DisplayCommand::FillRect {
         rect: tab_bar_rect,
         color: TAB_BAR_BG,
+        border_radius: 0.0,
+    });
+    dl.push(DisplayCommand::FillRect {
+        rect: Rect::new(
+            tab_bar_rect.origin.x,
+            tab_bar_rect.origin.y + tab_bar_rect.size.height - 1.0,
+            tab_bar_rect.size.width,
+            1.0,
+        ),
+        color: TAB_BAR_BOTTOM_LINE,
         border_radius: 0.0,
     });
 
@@ -68,7 +82,7 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
         if is_active {
             dl.push(DisplayCommand::FillRect {
                 rect: Rect::new(x + 8.0, y + 2.0, (geom.tab_width - 16.0).max(0.0), 2.0),
-                color: Color::rgb(124, 88, 255),
+                color: TAB_ACTIVE_ACCENT,
                 border_radius: 1.0,
             });
         }
@@ -78,9 +92,9 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
             position: Point::new(x + 8.0, y + 8.0),
             text: "•".into(),
             color: if is_active {
-                Color::rgb(176, 183, 217)
+                Color::rgb(118, 130, 157)
             } else {
-                Color::rgb(108, 115, 145)
+                Color::rgb(143, 153, 174)
             },
             font_size: 12.0,
             line_height: 14.0,
@@ -88,7 +102,12 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
 
         // Tab title (truncated).
         let max_text_width = geom.tab_width - 46.0; // favicon + close button + padding
-        let title = truncate_title(&tab.title, max_text_width);
+        let raw_title = if tab.title.trim().is_empty() || tab.title == "New Tab" {
+            friendly_title_from_url(tab.url.as_ref())
+        } else {
+            tab.title.clone()
+        };
+        let title = truncate_title(&raw_title, max_text_width);
         dl.push(DisplayCommand::DrawText {
             position: Point::new(x + 18.0, y + 8.0),
             text: title,

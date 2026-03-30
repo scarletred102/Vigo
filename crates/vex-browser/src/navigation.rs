@@ -102,8 +102,16 @@ impl NavigationHistory {
     }
 
     /// Current index in the history stack.
+    #[must_use]
     pub fn current_index(&self) -> usize {
         self.current_index
+    }
+
+    /// Snapshot URLs and current index for embedder/UI updates.
+    #[must_use]
+    pub fn snapshot(&self) -> (Vec<VexUrl>, usize) {
+        let urls = self.entries.iter().map(|entry| entry.url.clone()).collect();
+        (urls, self.current_index)
     }
 }
 
@@ -166,6 +174,20 @@ mod tests {
         let mut history = NavigationHistory::new();
         history.push(url("https://a.com"), "A".into(), Point::new(0.0, 0.0));
         assert!(history.forward().is_none());
+    }
+
+    #[test]
+    fn snapshot_returns_urls_and_index() {
+        let mut history = NavigationHistory::new();
+        history.push(url("https://a.com"), "A".into(), Point::new(0.0, 0.0));
+        history.push(url("https://b.com"), "B".into(), Point::new(0.0, 0.0));
+        let _ = history.back();
+
+        let (urls, idx) = history.snapshot();
+        assert_eq!(urls.len(), 2);
+        assert_eq!(urls[0].as_ref(), "https://a.com/");
+        assert_eq!(urls[1].as_ref(), "https://b.com/");
+        assert_eq!(idx, 0);
     }
 
     #[test]

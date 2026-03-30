@@ -73,8 +73,8 @@ pub use downloads::{DownloadManager, DownloadState};
 pub use drag_drop::{DragController, DragEvent, DragEventType, DropEffect, EffectAllowed};
 pub use drm_overlay::OverlayManager;
 pub use embedder::{
-    ConsoleLevel, CursorKind, DialogRequest, EmbedderCommand, EmbedderMsg, LoadStatus,
-    PermissionKind,
+    ConsoleLevel, CursorKind, DialogRequest, EmbedderBus, EmbedderCommand, EmbedderMsg,
+    LoadStatus, PermissionKind,
 };
 pub use encoding::{Encoding, TextDecoder, TextEncoder};
 pub use event_source::{EventSource, EventSourceState, SseEvent};
