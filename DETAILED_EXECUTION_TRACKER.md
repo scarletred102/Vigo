@@ -9,6 +9,14 @@
 - Windows-first implementation now
 - Cross-platform rollout deferred (not blocked, just sequenced later)
 
+## Execution mode (parallel lanes)
+
+We are executing in parallel, not serial:
+
+- **Lane 1:** Stability + KPI gating (Workstream A)
+- **Lane 2:** Core browser capability work (Workstreams B/C/D/E)
+- **Lane 3:** Manual product checkpoints (run/use/feedback loop)
+
 ---
 
 ## How to read this file
@@ -46,7 +54,7 @@ Create objective quality gates for performance and stability, so future features
 
 - [x] **A-004** Add cold-start KPI capture in `vex-app` (time to first frame).
 - [x] **A-005** Add process memory KPI capture (working set snapshots) for 10 idle tabs.
-- [ ] **A-006** Add crash-free session accounting + session health report.
+- [x] **A-006** Add crash-free session accounting + session health report.
 - [ ] **A-007** Enforce KPI regression budget policy in CI (hard fail beyond budget).
 
 ### A.3 Validation checklist
@@ -56,7 +64,8 @@ Create objective quality gates for performance and stability, so future features
 - [x] CI contains dedicated KPI job.
 - [x] Cold-start KPI snapshot writer implemented and unit-tested in `vex-app`.
 - [x] Windows working-set memory snapshot writer implemented and unit-tested.
-- [ ] KPI job enforces cold start, memory, crash-free metrics (pending A-004..A-006).
+- [x] Crash-free session counters persisted to `session_health.json`.
+- [ ] KPI job enforces cold start, memory, crash-free metrics (pending A-007 tightening).
 
 ---
 
@@ -71,7 +80,7 @@ Implement WebAuthn/passkey flows with platform authenticators:
 
 ### Tasks
 
-- [ ] **B-001** Create `vex-browser::webauthn` core types + request/response models.
+- [x] **B-001** Create `vex-browser::webauthn` core types + request/response models.
 - [ ] **B-002** Add `PlatformAuthenticator` trait and Windows Hello provider.
 - [ ] **B-003** Add browser-side credential broker (embedder command/message path).
 - [ ] **B-004** Wire JS API surface `navigator.credentials.create/get`.
@@ -94,12 +103,31 @@ Reach high-fidelity compatibility for top extension categories while keeping str
 
 ### Tasks
 
-- [ ] **C-001** Upgrade manifest compatibility toward MV3 shape.
-- [ ] **C-002** Implement runtime messaging primitives.
+- [/] **C-001** Upgrade manifest compatibility toward MV3 shape.
+- [x] **C-002** Implement runtime messaging primitives.
 - [ ] **C-003** Implement host permissions + runtime grant/revoke workflow.
 - [ ] **C-004** Add declarative network rules subset for adblock-class extensions.
 - [ ] **C-005** Isolate extension workers/process boundaries.
 - [ ] **C-006** Extension compatibility harness for representative top extensions.
+
+---
+
+## Manual Checkpoint Loop (run + use + assess)
+
+- [x] **CP-001** Add checkpoint launcher script: `scripts/checkpoint-run-browser.ps1`.
+- [ ] **CP-002** User-run checkpoint completed and feedback captured.
+
+### How to run checkpoint
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\checkpoint-run-browser.ps1
+```
+
+Optional dry run (no GUI launch):
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\checkpoint-run-browser.ps1 -NoRun -SkipBuild
+```
 
 ### Validation
 
@@ -167,10 +195,19 @@ Complete zero-knowledge sync lifecycle beyond basic encrypted payload transport.
 - [x] Added `writes_kpi_snapshot_json` unit test (4/4 vex-app tests passing).
 - [x] Implemented Windows working-set KPI capture (`GetProcessMemoryInfo`) in `crates/vex-app/src/main.rs`.
 - [x] Added `reads_current_process_working_set` unit test (5/5 vex-app tests passing).
+- [x] Implemented session health persistence and crash-free accounting (`session_health.json`).
+- [x] Added `session_health_roundtrip` unit test (6/6 vex-app tests passing).
+- [x] Added WebAuthn core scaffolding module: `crates/vex-browser/src/webauthn.rs`.
+- [x] Added extension runtime messaging hub: `crates/vex-browser/src/extensions/messaging.rs`.
+- [x] Extended extension manifest compatibility for MV2/MV3 background entrypoints.
+- [x] Added manual checkpoint script: `scripts/checkpoint-run-browser.ps1`.
+- [x] Wired runtime messaging through loader/app loop (`vigo.runtime.sendMessage` request routing + active-tab dispatch).
+- [x] Replaced extension content-script "match-only" logging with actual runtime injection + per-tab dedupe.
+- [x] Applied Servo-shell-inspired chrome palette across tab/nav bars and app chrome overlays.
 
 ---
 
 ## Current active focus
 
-**Active item:** Workstream A.2 (A-006 next)  
-**Next concrete step:** add crash-free session accounting and emit it into KPI snapshots/reports.
+**Active items:** Workstream A.2 (A-007), Workstream C (C-001), Workstream B (B-002)  
+**Next concrete step:** wire runtime WebAuthn provider abstraction (Windows Hello) while tightening KPI gate thresholds from baseline to budgeted targets.
