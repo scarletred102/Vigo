@@ -73,6 +73,7 @@ fn run() {
 
     // ── Settings ─────────────────────────────────────────────────
     let settings = BrowserSettings::default();
+    let startup_url = startup_target_from_args(&settings);
     let window = Window::new(
         "Vigo Browser",
         settings.window_width,
@@ -181,30 +182,35 @@ fn run() {
 
     // ── Bootstrap active tab content if needed ─────────────────────────────
     {
-        let needs_bootstrap = !tab_mgr.active_tab().has_document();
-        if needs_bootstrap {
-            let url = tab_mgr.active_tab().url.clone();
-            let url_str = url.as_ref().to_string();
+        if let Some(url) = startup_url {
+            tracing::info!(url = %url, "Startup URL argument detected");
+            navigate_tab(&mut tab_mgr, &url, vp_w, vp_h);
+        } else {
+            let needs_bootstrap = !tab_mgr.active_tab().has_document();
+            if needs_bootstrap {
+                let url = tab_mgr.active_tab().url.clone();
+                let url_str = url.as_ref().to_string();
 
-            if url_str.starts_with("http://") || url_str.starts_with("https://") {
-                navigate_tab(&mut tab_mgr, &url, vp_w, vp_h);
-            } else {
-                let viewport = Size::new(vp_w, vp_h);
-                let html = vex_browser::internal_pages::newtab_page();
-                let tab = tab_mgr.active_tab_mut();
-                tab.load_html(&html, viewport);
-                tab.url = VexUrl::parse("vex://newtab").unwrap_or_else(|_| {
-                    VexUrl::parse("about:blank").expect("about:blank is valid")
-                });
-                tab.set_content_size(vp_w, 1400.0);
+                if url_str.starts_with("http://") || url_str.starts_with("https://") {
+                    navigate_tab(&mut tab_mgr, &url, vp_w, vp_h);
+                } else {
+                    let viewport = Size::new(vp_w, vp_h);
+                    let html = vex_browser::internal_pages::newtab_page();
+                    let tab = tab_mgr.active_tab_mut();
+                    tab.load_html(&html, viewport);
+                    tab.url = VexUrl::parse("vex://newtab").unwrap_or_else(|_| {
+                        VexUrl::parse("about:blank").expect("about:blank is valid")
+                    });
+                    tab.set_content_size(vp_w, 1400.0);
 
-                // Task 56: Populate Sources panel with the internal new-tab HTML.
-                sources_state.add_source(
-                    "newtab.html".to_owned(),
-                    "vex://newtab".to_owned(),
-                    SourceKind::Html,
-                    html,
-                );
+                    // Task 56: Populate Sources panel with the internal new-tab HTML.
+                    sources_state.add_source(
+                        "newtab.html".to_owned(),
+                        "vex://newtab".to_owned(),
+                        SourceKind::Html,
+                        html,
+                    );
+                }
             }
         }
     }
@@ -1357,7 +1363,7 @@ fn process_embedder_bus(
 mod tests {
     use super::{
         current_process_working_set_bytes, load_session_health, resolve_browser_request_url,
-        save_session_health, write_kpi_snapshot, SessionHealthSnapshot,
+        save_session_health, startup_target_from_input, write_kpi_snapshot, SessionHealthSnapshot,
     };
     use vex_core::VexUrl;
 
@@ -1422,6 +1428,29 @@ mod tests {
             "working-set lookup should succeed on Windows"
         );
         assert!(value.expect("has value") > 0);
+    }
+
+    #[test]
+    fn startup_target_uses_url_when_valid() {
+        let settings = vex_browser::BrowserSettings::default();
+        let url = startup_target_from_input("https://example.com", &settings)
+            .expect("valid URL should be accepted");
+        assert_eq!(url.as_ref(), "https://example.com/");
+    }
+
+    #[test]
+    fn startup_target_uses_search_for_plain_text() {
+        let settings = vex_browser::BrowserSettings::default();
+        let url = startup_target_from_input("rust browser engine", &settings)
+            .expect("plain text should become search URL");
+        assert!(url.as_ref().contains("rust+browser+engine"));
+    }
+
+    #[test]
+    fn startup_target_skips_empty_and_new_tab_flag() {
+        let settings = vex_browser::BrowserSettings::default();
+        assert!(startup_target_from_input("   ", &settings).is_none());
+        assert!(startup_target_from_input("--new-tab", &settings).is_none());
     }
 
     #[test]
@@ -2552,6 +2581,26 @@ fn platform_to_shortcut(
 }
 
 /// Convert a Win32 VK code to a character for text input.
+#[cfg(target_os = "windows")]
+fn startup_target_from_args(settings: &vex_browser::BrowserSettings) -> Option<vex_core::VexUrl> {
+    let mut args = std::env::args().skip(1);
+    let raw = args.next()?;
+    startup_target_from_input(&raw, settings)
+}
+
+#[cfg(target_os = "windows")]
+fn startup_target_from_input(
+    input: &str,
+    settings: &vex_browser::BrowserSettings,
+) -> Option<vex_core::VexUrl> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() || trimmed == "--new-tab" {
+        return None;
+    }
+
+    vex_browser::links::normalize_or_search(trimmed, &settings.search_engine).ok()
+}
+
 #[cfg(target_os = "windows")]
 fn vk_to_char(keycode: u32, shift: bool) -> Option<char> {
     match keycode {
