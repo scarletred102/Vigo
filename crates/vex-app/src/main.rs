@@ -8,6 +8,9 @@
 
 use vex_core::{engine_name, engine_version};
 
+#[cfg(target_os = "windows")]
+use serde::{Deserialize, Serialize};
+
 fn main() {
     #[cfg(not(target_os = "windows"))]
     {
@@ -93,7 +96,7 @@ fn run() {
 
     let mut renderer = Renderer::new(&gpu.device, &gpu.queue, gpu.config.format);
     renderer.set_privacy_config(privacy);
-    renderer.set_clear_color(0.08, 0.08, 0.12);
+    renderer.set_clear_color(0.95, 0.95, 0.95);
 
     let mut vp_w = gpu.config.width as f32;
     let mut vp_h = gpu.config.height as f32;
@@ -149,9 +152,20 @@ fn run() {
     let data = data_dir();
     let _ = std::fs::create_dir_all(&data);
     let session_path = data.join("session.json");
+    let session_health_path = data.join("session_health.json");
     let bookmarks_path = data.join("bookmarks.json");
     let kpi_path = data.join("kpi_latest.json");
     let mut cold_start_recorded = false;
+
+    // A-006 (KPI): crash-free session accounting.
+    let mut session_health = load_session_health(&session_health_path);
+    let previous_run_clean = session_health.last_exit_clean;
+    if session_health.total_starts > 0 && !previous_run_clean {
+        session_health.crash_count = session_health.crash_count.saturating_add(1);
+    }
+    session_health.total_starts = session_health.total_starts.saturating_add(1);
+    session_health.last_exit_clean = false;
+    save_session_health(&session_health_path, &session_health);
 
     if let Ok(bm) = BookmarkManager::load(&bookmarks_path) {
         bookmarks = bm;
@@ -216,6 +230,13 @@ fn run() {
                     if let Err(e) = bookmarks.save(&bookmarks_path) {
                         tracing::warn!("Failed to save bookmarks: {e}");
                     }
+
+                    // A-006 (KPI): mark clean shutdown.
+                    session_health.clean_shutdowns =
+                        session_health.clean_shutdowns.saturating_add(1);
+                    session_health.last_exit_clean = true;
+                    save_session_health(&session_health_path, &session_health);
+
                     tracing::info!("Window close — exiting");
                     return;
                 }
@@ -549,8 +570,10 @@ fn run() {
                         ));
                     }
                     BrowserRequest::Alert(msg) => {
-                        embedder_bus
-                            .push_message(EmbedderMsg::ShowDialog(active_tab_id, DialogRequest::Alert(msg)));
+                        embedder_bus.push_message(EmbedderMsg::ShowDialog(
+                            active_tab_id,
+                            DialogRequest::Alert(msg),
+                        ));
                     }
                     BrowserRequest::Navigate(raw_url) => {
                         let current_url = tab_mgr.active_tab().url.clone();
@@ -617,6 +640,24 @@ fn run() {
                         embedder_bus.push_message(EmbedderMsg::UrlChanged(tab_id, next_url));
                         push_history_changed_message(&mut embedder_bus, tab_id, &nav_histories);
                     }
+                    BrowserRequest::ExtensionSendMessage {
+                        from_extension_id,
+                        target_extension_id,
+                        payload,
+                    } => {
+                        let delivered = ext_loader.send_runtime_message(
+                            &from_extension_id,
+                            target_extension_id.as_deref(),
+                            payload,
+                        );
+                        if delivered == 0 {
+                            tracing::debug!(
+                                from_extension_id,
+                                target_extension_id = ?target_extension_id,
+                                "Extension runtime message had no recipients"
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -632,16 +673,18 @@ fn run() {
 
         // ── Extension content script injection (Task 58) ────────
         {
-            let tab = tab_mgr.active_tab();
-            let url_str = tab.url.to_string();
-            let scripts = ext_loader.content_scripts_for_url(&url_str);
-            if !scripts.is_empty() {
-                tracing::debug!(
-                    "Content scripts matched for {url_str}: {} script(s)",
-                    scripts.len()
-                );
-                // Content script injection happens on page load in tab.load_html;
-                // here we log that scripts matched for debugging.
+            let injected = inject_matching_content_scripts(&mut tab_mgr, &ext_loader, vp_w, vp_h);
+            if injected > 0 {
+                tracing::info!("Injected {injected} extension content script(s)");
+            }
+        }
+
+        // ── Extension runtime message delivery (Task C-002) ─────
+        {
+            let delivered =
+                dispatch_extension_messages_to_active_tab(&mut tab_mgr, &mut ext_loader);
+            if delivered > 0 {
+                tracing::debug!("Delivered {delivered} extension runtime message(s)");
             }
         }
 
@@ -704,7 +747,15 @@ fn run() {
             cold_start_recorded = true;
             let cold_start_ms = app_start.elapsed().as_secs_f64() * 1000.0;
             let working_set_bytes = current_process_working_set_bytes();
-            write_kpi_snapshot(&kpi_path, cold_start_ms, vp_w, vp_h, working_set_bytes);
+            write_kpi_snapshot(
+                &kpi_path,
+                cold_start_ms,
+                vp_w,
+                vp_h,
+                working_set_bytes,
+                &session_health,
+                previous_run_clean,
+            );
             tracing::info!(
                 cold_start_ms,
                 working_set_bytes,
@@ -764,6 +815,54 @@ fn data_dir() -> std::path::PathBuf {
     }
 }
 
+/// Session health counters used for crash-free accounting.
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SessionHealthSnapshot {
+    total_starts: u64,
+    clean_shutdowns: u64,
+    crash_count: u64,
+    last_exit_clean: bool,
+}
+
+#[cfg(target_os = "windows")]
+impl Default for SessionHealthSnapshot {
+    fn default() -> Self {
+        Self {
+            total_starts: 0,
+            clean_shutdowns: 0,
+            crash_count: 0,
+            // Treat unknown state as clean for first launch.
+            last_exit_clean: true,
+        }
+    }
+}
+
+/// Load session health from disk, falling back to defaults.
+#[cfg(target_os = "windows")]
+fn load_session_health(path: &std::path::Path) -> SessionHealthSnapshot {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<SessionHealthSnapshot>(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Save session health to disk.
+#[cfg(target_os = "windows")]
+fn save_session_health(path: &std::path::Path, snapshot: &SessionHealthSnapshot) {
+    let serialized = match serde_json::to_string_pretty(snapshot) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("Failed to serialize session health: {e}");
+            return;
+        }
+    };
+
+    if let Err(e) = std::fs::write(path, serialized) {
+        tracing::warn!(path = %path.display(), "Failed to write session health: {e}");
+    }
+}
+
 /// Write a lightweight KPI snapshot JSON file used by benchmark/report tooling.
 #[cfg(target_os = "windows")]
 fn write_kpi_snapshot(
@@ -772,6 +871,8 @@ fn write_kpi_snapshot(
     viewport_w: f32,
     viewport_h: f32,
     working_set_bytes: Option<u64>,
+    session_health: &SessionHealthSnapshot,
+    previous_run_clean: bool,
 ) {
     let unix_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -782,13 +883,27 @@ fn write_kpi_snapshot(
         .map(|bytes| bytes.to_string())
         .unwrap_or_else(|| "null".to_string());
 
+    let completed_sessions = session_health
+        .clean_shutdowns
+        .saturating_add(session_health.crash_count);
+    let crash_free_ratio = if completed_sessions == 0 {
+        1.0
+    } else {
+        session_health.clean_shutdowns as f64 / completed_sessions as f64
+    };
+
     let payload = format!(
-        "{{\n  \"captured_at_unix_ms\": {},\n  \"cold_start_ms\": {:.2},\n  \"viewport_width\": {:.0},\n  \"viewport_height\": {:.0},\n  \"working_set_bytes\": {}\n}}\n",
+        "{{\n  \"captured_at_unix_ms\": {},\n  \"cold_start_ms\": {:.2},\n  \"viewport_width\": {:.0},\n  \"viewport_height\": {:.0},\n  \"working_set_bytes\": {},\n  \"session_total_starts\": {},\n  \"session_clean_shutdowns\": {},\n  \"session_crash_count\": {},\n  \"previous_run_clean\": {},\n  \"crash_free_ratio\": {:.4}\n}}\n",
         unix_ms,
         cold_start_ms,
         viewport_w,
         viewport_h,
-        working_set_json
+        working_set_json,
+        session_health.total_starts,
+        session_health.clean_shutdowns,
+        session_health.crash_count,
+        if previous_run_clean { "true" } else { "false" },
+        crash_free_ratio
     );
 
     if let Err(e) = std::fs::write(path, payload) {
@@ -884,7 +999,10 @@ fn resolve_browser_request_url(raw: &str, base: &vex_core::VexUrl) -> Option<vex
 fn push_history_changed_message(
     embedder_bus: &mut vex_browser::EmbedderBus,
     tab_id: vex_browser::tab::TabId,
-    nav_histories: &std::collections::HashMap<vex_browser::tab::TabId, vex_browser::NavigationHistory>,
+    nav_histories: &std::collections::HashMap<
+        vex_browser::tab::TabId,
+        vex_browser::NavigationHistory,
+    >,
 ) {
     if let Some(history) = nav_histories.get(&tab_id) {
         let (urls, current_index) = history.snapshot();
@@ -896,13 +1014,171 @@ fn push_history_changed_message(
     }
 }
 
+/// Inject matching extension content scripts into the active tab runtime.
+///
+/// Scripts are injected once per extension per document and sorted by
+/// `run_at` order to align with extension semantics.
+#[cfg(target_os = "windows")]
+fn inject_matching_content_scripts(
+    tab_mgr: &mut vex_browser::TabManager,
+    ext_loader: &vex_browser::ExtensionLoader,
+    vp_w: f32,
+    vp_h: f32,
+) -> usize {
+    let active_id = tab_mgr.active_tab_id();
+    let url = tab_mgr.active_tab().url.to_string();
+    let mut scripts = ext_loader.content_scripts_for_url(&url);
+    if scripts.is_empty() {
+        return 0;
+    }
+
+    vex_browser::extensions::content::sort_by_injection_time(&mut scripts);
+
+    let Some(tab) = tab_mgr.tab_mut(active_id) else {
+        return 0;
+    };
+
+    let mut injected = 0usize;
+    for script in scripts {
+        if tab.has_injected_extension(&script.extension_id) {
+            continue;
+        }
+
+        let ran = {
+            let Some(runtime) = tab.runtime.as_mut() else {
+                break;
+            };
+            let wrapped = wrap_extension_script(&script.extension_id, &script.source);
+            match runtime.execute(&wrapped) {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::warn!(
+                        extension_id = script.extension_id,
+                        "Content script execution failed: {e}"
+                    );
+                    false
+                }
+            }
+        };
+
+        if ran {
+            tab.mark_extension_injected(&script.extension_id);
+            injected += 1;
+        }
+    }
+
+    if injected > 0 {
+        tab.relayout(vex_core::geometry::Size::new(vp_w, vp_h));
+        let content_height = tab
+            .layout
+            .as_ref()
+            .map(estimated_layout_height)
+            .unwrap_or(vp_h)
+            .max(vp_h);
+        tab.set_content_size(vp_w, content_height + 32.0);
+    }
+
+    injected
+}
+
+/// Deliver queued extension runtime messages to listeners in the active tab.
+#[cfg(target_os = "windows")]
+fn dispatch_extension_messages_to_active_tab(
+    tab_mgr: &mut vex_browser::TabManager,
+    ext_loader: &mut vex_browser::ExtensionLoader,
+) -> usize {
+    let active_id = tab_mgr.active_tab_id();
+    let Some(tab) = tab_mgr.tab_mut(active_id) else {
+        return 0;
+    };
+    if tab.runtime.is_none() {
+        return 0;
+    }
+
+    let mut delivered = 0usize;
+    let active_extensions = ext_loader.active_ids();
+    for extension_id in active_extensions {
+        if !tab.has_injected_extension(&extension_id) {
+            continue;
+        }
+
+        // Guard against unexpected infinite loops from malformed messages.
+        let mut processed_for_extension = 0usize;
+        while let Some(msg) = ext_loader.poll_runtime_message(&extension_id) {
+            let target_id = msg
+                .to_extension_id
+                .as_deref()
+                .unwrap_or(extension_id.as_str())
+                .to_owned();
+            let Some(runtime) = tab.runtime.as_mut() else {
+                break;
+            };
+            if let Err(e) = vex_js::api::extensions::dispatch_runtime_message(
+                runtime.context_mut(),
+                &target_id,
+                &msg.from_extension_id,
+                &msg.payload,
+            ) {
+                tracing::warn!(
+                    from = msg.from_extension_id,
+                    to = target_id,
+                    "Failed to dispatch extension runtime message: {e}"
+                );
+            } else {
+                delivered += 1;
+            }
+            processed_for_extension += 1;
+            if processed_for_extension >= 256 {
+                tracing::warn!(
+                    extension_id,
+                    "Stopping runtime message dispatch after 256 messages in one tick"
+                );
+                break;
+            }
+        }
+    }
+
+    delivered
+}
+
+#[cfg(target_os = "windows")]
+fn wrap_extension_script(extension_id: &str, source: &str) -> String {
+    let extension_id_json =
+        serde_json::to_string(extension_id).unwrap_or_else(|_| "\"unknown\"".to_owned());
+    format!(
+        "(function() {{
+            const __vigoExtId = {extension_id_json};
+            const __vigoOrig = globalThis.vigo;
+            const vigo = (__vigoOrig && __vigoOrig.runtime)
+                ? {{
+                    runtime: {{
+                        __vigoExtensionId: __vigoExtId,
+                        sendMessage: function() {{
+                            return __vigoOrig.runtime.sendMessage.apply({{ __vigoExtensionId: __vigoExtId }}, arguments);
+                        }},
+                        onMessage: {{
+                            addListener: function(callback) {{
+                                return __vigoOrig.runtime.onMessage.addListener.call({{ __vigoExtensionId: __vigoExtId }}, callback);
+                            }}
+                        }}
+                    }}
+                }}
+                : __vigoOrig;
+            {source}
+        }})();"
+    )
+}
+
 /// Process queued embedder commands and messages (Servo-style embedder bridge).
 #[cfg(target_os = "windows")]
 #[allow(clippy::too_many_arguments)]
 fn process_embedder_bus(
     embedder_bus: &mut vex_browser::EmbedderBus,
     tab_mgr: &mut vex_browser::TabManager,
-    nav_histories: &mut std::collections::HashMap<vex_browser::tab::TabId, vex_browser::NavigationHistory>,
+    nav_histories: &mut std::collections::HashMap<
+        vex_browser::tab::TabId,
+        vex_browser::NavigationHistory,
+    >,
     console_state: &mut vex_browser::devtools::console::ConsoleState,
     vp_w: f32,
     vp_h: f32,
@@ -985,23 +1261,21 @@ fn process_embedder_bus(
                     vex_browser::LoadStatus::Complete,
                 ));
             }
-            vex_browser::EmbedderCommand::NewTab(url_opt) => {
-                match url_opt {
-                    Some(url) => {
-                        let id = tab_mgr.new_tab(url.clone());
-                        navigate_tab(tab_mgr, &url, vp_w, vp_h);
-                        embedder_bus.push_message(vex_browser::EmbedderMsg::UrlChanged(id, url));
-                    }
-                    None => {
-                        load_welcome_tab(tab_mgr, vp_w, vp_h);
-                        let id = tab_mgr.active_tab_id();
-                        embedder_bus.push_message(vex_browser::EmbedderMsg::UrlChanged(
-                            id,
-                            tab_mgr.active_tab().url.clone(),
-                        ));
-                    }
+            vex_browser::EmbedderCommand::NewTab(url_opt) => match url_opt {
+                Some(url) => {
+                    let id = tab_mgr.new_tab(url.clone());
+                    navigate_tab(tab_mgr, &url, vp_w, vp_h);
+                    embedder_bus.push_message(vex_browser::EmbedderMsg::UrlChanged(id, url));
                 }
-            }
+                None => {
+                    load_welcome_tab(tab_mgr, vp_w, vp_h);
+                    let id = tab_mgr.active_tab_id();
+                    embedder_bus.push_message(vex_browser::EmbedderMsg::UrlChanged(
+                        id,
+                        tab_mgr.active_tab().url.clone(),
+                    ));
+                }
+            },
             vex_browser::EmbedderCommand::CloseTab(tab_id) => {
                 if tab_mgr.close_tab(tab_id) {
                     embedder_bus.push_message(vex_browser::EmbedderMsg::TabClosed(tab_id));
@@ -1066,8 +1340,10 @@ fn process_embedder_bus(
                 }
                 vex_browser::DialogRequest::Prompt(msg, default) => {
                     let default = default.unwrap_or_default();
-                    console_state
-                        .log_message(LogLevel::System, &format!("prompt: {msg} (default={default})"));
+                    console_state.log_message(
+                        LogLevel::System,
+                        &format!("prompt: {msg} (default={default})"),
+                    );
                 }
             },
             other => {
@@ -1080,7 +1356,8 @@ fn process_embedder_bus(
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::{
-        current_process_working_set_bytes, resolve_browser_request_url, write_kpi_snapshot,
+        current_process_working_set_bytes, load_session_health, resolve_browser_request_url,
+        save_session_health, write_kpi_snapshot, SessionHealthSnapshot,
     };
     use vex_core::VexUrl;
 
@@ -1115,13 +1392,24 @@ mod tests {
             .as_millis();
         path.push(format!("vigo-kpi-{ts}.json"));
 
-        write_kpi_snapshot(&path, 123.45, 1280.0, 720.0, Some(42));
+        let session = SessionHealthSnapshot {
+            total_starts: 10,
+            clean_shutdowns: 8,
+            crash_count: 2,
+            last_exit_clean: false,
+        };
+
+        write_kpi_snapshot(&path, 123.45, 1280.0, 720.0, Some(42), &session, false);
 
         let json = std::fs::read_to_string(&path).expect("snapshot file should exist");
         assert!(json.contains("\"cold_start_ms\": 123.45"));
         assert!(json.contains("\"viewport_width\": 1280"));
         assert!(json.contains("\"viewport_height\": 720"));
         assert!(json.contains("\"working_set_bytes\": 42"));
+        assert!(json.contains("\"session_total_starts\": 10"));
+        assert!(json.contains("\"session_clean_shutdowns\": 8"));
+        assert!(json.contains("\"session_crash_count\": 2"));
+        assert!(json.contains("\"previous_run_clean\": false"));
 
         let _ = std::fs::remove_file(path);
     }
@@ -1129,8 +1417,37 @@ mod tests {
     #[test]
     fn reads_current_process_working_set() {
         let value = current_process_working_set_bytes();
-        assert!(value.is_some(), "working-set lookup should succeed on Windows");
+        assert!(
+            value.is_some(),
+            "working-set lookup should succeed on Windows"
+        );
         assert!(value.expect("has value") > 0);
+    }
+
+    #[test]
+    fn session_health_roundtrip() {
+        let mut path = std::env::temp_dir();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_millis();
+        path.push(format!("vigo-session-health-{ts}.json"));
+
+        let snapshot = SessionHealthSnapshot {
+            total_starts: 3,
+            clean_shutdowns: 2,
+            crash_count: 1,
+            last_exit_clean: true,
+        };
+        save_session_health(&path, &snapshot);
+
+        let loaded = load_session_health(&path);
+        assert_eq!(loaded.total_starts, 3);
+        assert_eq!(loaded.clean_shutdowns, 2);
+        assert_eq!(loaded.crash_count, 1);
+        assert!(loaded.last_exit_clean);
+
+        let _ = std::fs::remove_file(path);
     }
 }
 
@@ -1729,7 +2046,7 @@ fn compose_frame(
                 1.0,
                 16.0,
             ),
-            color: Color::rgb(200, 200, 220),
+            color: Color::rgb(70, 70, 70),
             border_radius: 0.0,
         });
     }
@@ -1742,7 +2059,7 @@ fn compose_frame(
     // ── Accent line ─────────────────────────────────────────────
     dl.push(DisplayCommand::FillRect {
         rect: toolbar.accent_line,
-        color: Color::rgb(124, 88, 255),
+        color: Color::rgb(170, 170, 170),
         border_radius: 0.0,
     });
 
@@ -1774,13 +2091,13 @@ fn compose_frame(
         let text = format!("{}%", zoom.percent());
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(vp_w - 70.0, content_y + 8.0, 60.0, 22.0),
-            color: Color::rgb(30, 30, 40),
+            color: Color::rgb(230, 230, 230),
             border_radius: 0.0,
         });
         dl.push(DisplayCommand::DrawText {
             position: Point::new(vp_w - 65.0, content_y + 12.0),
             text,
-            color: Color::rgb(180, 180, 200),
+            color: Color::rgb(70, 70, 70),
             font_size: 12.0,
             line_height: 16.0,
         });
@@ -1795,14 +2112,14 @@ fn compose_frame(
         // Background for DevTools area.
         dl.push(DisplayCommand::FillRect {
             rect: dt_layout.devtools,
-            color: Color::rgb(30, 30, 38),
+            color: Color::rgb(245, 245, 245),
             border_radius: 0.0,
         });
 
         // Tab bar.
         dl.push(DisplayCommand::FillRect {
             rect: dt_layout.tab_bar,
-            color: Color::rgb(38, 38, 48),
+            color: Color::rgb(222, 222, 222),
             border_radius: 0.0,
         });
         let tab_count = vex_browser::DevToolsPanel::ALL.len();
@@ -1818,7 +2135,7 @@ fn compose_frame(
                         tab_w,
                         dt_layout.tab_bar.size.height,
                     ),
-                    color: Color::rgb(50, 50, 65),
+                    color: Color::rgb(206, 206, 206),
                     border_radius: 0.0,
                 });
             }
@@ -1826,9 +2143,9 @@ fn compose_frame(
                 position: Point::new(tx + 8.0, dt_layout.tab_bar.origin.y + 8.0),
                 text: panel.label().to_owned(),
                 color: if is_active {
-                    Color::rgb(220, 220, 240)
+                    Color::rgb(32, 32, 32)
                 } else {
-                    Color::rgb(140, 140, 160)
+                    Color::rgb(92, 92, 92)
                 },
                 font_size: 12.0,
                 line_height: 16.0,
@@ -1852,9 +2169,9 @@ fn compose_frame(
                             position: Point::new(body.origin.x + 8.0 + indent, row_y),
                             text: row.label.clone(),
                             color: if row.is_closing_tag {
-                                Color::rgb(120, 120, 150)
+                                Color::rgb(120, 120, 120)
                             } else {
-                                Color::rgb(200, 150, 100)
+                                Color::rgb(92, 74, 52)
                             },
                             font_size: 12.0,
                             line_height: 16.0,
@@ -1872,13 +2189,13 @@ fn compose_frame(
                 let mut entry_y = body.origin.y + 4.0;
                 for entry in entries.iter().rev().take(30) {
                     let color = match entry.level {
-                        vex_browser::devtools::console::LogLevel::Error => Color::rgb(220, 80, 80),
-                        vex_browser::devtools::console::LogLevel::Warn => Color::rgb(220, 180, 60),
-                        vex_browser::devtools::console::LogLevel::Info => Color::rgb(100, 180, 220),
+                        vex_browser::devtools::console::LogLevel::Error => Color::rgb(180, 40, 40),
+                        vex_browser::devtools::console::LogLevel::Warn => Color::rgb(170, 120, 40),
+                        vex_browser::devtools::console::LogLevel::Info => Color::rgb(40, 110, 170),
                         vex_browser::devtools::console::LogLevel::Debug => {
-                            Color::rgb(120, 120, 140)
+                            Color::rgb(110, 110, 110)
                         }
-                        _ => Color::rgb(200, 200, 210),
+                        _ => Color::rgb(60, 60, 60),
                     };
                     let summary = entry.summary();
                     let display = if summary.len() > 100 {
@@ -1902,7 +2219,7 @@ fn compose_frame(
                     dl.push(DisplayCommand::DrawText {
                         position: Point::new(body.origin.x + 8.0, body.origin.y + 4.0),
                         text: "No console output".to_owned(),
-                        color: Color::rgb(100, 100, 120),
+                        color: Color::rgb(120, 120, 120),
                         font_size: 12.0,
                         line_height: 16.0,
                     });
@@ -1913,7 +2230,7 @@ fn compose_frame(
                 dl.push(DisplayCommand::DrawText {
                     position: Point::new(body.origin.x + 8.0, body.origin.y + 4.0),
                     text: "Network requests will appear here during page loads.".to_owned(),
-                    color: Color::rgb(140, 140, 160),
+                    color: Color::rgb(110, 110, 110),
                     font_size: 12.0,
                     line_height: 16.0,
                 });
@@ -1927,7 +2244,7 @@ fn compose_frame(
                         dl.push(DisplayCommand::DrawText {
                             position: Point::new(body.origin.x + 8.0, ly),
                             text: format!("{num:>4} │ {line}"),
-                            color: Color::rgb(180, 180, 200),
+                            color: Color::rgb(72, 72, 72),
                             font_size: 11.0,
                             line_height: 14.0,
                         });
@@ -1940,7 +2257,7 @@ fn compose_frame(
                     dl.push(DisplayCommand::DrawText {
                         position: Point::new(body.origin.x + 8.0, body.origin.y + 4.0),
                         text: "No sources loaded.".to_owned(),
-                        color: Color::rgb(140, 140, 160),
+                        color: Color::rgb(110, 110, 110),
                         font_size: 12.0,
                         line_height: 16.0,
                     });
@@ -1952,7 +2269,7 @@ fn compose_frame(
                 dl.push(DisplayCommand::DrawText {
                     position: Point::new(body.origin.x + 8.0, body.origin.y + 4.0),
                     text: stats.summary(),
-                    color: Color::rgb(180, 200, 220),
+                    color: Color::rgb(60, 80, 110),
                     font_size: 12.0,
                     line_height: 16.0,
                 });
@@ -1975,9 +2292,9 @@ fn compose_frame(
                     let bx = body.origin.x + 8.0 + i as f32 * (bar_w + 2.0);
                     let by = bar_area_y + bar_area_h - h;
                     let color = if frame.is_slow() {
-                        Color::rgb(220, 80, 80)
+                        Color::rgb(190, 70, 70)
                     } else {
-                        Color::rgb(80, 180, 120)
+                        Color::rgb(80, 145, 95)
                     };
                     dl.push(DisplayCommand::FillRect {
                         rect: Rect::new(bx, by, bar_w, h),
@@ -2017,14 +2334,14 @@ fn render_bookmark_bar(
 
     dl.push(DisplayCommand::FillRect {
         rect,
-        color: Color::rgb(18, 21, 30),
+        color: Color::rgb(236, 236, 236),
         border_radius: 0.0,
     });
 
     // Subtle top separator for depth.
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(rect.origin.x, rect.origin.y, rect.size.width, 1.0),
-        color: Color::rgb(44, 49, 66),
+        color: Color::rgb(170, 170, 170),
         border_radius: 0.0,
     });
 
@@ -2035,7 +2352,7 @@ fn render_bookmark_bar(
         let w = bookmark_chip_width(&title);
         dl.push(DisplayCommand::FillRect {
             rect: Rect::new(x, rect.origin.y + 4.0, w, 22.0),
-            color: Color::rgb(34, 39, 54),
+            color: Color::rgb(222, 222, 222),
             border_radius: 9.0,
         });
 
@@ -2043,7 +2360,7 @@ fn render_bookmark_bar(
         dl.push(DisplayCommand::DrawText {
             position: Point::new(x + 7.0, rect.origin.y + 8.0),
             text: "•".into(),
-            color: Color::rgb(140, 146, 176),
+            color: Color::rgb(120, 120, 120),
             font_size: 11.0,
             line_height: 14.0,
         });
@@ -2051,7 +2368,7 @@ fn render_bookmark_bar(
         dl.push(DisplayCommand::DrawText {
             position: Point::new(x + 14.0, rect.origin.y + 8.0),
             text: title,
-            color: Color::rgb(216, 220, 235),
+            color: Color::rgb(50, 50, 50),
             font_size: 11.0,
             line_height: 14.0,
         });
@@ -2103,7 +2420,7 @@ fn render_find_bar(
 
     dl.push(DisplayCommand::FillRect {
         rect,
-        color: Color::rgb(27, 30, 43),
+        color: Color::rgb(241, 241, 241),
         border_radius: 0.0,
     });
 
@@ -2111,7 +2428,7 @@ fn render_find_bar(
     let input_rect = Rect::new(rect.origin.x + 12.0, rect.origin.y + 6.0, 300.0, 24.0);
     dl.push(DisplayCommand::FillRect {
         rect: input_rect,
-        color: Color::rgb(70, 82, 130),
+        color: Color::rgb(176, 176, 176),
         border_radius: 8.0,
     });
     dl.push(DisplayCommand::FillRect {
@@ -2121,7 +2438,7 @@ fn render_find_bar(
             input_rect.size.width - 2.0,
             input_rect.size.height - 2.0,
         ),
-        color: Color::rgb(20, 23, 33),
+        color: Color::rgb(255, 255, 255),
         border_radius: 7.0,
     });
 
@@ -2134,9 +2451,9 @@ fn render_find_bar(
         position: Point::new(rect.origin.x + 20.0, rect.origin.y + 11.0),
         text: text.to_string(),
         color: if query.is_empty() {
-            Color::rgb(112, 118, 145)
+            Color::rgb(136, 136, 136)
         } else {
-            Color::rgb(210, 210, 225)
+            Color::rgb(40, 40, 40)
         },
         font_size: 12.0,
         line_height: 16.0,
@@ -2147,7 +2464,7 @@ fn render_find_bar(
         dl.push(DisplayCommand::DrawText {
             position: Point::new(rect.origin.x + 326.0, rect.origin.y + 11.0),
             text: status,
-            color: Color::rgb(160, 166, 194),
+            color: Color::rgb(90, 90, 90),
             font_size: 12.0,
             line_height: 16.0,
         });
@@ -2160,7 +2477,7 @@ fn render_find_bar(
             rect.origin.y + 11.0,
         ),
         text: "Enter/Shift+Enter to navigate".into(),
-        color: Color::rgb(130, 136, 164),
+        color: Color::rgb(120, 120, 120),
         font_size: 11.0,
         line_height: 14.0,
     });
@@ -2173,13 +2490,13 @@ fn render_find_bar(
             22.0,
             20.0,
         ),
-        color: Color::rgb(40, 44, 60),
+        color: Color::rgb(214, 214, 214),
         border_radius: 6.0,
     });
     dl.push(DisplayCommand::DrawText {
         position: Point::new(rect.origin.x + rect.size.width - 27.0, rect.origin.y + 10.0),
         text: "✕".into(),
-        color: Color::rgb(180, 186, 210),
+        color: Color::rgb(70, 70, 70),
         font_size: 13.0,
         line_height: 16.0,
     });

@@ -57,6 +57,7 @@ pub mod ui;
 pub mod url_api;
 pub mod visibility;
 pub mod web_crypto;
+pub mod webauthn;
 pub mod webview_fallback;
 pub mod workers;
 pub mod wpt;
@@ -73,8 +74,8 @@ pub use downloads::{DownloadManager, DownloadState};
 pub use drag_drop::{DragController, DragEvent, DragEventType, DropEffect, EffectAllowed};
 pub use drm_overlay::OverlayManager;
 pub use embedder::{
-    ConsoleLevel, CursorKind, DialogRequest, EmbedderBus, EmbedderCommand, EmbedderMsg,
-    LoadStatus, PermissionKind,
+    ConsoleLevel, CursorKind, DialogRequest, EmbedderBus, EmbedderCommand, EmbedderMsg, LoadStatus,
+    PermissionKind,
 };
 pub use encoding::{Encoding, TextDecoder, TextEncoder};
 pub use event_source::{EventSource, EventSourceState, SseEvent};
@@ -128,6 +129,11 @@ pub use ui::toolbar::ToolbarLayout;
 pub use url_api::{UrlSearchParams, WebUrl};
 pub use visibility::{VisibilityManager, VisibilityState};
 pub use web_crypto::{CryptoAlgorithm, CryptoKey, HashAlgorithm, SubtleCrypto};
+pub use webauthn::{
+    AttestationConveyancePreference, AuthenticatorAttachment, CreateCredentialRequest,
+    CredentialDescriptor, CredentialResponse, GetAssertionRequest, PublicKeyCredentialParameter,
+    PublicKeyUser, RelyingParty, UserVerificationRequirement, WebAuthnError,
+};
 pub use webview_fallback::{WebViewError, WebViewFallback, WebViewState};
 pub use wpt::{WptReport, WptRunner};
 pub use zoom::ZoomState;
@@ -136,4 +142,5 @@ pub use extensions::action::{ActionBar, ActionClick, BrowserAction as ExtBrowser
 pub use extensions::content::{ContentScript, InjectionTime, MatchPattern};
 pub use extensions::loader::ExtensionLoader;
 pub use extensions::manifest::ExtensionManifest;
+pub use extensions::messaging::{MessageTarget, MessagingHub, RuntimeMessage};
 pub use extensions::permissions::{Permission, PermissionSet};

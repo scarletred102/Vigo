@@ -11,10 +11,12 @@ pub mod action;
 pub mod content;
 pub mod loader;
 pub mod manifest;
+pub mod messaging;
 pub mod permissions;
 
 pub use action::BrowserAction;
 pub use content::{ContentScript, InjectionTime, MatchPattern};
 pub use loader::ExtensionLoader;
 pub use manifest::ExtensionManifest;
+pub use messaging::{MessageTarget, MessagingHub, RuntimeMessage};
 pub use permissions::{Permission, PermissionSet};

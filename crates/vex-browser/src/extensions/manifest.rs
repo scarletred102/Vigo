@@ -18,7 +18,7 @@ use super::permissions::Permission;
 pub struct ExtensionManifest {
     /// Unique extension ID (derived from directory name).
     pub id: String,
-    /// Manifest version (must be 1).
+    /// Manifest version (supported: 1, 2, 3).
     pub manifest_version: u32,
     /// Human-readable name.
     pub name: String,
@@ -69,7 +69,10 @@ pub struct RawContentScript {
 /// Raw background configuration from manifest JSON.
 #[derive(Debug, Deserialize)]
 pub struct RawBackground {
-    pub service_worker: String,
+    #[serde(default)]
+    pub service_worker: Option<String>,
+    #[serde(default)]
+    pub scripts: Vec<String>,
 }
 
 /// Raw browser action configuration from manifest JSON.
@@ -131,7 +134,7 @@ pub fn parse_manifest(
         serde_json::from_str(json).map_err(|e| ManifestError::InvalidJson(e.to_string()))?;
 
     // Validate manifest version.
-    if raw.manifest_version != 1 {
+    if !matches!(raw.manifest_version, 1..=3) {
         return Err(ManifestError::UnsupportedVersion(raw.manifest_version));
     }
 
@@ -171,7 +174,15 @@ pub fn parse_manifest(
         .collect();
 
     // Parse background.
-    let background_worker = raw.background.map(|bg| PathBuf::from(bg.service_worker));
+    // MV3: `background.service_worker`
+    // MV2: `background.scripts` (we use the first script as entrypoint)
+    let background_worker = raw.background.and_then(|bg| {
+        if let Some(sw) = bg.service_worker {
+            Some(PathBuf::from(sw))
+        } else {
+            bg.scripts.into_iter().next().map(PathBuf::from)
+        }
+    });
 
     // Parse browser action.
     let browser_action = raw.browser_action.map(|ba| BrowserActionDef {
@@ -244,6 +255,33 @@ mod tests {
         assert_eq!(manifest.name, "Min");
         assert!(manifest.permissions.is_empty());
         assert!(manifest.content_scripts.is_empty());
+    }
+
+    #[test]
+    fn parse_mv3_service_worker_manifest() {
+        let json = r#"{
+            "manifest_version": 3,
+            "name": "MV3 Ext",
+            "version": "1.0.0",
+            "background": { "service_worker": "sw.js" }
+        }"#;
+        let manifest = parse_manifest(json, "mv3-ext", PathBuf::from("/ext/mv3")).unwrap();
+        assert_eq!(manifest.manifest_version, 3);
+        assert_eq!(manifest.background_worker, Some(PathBuf::from("sw.js")));
+    }
+
+    #[test]
+    fn parse_mv2_background_scripts_manifest() {
+        let json = r#"{
+            "manifest_version": 2,
+            "name": "MV2 Ext",
+            "version": "1.0.0",
+            "background": { "scripts": ["bg1.js", "bg2.js"] }
+        }"#;
+        let manifest = parse_manifest(json, "mv2-ext", PathBuf::from("/ext/mv2")).unwrap();
+        assert_eq!(manifest.manifest_version, 2);
+        // First script is used as the entrypoint in current runtime model.
+        assert_eq!(manifest.background_worker, Some(PathBuf::from("bg1.js")));
     }
 
     #[test]

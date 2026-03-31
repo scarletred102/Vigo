@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use super::content::{ContentScript, ContentScriptDef, MatchPattern};
 use super::manifest::{parse_manifest, ExtensionManifest, ManifestError};
+use super::messaging::{MessageTarget, MessagingHub, RuntimeMessage};
 use super::permissions::PermissionSet;
 
 /// State of a loaded extension.
@@ -85,6 +86,8 @@ pub struct ExtensionLoader {
     extensions: HashMap<String, Extension>,
     /// Compiled content scripts from all active extensions.
     content_scripts: Vec<ContentScript>,
+    /// Runtime messaging bus (`vigo.runtime.sendMessage` / `onMessage`).
+    messaging_hub: MessagingHub,
 }
 
 impl ExtensionLoader {
@@ -94,6 +97,7 @@ impl ExtensionLoader {
             extensions_dir,
             extensions: HashMap::new(),
             content_scripts: Vec::new(),
+            messaging_hub: MessagingHub::new(),
         }
     }
 
@@ -155,6 +159,7 @@ impl ExtensionLoader {
             return false;
         };
         ext.state = ExtensionState::Active;
+        self.messaging_hub.register_extension(id);
         self.rebuild_content_scripts();
         true
     }
@@ -165,6 +170,7 @@ impl ExtensionLoader {
             return false;
         };
         ext.state = ExtensionState::Disabled;
+        self.messaging_hub.unregister_extension(id);
         self.rebuild_content_scripts();
         true
     }
@@ -311,6 +317,56 @@ impl ExtensionLoader {
         let full_path = ext.manifest.root_dir.join(worker_path);
         std::fs::read_to_string(full_path).ok()
     }
+
+    /// Route a runtime message from one extension to another (or broadcast).
+    ///
+    /// Returns number of recipients that received the message.
+    pub fn send_runtime_message(
+        &mut self,
+        from_extension_id: &str,
+        target_extension_id: Option<&str>,
+        payload: String,
+    ) -> usize {
+        let Some(sender) = self.extensions.get(from_extension_id) else {
+            return 0;
+        };
+        if !sender.is_active() {
+            return 0;
+        }
+
+        let target = match target_extension_id {
+            Some(id) => {
+                let Some(ext) = self.extensions.get(id) else {
+                    return 0;
+                };
+                if !ext.is_active() {
+                    return 0;
+                }
+                MessageTarget::Extension(id.to_owned())
+            }
+            None => MessageTarget::Broadcast,
+        };
+
+        self.messaging_hub
+            .send_message(from_extension_id, target, payload)
+    }
+
+    /// Poll the next pending runtime message for an active extension.
+    pub fn poll_runtime_message(&mut self, extension_id: &str) -> Option<RuntimeMessage> {
+        if !self
+            .extensions
+            .get(extension_id)
+            .is_some_and(Extension::is_active)
+        {
+            return None;
+        }
+        self.messaging_hub.poll_message(extension_id)
+    }
+
+    /// Number of pending runtime messages for an extension inbox.
+    pub fn pending_runtime_messages(&self, extension_id: &str) -> usize {
+        self.messaging_hub.pending_count(extension_id)
+    }
 }
 
 #[cfg(test)]
@@ -417,6 +473,53 @@ mod tests {
 
         loader.disable("dis-ext");
         assert!(loader.content_scripts().is_empty());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn runtime_messaging_routes_between_active_extensions() {
+        let tmp = std::env::temp_dir().join("vex_ext_test_rt_msg");
+        let _ = fs::remove_dir_all(&tmp);
+        create_test_extension(&tmp, "ext-a");
+        create_test_extension(&tmp, "ext-b");
+
+        let mut loader = ExtensionLoader::new(tmp.clone());
+        loader.load_extension(&tmp.join("ext-a")).unwrap();
+        loader.load_extension(&tmp.join("ext-b")).unwrap();
+        loader.enable("ext-a");
+        loader.enable("ext-b");
+
+        let delivered =
+            loader.send_runtime_message("ext-a", Some("ext-b"), "{\"kind\":\"ping\"}".to_owned());
+        assert_eq!(delivered, 1);
+        assert_eq!(loader.pending_runtime_messages("ext-b"), 1);
+
+        let msg = loader
+            .poll_runtime_message("ext-b")
+            .expect("message should be queued");
+        assert_eq!(msg.from_extension_id, "ext-a");
+        assert_eq!(msg.to_extension_id.as_deref(), Some("ext-b"));
+        assert_eq!(msg.payload, "{\"kind\":\"ping\"}");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn runtime_messaging_blocks_disabled_sender() {
+        let tmp = std::env::temp_dir().join("vex_ext_test_rt_msg_disabled");
+        let _ = fs::remove_dir_all(&tmp);
+        create_test_extension(&tmp, "ext-a");
+        create_test_extension(&tmp, "ext-b");
+
+        let mut loader = ExtensionLoader::new(tmp.clone());
+        loader.load_extension(&tmp.join("ext-a")).unwrap();
+        loader.load_extension(&tmp.join("ext-b")).unwrap();
+        loader.enable("ext-b");
+
+        let delivered = loader.send_runtime_message("ext-a", Some("ext-b"), "x".to_owned());
+        assert_eq!(delivered, 0);
+        assert_eq!(loader.pending_runtime_messages("ext-b"), 0);
 
         let _ = fs::remove_dir_all(&tmp);
     }

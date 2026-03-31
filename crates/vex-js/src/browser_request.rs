@@ -38,6 +38,15 @@ pub enum BrowserRequest {
         /// Formatted message text.
         message: String,
     },
+    /// `vigo.runtime.sendMessage(...)` from an extension content script.
+    ExtensionSendMessage {
+        /// Sender extension ID (captured from the currently executing script).
+        from_extension_id: String,
+        /// Optional recipient extension ID (`None` means broadcast).
+        target_extension_id: Option<String>,
+        /// Serialized payload string (JSON when possible).
+        payload: String,
+    },
 }
 
 /// Shared queue of browser requests from JavaScript.
@@ -113,6 +122,31 @@ mod tests {
                 assert_eq!(message, "test warning");
             }
             _ => panic!("expected ConsoleLog"),
+        }
+    }
+
+    #[test]
+    fn extension_send_message_request() {
+        let queue = new_request_queue();
+        queue
+            .borrow_mut()
+            .push(BrowserRequest::ExtensionSendMessage {
+                from_extension_id: "ext-a".into(),
+                target_extension_id: Some("ext-b".into()),
+                payload: "{\"kind\":\"ping\"}".into(),
+            });
+        let reqs: Vec<_> = queue.borrow_mut().drain(..).collect();
+        match &reqs[0] {
+            BrowserRequest::ExtensionSendMessage {
+                from_extension_id,
+                target_extension_id,
+                payload,
+            } => {
+                assert_eq!(from_extension_id, "ext-a");
+                assert_eq!(target_extension_id.as_deref(), Some("ext-b"));
+                assert_eq!(payload, "{\"kind\":\"ping\"}");
+            }
+            _ => panic!("expected ExtensionSendMessage"),
         }
     }
 }

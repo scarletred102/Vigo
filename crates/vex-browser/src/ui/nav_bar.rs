@@ -5,6 +5,7 @@
 
 use std::fmt::Write;
 
+use super::theme;
 use vex_core::color::Color;
 use vex_core::geometry::{Point, Rect};
 use vex_render::display_list::{DisplayCommand, DisplayList};
@@ -18,22 +19,22 @@ const NAV_RIGHT_PADDING: f32 = 8.0;
 const ADDRESS_SCHEME_ICON_WIDTH: f32 = 18.0;
 
 /// Colors.
-const NAV_BAR_BG: Color = Color::rgb(241, 243, 248);
-const NAV_BAR_BOTTOM_LINE: Color = Color::rgb(211, 217, 228);
-const BUTTON_BG: Color = Color::rgb(228, 233, 242);
-const BUTTON_TEXT: Color = Color::rgb(57, 68, 89);
-const BUTTON_DISABLED: Color = Color::rgb(151, 161, 180);
-const BUTTON_ACTIVE: Color = Color::rgb(214, 221, 234);
-const ADDRESS_BAR_BORDER: Color = Color::rgb(186, 196, 215);
-const ADDRESS_BAR_BORDER_FOCUSED: Color = Color::rgb(53, 119, 246);
-const ADDRESS_BAR_BG: Color = Color::rgb(255, 255, 255);
-const ADDRESS_TEXT: Color = Color::rgb(42, 50, 67);
-const ADDRESS_PLACEHOLDER: Color = Color::rgb(123, 134, 155);
-const HTTPS_COLOR: Color = Color::rgb(28, 148, 93);
-const HTTP_COLOR: Color = Color::rgb(210, 77, 77);
-const URL_PATH_COLOR: Color = Color::rgb(92, 104, 126);
-const URL_SCHEME_COLOR: Color = Color::rgb(120, 132, 154);
-const URL_QUERY_COLOR: Color = Color::rgb(97, 119, 156);
+const NAV_BAR_BG: Color = theme::CHROME_BG_ALT;
+const NAV_BAR_BOTTOM_LINE: Color = theme::CHROME_BORDER;
+const BUTTON_BG: Color = theme::NAV_BUTTON_BG;
+const BUTTON_TEXT: Color = theme::NAV_BUTTON_TEXT;
+const BUTTON_DISABLED: Color = theme::NAV_BUTTON_TEXT_DISABLED;
+const BUTTON_ACTIVE: Color = theme::NAV_BUTTON_BG_DISABLED;
+const ADDRESS_BAR_BORDER: Color = theme::ADDRESS_BORDER;
+const ADDRESS_BAR_BORDER_FOCUSED: Color = theme::ADDRESS_BORDER_FOCUSED;
+const ADDRESS_BAR_BG: Color = theme::ADDRESS_BG;
+const ADDRESS_TEXT: Color = theme::ADDRESS_TEXT;
+const ADDRESS_PLACEHOLDER: Color = theme::ADDRESS_PLACEHOLDER;
+const HTTPS_COLOR: Color = theme::HTTPS_COLOR;
+const HTTP_COLOR: Color = theme::HTTP_COLOR;
+const URL_PATH_COLOR: Color = theme::ADDRESS_PATH;
+const URL_SCHEME_COLOR: Color = theme::ADDRESS_SCHEME;
+const URL_QUERY_COLOR: Color = theme::ADDRESS_QUERY;
 
 /// State for rendering the navigation bar.
 pub struct NavBarState<'a> {

@@ -8,6 +8,7 @@ pub mod document;
 pub mod element;
 pub mod eme;
 pub mod events;
+pub mod extensions;
 pub mod fetch;
 pub mod indexed_db;
 pub mod local_storage;

@@ -63,6 +63,7 @@ impl JsRuntime {
         crate::api::timers::register(&mut context);
         crate::api::fetch::register_with_handle(&handle, &mut context);
         crate::api::window::register_with_queue(&queue, &mut context);
+        crate::api::extensions::register_with_queue(&queue, &mut context);
         Self {
             context,
             timer_queue: BTreeMap::new(),

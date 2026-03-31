@@ -4,7 +4,7 @@
 //! Tab model — represents a single browser tab with its own page state.
 
 use std::cell::Ref;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use vex_core::geometry::Size;
 use vex_core::{VexError, VexId, VexUrl};
@@ -86,6 +86,8 @@ pub struct Tab {
     pub loading: LoadingState,
     /// Whether this tab's page content needs a re-render.
     pub dirty: bool,
+    /// Extension IDs whose content scripts have already been injected into this document.
+    pub injected_extensions: HashSet<String>,
 }
 
 impl Tab {
@@ -105,6 +107,7 @@ impl Tab {
             favicon: None,
             loading: LoadingState::Idle,
             dirty: true,
+            injected_extensions: HashSet::new(),
         }
     }
 
@@ -159,6 +162,7 @@ impl Tab {
         resources: &HashMap<String, String>,
     ) {
         self.loading = LoadingState::Loading { progress: 0.2 };
+        self.injected_extensions.clear();
 
         let document = vex_html::parse_html(html);
 
@@ -387,8 +391,19 @@ impl Tab {
         self.styles = None;
         self.layout = None;
         self.display_list = None;
+        self.injected_extensions.clear();
         self.dirty = true;
         tracing::info!("Tab {} loading: {}", self.id, self.url);
+    }
+
+    /// Whether a content script for an extension has already been injected.
+    pub fn has_injected_extension(&self, extension_id: &str) -> bool {
+        self.injected_extensions.contains(extension_id)
+    }
+
+    /// Mark an extension as injected for the current document.
+    pub fn mark_extension_injected(&mut self, extension_id: &str) {
+        self.injected_extensions.insert(extension_id.to_owned());
     }
 
     /// Fetch a URL over the network and run the full page pipeline:

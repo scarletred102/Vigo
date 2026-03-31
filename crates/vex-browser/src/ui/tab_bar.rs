@@ -10,17 +10,18 @@ use vex_render::display_list::{DisplayCommand, DisplayList};
 use crate::tab::Tab;
 
 use super::nav_bar::friendly_title_from_url;
+use super::theme;
 
 /// Colors for the tab bar.
-const TAB_BAR_BG: Color = Color::rgb(231, 236, 246);
-const ACTIVE_TAB_BG: Color = Color::rgb(255, 255, 255);
-const INACTIVE_TAB_BG: Color = Color::rgb(216, 224, 238);
-const TAB_TEXT_COLOR: Color = Color::rgb(39, 49, 68);
-const INACTIVE_TAB_TEXT: Color = Color::rgb(96, 107, 129);
-const CLOSE_BTN_COLOR: Color = Color::rgb(113, 124, 146);
-const NEW_TAB_BTN_COLOR: Color = Color::rgb(86, 102, 132);
-const TAB_ACTIVE_ACCENT: Color = Color::rgb(48, 112, 244);
-const TAB_BAR_BOTTOM_LINE: Color = Color::rgb(194, 205, 224);
+const TAB_BAR_BG: Color = theme::CHROME_BG;
+const ACTIVE_TAB_BG: Color = theme::TAB_ACTIVE_BG;
+const INACTIVE_TAB_BG: Color = theme::TAB_INACTIVE_BG;
+const TAB_TEXT_COLOR: Color = theme::TAB_TEXT;
+const INACTIVE_TAB_TEXT: Color = theme::TAB_TEXT_INACTIVE;
+const CLOSE_BTN_COLOR: Color = theme::TAB_ICON;
+const NEW_TAB_BTN_COLOR: Color = theme::TAB_NEW_BUTTON;
+const TAB_ACTIVE_ACCENT: Color = theme::TAB_ACTIVE_ACCENT;
+const TAB_BAR_BOTTOM_LINE: Color = theme::CHROME_BORDER;
 
 /// Maximum tab width in pixels.
 const MAX_TAB_WIDTH: f32 = 250.0;
@@ -92,9 +93,9 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
             position: Point::new(x + 8.0, y + 8.0),
             text: "•".into(),
             color: if is_active {
-                Color::rgb(118, 130, 157)
+                theme::TAB_ICON
             } else {
-                Color::rgb(143, 153, 174)
+                Color::rgb(132, 132, 132)
             },
             font_size: 12.0,
             line_height: 14.0,
