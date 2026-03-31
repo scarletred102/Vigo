@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 
 use vex_core::VexId;
-use vex_css::ComputedStyle;
 use vex_css::values::position::Position;
+use vex_css::ComputedStyle;
 
 use crate::box_model::LayoutBox;
 
@@ -59,8 +59,8 @@ fn collect_entries(
     let z_index = style.map(|s| s.z_index).unwrap_or(0);
 
     // Every box gets an entry (paint order)
-    let creates_context = position.is_positioned()
-        || style.map(|s| s.opacity < 1.0).unwrap_or(false);
+    let creates_context =
+        position.is_positioned() || style.map(|s| s.opacity < 1.0).unwrap_or(false);
 
     entries.push(StackingEntry {
         path: current_path.clone(),
@@ -102,40 +102,52 @@ mod tests {
     fn positive_z_index_sorts_after_zero() {
         let styles = {
             let mut m = HashMap::new();
-            let mut s1 = ComputedStyle::default();
-            s1.position = Position::Relative;
-            s1.z_index = 0;
+            let s1 = ComputedStyle {
+                position: Position::Relative,
+                z_index: 0,
+                ..Default::default()
+            };
             m.insert(VexId::new(1), s1);
 
-            let mut s2 = ComputedStyle::default();
-            s2.position = Position::Relative;
-            s2.z_index = 5;
+            let s2 = ComputedStyle {
+                position: Position::Relative,
+                z_index: 5,
+                ..Default::default()
+            };
             m.insert(VexId::new(2), s2);
 
-            let mut s3 = ComputedStyle::default();
-            s3.position = Position::Relative;
-            s3.z_index = -1;
+            let s3 = ComputedStyle {
+                position: Position::Relative,
+                z_index: -1,
+                ..Default::default()
+            };
             m.insert(VexId::new(3), s3);
             m
         };
 
         let mut root = LayoutBox::new(Some(VexId::new(1)), BoxType::Block);
-        root.children.push(LayoutBox::new(Some(VexId::new(2)), BoxType::Block));
-        root.children.push(LayoutBox::new(Some(VexId::new(3)), BoxType::Block));
+        root.children
+            .push(LayoutBox::new(Some(VexId::new(2)), BoxType::Block));
+        root.children
+            .push(LayoutBox::new(Some(VexId::new(3)), BoxType::Block));
 
         let order = build_stacking_order(&root, &styles);
 
         // z-index: -1 should come first, then 0, then 5
         let z_values: Vec<i32> = order.iter().map(|e| e.z_index).collect();
-        assert!(z_values.windows(2).all(|w| w[0] <= w[1]),
-            "Expected sorted z-indices, got {z_values:?}");
+        assert!(
+            z_values.windows(2).all(|w| w[0] <= w[1]),
+            "Expected sorted z-indices, got {z_values:?}"
+        );
     }
 
     #[test]
     fn resolve_path_works() {
         let mut root = LayoutBox::new(None, BoxType::Block);
         let mut child = LayoutBox::new(Some(VexId::new(2)), BoxType::Block);
-        child.children.push(LayoutBox::new(Some(VexId::new(3)), BoxType::Inline));
+        child
+            .children
+            .push(LayoutBox::new(Some(VexId::new(3)), BoxType::Inline));
         root.children.push(child);
 
         let target = resolve_path(&root, &[0, 0]);
@@ -145,8 +157,10 @@ mod tests {
     #[test]
     fn opacity_creates_stacking_context() {
         let mut styles = HashMap::new();
-        let mut s = ComputedStyle::default();
-        s.opacity = 0.5;
+        let s = ComputedStyle {
+            opacity: 0.5,
+            ..Default::default()
+        };
         styles.insert(VexId::new(1), s);
 
         let root = LayoutBox::new(Some(VexId::new(1)), BoxType::Block);

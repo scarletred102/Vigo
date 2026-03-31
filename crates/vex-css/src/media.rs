@@ -97,7 +97,10 @@ pub fn parse_media_condition(input: &str) -> Option<MediaCondition> {
 mod tests {
     use super::*;
 
-    const VP: Size = Size { width: 1024.0, height: 768.0 };
+    const VP: Size = Size {
+        width: 1024.0,
+        height: 768.0,
+    };
 
     #[test]
     fn min_width() {

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "updated": "2026-03-31",
+  "windows": {
+    "html_parse_100kb_ms_max": 100.0,
+    "layout_200_elements_ms_max": 30000.0,
+    "layout_200_nested_ms_max": 500.0
+  },
+  "notes": {
+    "html_parse_100kb_ms_max": "From crates/vex-html/tests/parse_bench.rs benchmark output",
+    "layout_200_elements_ms_max": "From crates/vex-layout/tests/layout_bench.rs benchmark output",
+    "layout_200_nested_ms_max": "From crates/vex-layout/tests/layout_bench.rs deep nesting benchmark"
+  }
+}

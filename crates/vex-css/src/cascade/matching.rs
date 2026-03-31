@@ -78,18 +78,26 @@ pub fn collect_inline_declarations(
             return decls
                 .into_iter()
                 .enumerate()
-                .map(|(i, Declaration { property, important })| {
-                    MatchedDeclaration {
-                        property,
-                        specificity: Specificity::INLINE,
-                        origin: if important {
-                            Origin::InlineImportant
-                        } else {
-                            Origin::Inline
+                .map(
+                    |(
+                        i,
+                        Declaration {
+                            property,
+                            important,
                         },
-                        source_order: i,
-                    }
-                })
+                    )| {
+                        MatchedDeclaration {
+                            property,
+                            specificity: Specificity::INLINE,
+                            origin: if important {
+                                Origin::InlineImportant
+                            } else {
+                                Origin::Inline
+                            },
+                            source_order: i,
+                        }
+                    },
+                )
                 .collect();
         }
     }

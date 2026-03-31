@@ -83,11 +83,7 @@ mod tests {
     }
 
     fn engine() -> AdblockEngine {
-        AdblockEngine::new([
-            "ads.example.com",
-            "tracker.net",
-            "analytics.evil.org",
-        ])
+        AdblockEngine::new(["ads.example.com", "tracker.net", "analytics.evil.org"])
     }
 
     #[test]

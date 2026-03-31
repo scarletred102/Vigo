@@ -64,18 +64,31 @@ pub fn apply_inheritance(child: &mut ComputedStyle, parent: &ComputedStyle) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vex_core::Color;
     use crate::values::text::TextAlign;
+    use vex_core::Color;
 
     #[test]
     fn color_inherits() {
         let parent = ComputedStyle {
-            color: Color { r: 255, g: 0, b: 0, a: 255 },
+            color: Color {
+                r: 255,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
             ..Default::default()
         };
         let mut child = ComputedStyle::default();
         apply_inheritance(&mut child, &parent);
-        assert_eq!(child.color, Color { r: 255, g: 0, b: 0, a: 255 });
+        assert_eq!(
+            child.color,
+            Color {
+                r: 255,
+                g: 0,
+                b: 0,
+                a: 255
+            }
+        );
     }
 
     #[test]

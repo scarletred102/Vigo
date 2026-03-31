@@ -17,10 +17,7 @@ fn main() {
     let zig_lib_dir = workspace_root.join("zig").join("zig-out").join("lib");
 
     if zig_lib_dir.exists() {
-        println!(
-            "cargo:rustc-link-search=native={}",
-            zig_lib_dir.display()
-        );
+        println!("cargo:rustc-link-search=native={}", zig_lib_dir.display());
         println!("cargo:rustc-link-lib=static=vex_platform");
         println!("cargo:rustc-link-lib=static=vex_compositor");
         println!("cargo:rustc-link-lib=static=vex_alloc");

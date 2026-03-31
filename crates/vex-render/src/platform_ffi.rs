@@ -76,4 +76,5 @@ unsafe extern "C" {
     pub fn vex_platform_poll_event(out: *mut EventC) -> bool;
     pub fn vex_platform_get_dpi(handle: *mut std::ffi::c_void) -> f32;
     pub fn vex_platform_get_raw_handle(handle: *mut std::ffi::c_void, out: *mut RawHandleC);
+    pub fn vex_platform_set_title(handle: *mut std::ffi::c_void, title: *const u8);
 }

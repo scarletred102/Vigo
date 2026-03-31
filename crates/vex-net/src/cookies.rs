@@ -11,7 +11,6 @@ use vex_core::VexUrl;
 
 /// A single stored cookie.
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // http_only and same_site used for future cookie policy enforcement
 struct Cookie {
     name: String,
     value: String,
@@ -25,10 +24,33 @@ struct Cookie {
 
 /// SameSite attribute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SameSite {
+pub enum SameSite {
+    /// No same-site restriction (requires `Secure`).
     None,
+    /// Sent on top-level navigations and same-site requests.
     Lax,
+    /// Only sent on same-site requests.
     Strict,
+}
+
+/// Context for cookie access, controlling HttpOnly and SameSite filtering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CookieAccess {
+    /// HTTP request — all matching cookies are included.
+    HttpRequest,
+    /// JS `document.cookie` — HttpOnly cookies are excluded.
+    JsAccess,
+}
+
+/// Navigation context for SameSite enforcement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavigationKind {
+    /// Same-site request (e.g. clicking a link within the site).
+    SameSite,
+    /// Cross-site top-level navigation (e.g. link from another domain).
+    CrossSiteNavigation,
+    /// Cross-site sub-resource request (e.g. fetch/XHR from JS).
+    CrossSiteSubresource,
 }
 
 /// Thread-safe cookie jar.
@@ -50,18 +72,39 @@ impl CookieJar {
             return;
         };
         let key = format!("{}:{}:{}", cookie.domain, cookie.path, cookie.name);
-        let mut store = self.store.write().expect("cookie lock poisoned");
+        let mut store = match self.store.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         store.insert(key, cookie);
     }
 
     /// Build the `Cookie` header value for a request to the given URL.
+    ///
+    /// This is the simple API — includes all matching cookies (HTTP request context).
     pub fn get_cookies(&self, url: &VexUrl) -> Option<String> {
+        self.get_cookies_filtered(url, CookieAccess::HttpRequest, NavigationKind::SameSite)
+    }
+
+    /// Build the `Cookie` header value with full access/SameSite filtering.
+    ///
+    /// - `access`: [`CookieAccess::JsAccess`] excludes `HttpOnly` cookies.
+    /// - `nav`: [`NavigationKind`] controls SameSite enforcement.
+    pub fn get_cookies_filtered(
+        &self,
+        url: &VexUrl,
+        access: CookieAccess,
+        nav: NavigationKind,
+    ) -> Option<String> {
         let host = url.host().unwrap_or("");
         let path = url.path();
         let secure = url.is_https();
         let now = SystemTime::now();
 
-        let store = self.store.read().expect("cookie lock poisoned");
+        let store = match self.store.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
         let pairs: Vec<String> = store
             .values()
@@ -71,6 +114,33 @@ impl CookieJar {
                     && path.starts_with(&c.path)
                     && (!c.secure || secure)
                     && c.expires.map_or(true, |exp| exp > now)
+            })
+            .filter(|c| {
+                // HttpOnly enforcement: JS cannot see HttpOnly cookies
+                if access == CookieAccess::JsAccess && c.http_only {
+                    return false;
+                }
+                true
+            })
+            .filter(|c| {
+                // SameSite enforcement
+                match c.same_site {
+                    SameSite::None => {
+                        // SameSite=None requires Secure
+                        c.secure || !secure
+                    }
+                    SameSite::Lax => {
+                        // Lax: allowed on same-site + top-level cross-site nav
+                        matches!(
+                            nav,
+                            NavigationKind::SameSite | NavigationKind::CrossSiteNavigation
+                        )
+                    }
+                    SameSite::Strict => {
+                        // Strict: same-site only
+                        nav == NavigationKind::SameSite
+                    }
+                }
             })
             .map(|c| format!("{}={}", c.name, c.value))
             .collect();
@@ -85,7 +155,10 @@ impl CookieJar {
     /// Remove expired cookies.
     pub fn cleanup(&self) {
         let now = SystemTime::now();
-        let mut store = self.store.write().expect("cookie lock poisoned");
+        let mut store = match self.store.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         store.retain(|_, c| c.expires.map_or(true, |exp| exp > now));
     }
 }
@@ -278,5 +351,87 @@ mod tests {
         if let Some(c) = cookies {
             assert!(c.contains("new=2"));
         }
+    }
+
+    #[test]
+    fn httponly_excluded_from_js_access() {
+        let jar = CookieJar::new();
+        let url = test_url("https://example.com/");
+        jar.insert(&url, "visible=1");
+        jar.insert(&url, "secret=2; HttpOnly");
+
+        // HTTP request sees both
+        let http = jar
+            .get_cookies_filtered(&url, CookieAccess::HttpRequest, NavigationKind::SameSite)
+            .unwrap();
+        assert!(http.contains("visible=1"));
+        assert!(http.contains("secret=2"));
+
+        // JS access sees only the non-HttpOnly cookie
+        let js = jar
+            .get_cookies_filtered(&url, CookieAccess::JsAccess, NavigationKind::SameSite)
+            .unwrap();
+        assert!(js.contains("visible=1"));
+        assert!(!js.contains("secret=2"));
+    }
+
+    #[test]
+    fn samesite_strict_blocks_cross_site() {
+        let jar = CookieJar::new();
+        let url = test_url("https://example.com/");
+        jar.insert(&url, "strict_tok=abc; SameSite=Strict");
+
+        // Same-site: included
+        let same = jar
+            .get_cookies_filtered(&url, CookieAccess::HttpRequest, NavigationKind::SameSite)
+            .unwrap();
+        assert!(same.contains("strict_tok=abc"));
+
+        // Cross-site navigation: excluded
+        let cross_nav = jar.get_cookies_filtered(
+            &url,
+            CookieAccess::HttpRequest,
+            NavigationKind::CrossSiteNavigation,
+        );
+        assert!(cross_nav.is_none());
+
+        // Cross-site subresource: excluded
+        let cross_sub = jar.get_cookies_filtered(
+            &url,
+            CookieAccess::HttpRequest,
+            NavigationKind::CrossSiteSubresource,
+        );
+        assert!(cross_sub.is_none());
+    }
+
+    #[test]
+    fn samesite_lax_allows_cross_site_navigation() {
+        let jar = CookieJar::new();
+        let url = test_url("https://example.com/");
+        jar.insert(&url, "lax_tok=xyz; SameSite=Lax");
+
+        // Same-site: included
+        let same = jar
+            .get_cookies_filtered(&url, CookieAccess::HttpRequest, NavigationKind::SameSite)
+            .unwrap();
+        assert!(same.contains("lax_tok=xyz"));
+
+        // Cross-site navigation: included (Lax allows top-level nav)
+        let cross_nav = jar
+            .get_cookies_filtered(
+                &url,
+                CookieAccess::HttpRequest,
+                NavigationKind::CrossSiteNavigation,
+            )
+            .unwrap();
+        assert!(cross_nav.contains("lax_tok=xyz"));
+
+        // Cross-site subresource: excluded
+        let cross_sub = jar.get_cookies_filtered(
+            &url,
+            CookieAccess::HttpRequest,
+            NavigationKind::CrossSiteSubresource,
+        );
+        assert!(cross_sub.is_none());
     }
 }

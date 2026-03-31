@@ -24,7 +24,13 @@ impl TextEngine {
     /// Measure the size of a text run at the given font size and max width.
     ///
     /// Returns `(width, height)` in pixels.
-    pub fn measure(&mut self, text: &str, font_size: f32, line_height: f32, max_width: f32) -> (f32, f32) {
+    pub fn measure(
+        &mut self,
+        text: &str,
+        font_size: f32,
+        line_height: f32,
+        max_width: f32,
+    ) -> (f32, f32) {
         let metrics = Metrics::new(font_size, line_height);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
 

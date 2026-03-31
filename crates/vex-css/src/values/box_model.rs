@@ -106,6 +106,48 @@ impl Visibility {
     }
 }
 
+/// CSS `float` values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Float {
+    #[default]
+    None,
+    Left,
+    Right,
+}
+
+impl Float {
+    pub fn parse(input: &str) -> Option<Self> {
+        match input.trim() {
+            "none" => Some(Self::None),
+            "left" => Some(Self::Left),
+            "right" => Some(Self::Right),
+            _ => None,
+        }
+    }
+}
+
+/// CSS `clear` values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Clear {
+    #[default]
+    None,
+    Left,
+    Right,
+    Both,
+}
+
+impl Clear {
+    pub fn parse(input: &str) -> Option<Self> {
+        match input.trim() {
+            "none" => Some(Self::None),
+            "left" => Some(Self::Left),
+            "right" => Some(Self::Right),
+            "both" => Some(Self::Both),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,5 +170,22 @@ mod tests {
     fn box_sizing_parse() {
         assert_eq!(BoxSizing::parse("border-box"), Some(BoxSizing::BorderBox));
         assert_eq!(BoxSizing::parse("content-box"), Some(BoxSizing::ContentBox));
+    }
+
+    #[test]
+    fn float_parse() {
+        assert_eq!(Float::parse("left"), Some(Float::Left));
+        assert_eq!(Float::parse("right"), Some(Float::Right));
+        assert_eq!(Float::parse("none"), Some(Float::None));
+        assert_eq!(Float::parse("center"), None);
+    }
+
+    #[test]
+    fn clear_parse() {
+        assert_eq!(Clear::parse("left"), Some(Clear::Left));
+        assert_eq!(Clear::parse("right"), Some(Clear::Right));
+        assert_eq!(Clear::parse("both"), Some(Clear::Both));
+        assert_eq!(Clear::parse("none"), Some(Clear::None));
+        assert_eq!(Clear::parse("invalid"), None);
     }
 }

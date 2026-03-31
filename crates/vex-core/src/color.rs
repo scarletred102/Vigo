@@ -39,7 +39,11 @@ impl Color {
                 let b = hex_digit(s.as_bytes()[2])?;
                 Ok(Self::rgb(r << 4 | r, g << 4 | g, b << 4 | b))
             }
-            6 => Ok(Self::rgb(hex_byte(&s[0..2])?, hex_byte(&s[2..4])?, hex_byte(&s[4..6])?)),
+            6 => Ok(Self::rgb(
+                hex_byte(&s[0..2])?,
+                hex_byte(&s[2..4])?,
+                hex_byte(&s[4..6])?,
+            )),
             8 => Ok(Self::rgba(
                 hex_byte(&s[0..2])?,
                 hex_byte(&s[2..4])?,
@@ -134,7 +138,10 @@ mod tests {
 
     #[test]
     fn css_transparent() {
-        assert_eq!(Color::from_css_name("transparent"), Some(Color::TRANSPARENT));
+        assert_eq!(
+            Color::from_css_name("transparent"),
+            Some(Color::TRANSPARENT)
+        );
     }
 
     #[test]

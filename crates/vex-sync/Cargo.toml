@@ -13,5 +13,6 @@ vex-crypto = { path = "../vex-crypto" }
 vex-net = { path = "../vex-net" }
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

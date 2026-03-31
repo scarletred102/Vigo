@@ -19,6 +19,9 @@
 pub mod block;
 pub mod box_model;
 pub mod flex;
+pub mod float;
+pub mod grid;
+pub mod hit_test;
 pub mod inline;
 pub mod positioned;
 pub mod stacking;
@@ -28,6 +31,7 @@ pub mod tree_builder;
 // Re-exports
 pub use block::ContainingBlock;
 pub use box_model::{BoxType, Dimensions, LayoutBox};
+pub use hit_test::hit_test;
 pub use stacking::{build_stacking_order, StackingEntry};
 pub use text::TextEngine;
 pub use tree_builder::build_layout_tree;
@@ -86,6 +90,9 @@ fn layout_recursive(
         }
         BoxType::Flex => {
             flex::layout_flex(layout_box, containing, styles);
+        }
+        BoxType::Grid => {
+            grid::layout_grid(layout_box, containing, styles);
         }
         BoxType::Inline => {
             // Inline boxes are sized during inline formatting context.

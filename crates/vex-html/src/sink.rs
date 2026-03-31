@@ -7,12 +7,14 @@ use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use html5ever::tree_builder::{ElementFlags, ElemName, NodeOrText, QuirksMode, TreeSink};
-use html5ever::{namespace_url, ns, Attribute as HtmlAttribute, LocalName, Namespace as MkNs, QualName};
+use html5ever::tree_builder::{ElemName, ElementFlags, NodeOrText, QuirksMode, TreeSink};
+use html5ever::{
+    namespace_url, ns, Attribute as HtmlAttribute, LocalName, Namespace as MkNs, QualName,
+};
 use tendril::StrTendril;
 
 use vex_core::VexId;
-use vex_dom::node::{Attribute, ElementData, Namespace, NodeData};
+use vex_dom::node::{Attribute, ElementData, ElementState, Namespace, NodeData};
 use vex_dom::{tree, Document};
 
 // ── Owned ElemName wrapper (avoids lifetime issues with RefCell) ──────
@@ -72,9 +74,7 @@ fn sink_append(doc: &mut Document, parent: VexId, child: NodeOrText<VexId>) {
         NodeOrText::AppendText(text) => {
             let last = doc.arena().get(parent).last_child;
             if let Some(last_id) = last {
-                if let NodeData::Text(ref mut existing) =
-                    doc.arena_mut().get_mut(last_id).data
-                {
+                if let NodeData::Text(ref mut existing) = doc.arena_mut().get_mut(last_id).data {
                     existing.push_str(&text);
                     return;
                 }
@@ -124,9 +124,10 @@ impl TreeSink for VexSink {
 
     fn elem_name<'a>(&'a self, target: &'a VexId) -> VexElemName {
         let names = self.names.borrow();
-        let qn = names
-            .get(&target.index())
-            .expect("elem_name called on a node without a recorded QualName");
+        let qn = match names.get(&target.index()) {
+            Some(qn) => qn,
+            None => panic!("elem_name called on a node without a recorded QualName"),
+        };
         VexElemName {
             local: qn.local.clone(),
             ns: qn.ns.clone(),
@@ -149,8 +150,8 @@ impl TreeSink for VexSink {
             namespace: ns,
             attributes: dom_attrs,
             template_contents: None,
-            mathml_annotation_xml_integration_point: flags
-                .mathml_annotation_xml_integration_point,
+            mathml_annotation_xml_integration_point: flags.mathml_annotation_xml_integration_point,
+            state: ElementState::default(),
         }));
 
         // Store QualName for later `elem_name` lookups.
@@ -216,8 +217,10 @@ impl TreeSink for VexSink {
     fn get_template_contents(&self, target: &VexId) -> VexId {
         let doc = self.doc.borrow();
         if let NodeData::Element(ref el) = doc.arena().get(*target).data {
-            el.template_contents
-                .expect("get_template_contents on non-template element")
+            match el.template_contents {
+                Some(contents) => contents,
+                None => panic!("get_template_contents on non-template element"),
+            }
         } else {
             panic!("get_template_contents called on a non-element node");
         }
@@ -233,11 +236,10 @@ impl TreeSink for VexSink {
 
     fn append_before_sibling(&self, sibling: &VexId, new_node: NodeOrText<VexId>) {
         let mut doc = self.doc.borrow_mut();
-        let parent = doc
-            .arena()
-            .get(*sibling)
-            .parent
-            .expect("append_before_sibling: sibling has no parent");
+        let parent = match doc.arena().get(*sibling).parent {
+            Some(parent) => parent,
+            None => panic!("append_before_sibling: sibling has no parent"),
+        };
 
         match new_node {
             NodeOrText::AppendNode(id) => {
@@ -247,8 +249,7 @@ impl TreeSink for VexSink {
                 // Merge with preceding text node if possible.
                 let prev = doc.arena().get(*sibling).prev_sibling;
                 if let Some(prev_id) = prev {
-                    if let NodeData::Text(ref mut existing) =
-                        doc.arena_mut().get_mut(prev_id).data
+                    if let NodeData::Text(ref mut existing) = doc.arena_mut().get_mut(prev_id).data
                     {
                         existing.push_str(&text);
                         return;
@@ -280,11 +281,7 @@ impl TreeSink for VexSink {
     }
 
     fn reparent_children(&self, node: &VexId, new_parent: &VexId) {
-        tree::reparent_children(
-            self.doc.borrow_mut().arena_mut(),
-            *node,
-            *new_parent,
-        );
+        tree::reparent_children(self.doc.borrow_mut().arena_mut(), *node, *new_parent);
     }
 
     fn is_mathml_annotation_xml_integration_point(&self, handle: &VexId) -> bool {

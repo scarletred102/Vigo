@@ -27,8 +27,6 @@ impl ColorValue {
     }
 }
 
-
-
 /// Parse a CSS color string.
 pub fn parse_color(input: &str) -> Option<ColorValue> {
     let input = input.trim();
@@ -106,10 +104,22 @@ fn parse_hsl_function(input: &str) -> Option<Color> {
         return None;
     }
 
-    let h: f32 = parts[0].strip_suffix("deg").unwrap_or(parts[0]).parse().ok()?;
-    let s_raw: f32 = parts[1].strip_suffix('%').unwrap_or(parts[1]).parse().ok()?;
+    let h: f32 = parts[0]
+        .strip_suffix("deg")
+        .unwrap_or(parts[0])
+        .parse()
+        .ok()?;
+    let s_raw: f32 = parts[1]
+        .strip_suffix('%')
+        .unwrap_or(parts[1])
+        .parse()
+        .ok()?;
     let s = s_raw / 100.0;
-    let l_raw: f32 = parts[2].strip_suffix('%').unwrap_or(parts[2]).parse().ok()?;
+    let l_raw: f32 = parts[2]
+        .strip_suffix('%')
+        .unwrap_or(parts[2])
+        .parse()
+        .ok()?;
     let l = l_raw / 100.0;
     let a = if parts.len() >= 4 {
         parse_alpha_component(parts[3])?
@@ -321,31 +331,103 @@ mod tests {
 
     #[test]
     fn parse_hex_colors() {
-        assert_eq!(parse_color("#ff0000"), Some(ColorValue::Rgba(Color { r: 255, g: 0, b: 0, a: 255 })));
-        assert_eq!(parse_color("#00ff00"), Some(ColorValue::Rgba(Color { r: 0, g: 255, b: 0, a: 255 })));
-        assert_eq!(parse_color("#0000ff80"), Some(ColorValue::Rgba(Color { r: 0, g: 0, b: 255, a: 128 })));
+        assert_eq!(
+            parse_color("#ff0000"),
+            Some(ColorValue::Rgba(Color {
+                r: 255,
+                g: 0,
+                b: 0,
+                a: 255
+            }))
+        );
+        assert_eq!(
+            parse_color("#00ff00"),
+            Some(ColorValue::Rgba(Color {
+                r: 0,
+                g: 255,
+                b: 0,
+                a: 255
+            }))
+        );
+        assert_eq!(
+            parse_color("#0000ff80"),
+            Some(ColorValue::Rgba(Color {
+                r: 0,
+                g: 0,
+                b: 255,
+                a: 128
+            }))
+        );
     }
 
     #[test]
     fn parse_short_hex() {
-        assert_eq!(parse_color("#fff"), Some(ColorValue::Rgba(Color { r: 255, g: 255, b: 255, a: 255 })));
+        assert_eq!(
+            parse_color("#fff"),
+            Some(ColorValue::Rgba(Color {
+                r: 255,
+                g: 255,
+                b: 255,
+                a: 255
+            }))
+        );
     }
 
     #[test]
     fn parse_named_colors() {
-        assert_eq!(parse_color("red"), Some(ColorValue::Rgba(Color { r: 255, g: 0, b: 0, a: 255 })));
-        assert_eq!(parse_color("blue"), Some(ColorValue::Rgba(Color { r: 0, g: 0, b: 255, a: 255 })));
-        assert_eq!(parse_color("rebeccapurple"), Some(ColorValue::Rgba(Color { r: 102, g: 51, b: 153, a: 255 })));
+        assert_eq!(
+            parse_color("red"),
+            Some(ColorValue::Rgba(Color {
+                r: 255,
+                g: 0,
+                b: 0,
+                a: 255
+            }))
+        );
+        assert_eq!(
+            parse_color("blue"),
+            Some(ColorValue::Rgba(Color {
+                r: 0,
+                g: 0,
+                b: 255,
+                a: 255
+            }))
+        );
+        assert_eq!(
+            parse_color("rebeccapurple"),
+            Some(ColorValue::Rgba(Color {
+                r: 102,
+                g: 51,
+                b: 153,
+                a: 255
+            }))
+        );
     }
 
     #[test]
     fn parse_rgb_function() {
-        assert_eq!(parse_color("rgb(255, 0, 0)"), Some(ColorValue::Rgba(Color { r: 255, g: 0, b: 0, a: 255 })));
+        assert_eq!(
+            parse_color("rgb(255, 0, 0)"),
+            Some(ColorValue::Rgba(Color {
+                r: 255,
+                g: 0,
+                b: 0,
+                a: 255
+            }))
+        );
     }
 
     #[test]
     fn parse_rgba_function() {
-        assert_eq!(parse_color("rgba(255, 0, 0, 0.5)"), Some(ColorValue::Rgba(Color { r: 255, g: 0, b: 0, a: 128 })));
+        assert_eq!(
+            parse_color("rgba(255, 0, 0, 0.5)"),
+            Some(ColorValue::Rgba(Color {
+                r: 255,
+                g: 0,
+                b: 0,
+                a: 128
+            }))
+        );
     }
 
     #[test]
@@ -371,7 +453,12 @@ mod tests {
     #[test]
     fn resolve_current_color() {
         let c = ColorValue::CurrentColor;
-        let parent = Color { r: 100, g: 50, b: 200, a: 255 };
+        let parent = Color {
+            r: 100,
+            g: 50,
+            b: 200,
+            a: 255,
+        };
         assert_eq!(c.resolve(parent), parent);
     }
 
@@ -385,7 +472,12 @@ mod tests {
     fn parse_rgb_percent() {
         assert_eq!(
             parse_color("rgb(100%, 0%, 50%)"),
-            Some(ColorValue::Rgba(Color { r: 255, g: 0, b: 128, a: 255 }))
+            Some(ColorValue::Rgba(Color {
+                r: 255,
+                g: 0,
+                b: 128,
+                a: 255
+            }))
         );
     }
 

@@ -15,6 +15,12 @@ path = "src/main.rs"
 vex-browser = { path = "../vex-browser" }
 vex-render = { path = "../vex-render" }
 vex-core = { path = "../vex-core" }
+vex-html = { path = "../vex-html" }
+vex-css = { path = "../vex-css" }
+vex-dom = { path = "../vex-dom" }
+vex-layout = { path = "../vex-layout" }
+vex-js = { path = "../vex-js" }
+wgpu.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

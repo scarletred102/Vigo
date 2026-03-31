@@ -45,12 +45,18 @@ impl Display {
 
     /// Whether this display value generates a block-level box.
     pub fn is_block_level(&self) -> bool {
-        matches!(self, Self::Block | Self::Flex | Self::Grid | Self::Table | Self::ListItem)
+        matches!(
+            self,
+            Self::Block | Self::Flex | Self::Grid | Self::Table | Self::ListItem
+        )
     }
 
     /// Whether this is an inline-level display.
     pub fn is_inline_level(&self) -> bool {
-        matches!(self, Self::Inline | Self::InlineBlock | Self::InlineFlex | Self::InlineGrid)
+        matches!(
+            self,
+            Self::Inline | Self::InlineBlock | Self::InlineFlex | Self::InlineGrid
+        )
     }
 }
 

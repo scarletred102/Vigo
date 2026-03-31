@@ -33,6 +33,7 @@ Desktop.ini
 
 # ── Reference material (porting only) ──────────────────────────
 reference/
+refs/
 
 # ── Secrets ─────────────────────────────────────────────────────
 *.key

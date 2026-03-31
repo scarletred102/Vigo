@@ -7,11 +7,13 @@
 //! Handles `@media` and `@import` at-rules. Also parses inline `style=""` attributes.
 
 use crate::properties::{parse_declaration, Declaration};
+use crate::values::animation::KeyframeRule;
 
 /// A parsed CSS stylesheet.
 #[derive(Debug, Clone, Default)]
 pub struct Stylesheet {
     pub rules: Vec<CssRule>,
+    pub keyframes: Vec<KeyframeRule>,
 }
 
 /// A CSS rule: one or more selectors + a list of declarations.
@@ -26,6 +28,7 @@ pub struct CssRule {
 /// Parse a full CSS stylesheet string.
 pub fn parse_stylesheet(css: &str) -> Stylesheet {
     let mut rules = Vec::new();
+    let mut keyframes = Vec::new();
     let mut pos = 0;
     let bytes = css.as_bytes();
 
@@ -35,7 +38,11 @@ pub fn parse_stylesheet(css: &str) -> Stylesheet {
             break;
         }
 
-        if css[pos..].starts_with("@media") {
+        if css[pos..].starts_with("@keyframes") || css[pos..].starts_with("@-webkit-keyframes") {
+            if let Some(kf) = parse_keyframes_rule(css, &mut pos) {
+                keyframes.push(kf);
+            }
+        } else if css[pos..].starts_with("@media") {
             pos += 6;
             // Read media condition until '{'
             let cond_start = pos;
@@ -71,6 +78,7 @@ pub fn parse_stylesheet(css: &str) -> Stylesheet {
                 rule.media_condition = Some(condition.clone());
                 rules.push(rule);
             }
+            keyframes.extend(inner.keyframes);
         } else if css[pos..].starts_with("@import") {
             // Skip @import rules for now (consume until ';')
             while pos < bytes.len() && bytes[pos] != b';' {
@@ -108,7 +116,7 @@ pub fn parse_stylesheet(css: &str) -> Stylesheet {
         }
     }
 
-    Stylesheet { rules }
+    Stylesheet { rules, keyframes }
 }
 
 /// Parse the content of a `style=""` attribute (declarations only, no selector).
@@ -188,12 +196,122 @@ fn parse_declarations(text: &str) -> Vec<Declaration> {
 
             let props = parse_declaration(name, value);
             for property in props {
-                declarations.push(Declaration { property, important });
+                declarations.push(Declaration {
+                    property,
+                    important,
+                });
             }
         }
     }
 
     declarations
+}
+
+/// Parse a `@keyframes name { ... }` rule.
+fn parse_keyframes_rule(css: &str, pos: &mut usize) -> Option<KeyframeRule> {
+    use crate::values::animation::Keyframe;
+
+    let bytes = css.as_bytes();
+
+    // Skip `@keyframes` or `@-webkit-keyframes`
+    if css[*pos..].starts_with("@-webkit-keyframes") {
+        *pos += 18;
+    } else {
+        *pos += 10; // "@keyframes"
+    }
+
+    // Read name
+    skip_whitespace_and_comments(css, pos);
+    let name_start = *pos;
+    while *pos < bytes.len() && bytes[*pos] != b'{' && !bytes[*pos].is_ascii_whitespace() {
+        *pos += 1;
+    }
+    let name = css[name_start..*pos].trim().to_string();
+    if name.is_empty() {
+        return None;
+    }
+
+    skip_whitespace_and_comments(css, pos);
+    if *pos >= bytes.len() || bytes[*pos] != b'{' {
+        return None;
+    }
+    *pos += 1; // skip '{'
+
+    let mut keyframe_list = Vec::new();
+
+    loop {
+        skip_whitespace_and_comments(css, pos);
+        if *pos >= bytes.len() || bytes[*pos] == b'}' {
+            if *pos < bytes.len() {
+                *pos += 1;
+            }
+            break;
+        }
+
+        // Read keyframe selector (e.g., "0%", "from", "to", "50%")
+        let sel_start = *pos;
+        while *pos < bytes.len() && bytes[*pos] != b'{' {
+            *pos += 1;
+        }
+        let selector = css[sel_start..*pos].trim();
+
+        // Parse the offset(s)
+        let offsets: Vec<f32> = selector
+            .split(',')
+            .filter_map(|s| {
+                let s = s.trim();
+                match s {
+                    "from" => Some(0.0),
+                    "to" => Some(1.0),
+                    _ => s.strip_suffix('%').and_then(|n| {
+                        n.trim().parse::<f32>().ok().map(|v| v / 100.0)
+                    }),
+                }
+            })
+            .collect();
+
+        if *pos < bytes.len() {
+            *pos += 1; // skip '{'
+        }
+
+        // Read declarations until '}'
+        let decl_start = *pos;
+        let mut depth = 1;
+        while *pos < bytes.len() && depth > 0 {
+            if bytes[*pos] == b'{' {
+                depth += 1;
+            } else if bytes[*pos] == b'}' {
+                depth -= 1;
+            }
+            if depth > 0 {
+                *pos += 1;
+            }
+        }
+        let decl_text = &css[decl_start..*pos];
+        if *pos < bytes.len() {
+            *pos += 1; // skip '}'
+        }
+
+        let declarations = parse_declarations(decl_text);
+
+        for offset in &offsets {
+            keyframe_list.push(Keyframe {
+                offset: offset.clamp(0.0, 1.0),
+                declarations: declarations.clone(),
+            });
+        }
+    }
+
+    keyframe_list.sort_by(|a, b| {
+        a.offset
+            .partial_cmp(&b.offset)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    Some(KeyframeRule {
+        name,
+        keyframes: keyframe_list,
+    })
 }
 
 fn skip_whitespace_and_comments(css: &str, pos: &mut usize) {
@@ -231,7 +349,10 @@ mod tests {
         assert_eq!(ss.rules.len(), 1);
         assert_eq!(ss.rules[0].selectors, vec!["div"]);
         assert_eq!(ss.rules[0].declarations.len(), 1);
-        assert_eq!(ss.rules[0].declarations[0].property, Property::Display(Display::Block));
+        assert_eq!(
+            ss.rules[0].declarations[0].property,
+            Property::Display(Display::Block)
+        );
     }
 
     #[test]
@@ -252,7 +373,10 @@ mod tests {
         let css = "@media (max-width: 768px) { .mobile { display: block; } }";
         let ss = parse_stylesheet(css);
         assert_eq!(ss.rules.len(), 1);
-        assert_eq!(ss.rules[0].media_condition.as_deref(), Some("(max-width: 768px)"));
+        assert_eq!(
+            ss.rules[0].media_condition.as_deref(),
+            Some("(max-width: 768px)")
+        );
     }
 
     #[test]

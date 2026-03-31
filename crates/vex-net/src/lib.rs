@@ -16,10 +16,12 @@ pub mod decompress;
 pub mod dns;
 pub mod tls;
 pub mod types;
+pub mod websocket;
 
 // Re-export the main public API.
 pub use cache::HttpCache;
 pub use client::{ClientConfig, HttpClient};
-pub use cookies::CookieJar;
+pub use cookies::{CookieAccess, CookieJar, NavigationKind, SameSite};
 pub use dns::{DnsMode, DnsResolver, DoHProvider};
 pub use types::{Method, Request, Response};
+pub use websocket::{CloseFrame, ReadyState, WebSocket, WsConfig, WsError, WsMessage};

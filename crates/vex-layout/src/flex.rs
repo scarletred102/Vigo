@@ -9,11 +9,9 @@
 use std::collections::HashMap;
 
 use vex_core::{Insets, VexId};
-use vex_css::ComputedStyle;
 use vex_css::values::box_model::BoxSizing;
-use vex_css::values::flex::{
-    AlignItems, AlignSelf, FlexDirection, FlexWrap, JustifyContent,
-};
+use vex_css::values::flex::{AlignItems, AlignSelf, FlexDirection, FlexWrap, JustifyContent};
+use vex_css::ComputedStyle;
 
 use crate::block::{layout_block, ContainingBlock};
 use crate::box_model::{BoxType, LayoutBox};
@@ -27,12 +25,19 @@ pub fn layout_flex(
     resolve_flex_container_size(layout_box, containing, styles);
 
     let style = layout_box.node_id.and_then(|id| styles.get(&id));
-    let direction = style.map(|s| s.flex_direction).unwrap_or(FlexDirection::Row);
+    let direction = style
+        .map(|s| s.flex_direction)
+        .unwrap_or(FlexDirection::Row);
     let wrap = style.map(|s| s.flex_wrap).unwrap_or(FlexWrap::NoWrap);
-    let justify = style.map(|s| s.justify_content).unwrap_or(JustifyContent::FlexStart);
+    let justify = style
+        .map(|s| s.justify_content)
+        .unwrap_or(JustifyContent::FlexStart);
     let align_items = style.map(|s| s.align_items).unwrap_or(AlignItems::Stretch);
     let is_row = direction.is_row();
-    let is_reverse = matches!(direction, FlexDirection::RowReverse | FlexDirection::ColumnReverse);
+    let is_reverse = matches!(
+        direction,
+        FlexDirection::RowReverse | FlexDirection::ColumnReverse
+    );
 
     let container_main = if is_row {
         layout_box.dimensions.content.size.width
@@ -59,7 +64,11 @@ pub fn layout_flex(
             } else {
                 child_style.map(|s| s.height).unwrap_or(f32::NAN)
             };
-            if dim.is_nan() { 0.0 } else { dim }
+            if dim.is_nan() {
+                0.0
+            } else {
+                dim
+            }
         };
 
         // Resolve padding/border/margin for main axis edges
@@ -124,10 +133,8 @@ pub fn layout_flex(
             let total_shrink: f32 = line.items.iter().map(|&idx| items[idx].flex_shrink).sum();
             if total_shrink > 0.0 {
                 for &idx in &line.items {
-                    let shrink_amount =
-                        free_space.abs() * items[idx].flex_shrink / total_shrink;
-                    items[idx].final_main =
-                        (items[idx].base_size - shrink_amount).max(0.0);
+                    let shrink_amount = free_space.abs() * items[idx].flex_shrink / total_shrink;
+                    items[idx].final_main = (items[idx].base_size - shrink_amount).max(0.0);
                 }
             }
         }
@@ -141,9 +148,7 @@ pub fn layout_flex(
     };
 
     for item in &mut items {
-        let child_style = children[item.index]
-            .node_id
-            .and_then(|id| styles.get(&id));
+        let child_style = children[item.index].node_id.and_then(|id| styles.get(&id));
         let cross_dim = if is_row {
             child_style.map(|s| s.height).unwrap_or(f32::NAN)
         } else {
@@ -225,8 +230,7 @@ pub fn layout_flex(
                 child.dimensions.content.size.height = item.final_main;
                 child.dimensions.content.origin.x =
                     content_x + cross_cursor + cross_offset + m.left + p.left + b.left;
-                child.dimensions.content.origin.y =
-                    content_y + main_cursor + m.top + p.top + b.top;
+                child.dimensions.content.origin.y = content_y + main_cursor + m.top + p.top + b.top;
             }
 
             main_cursor += item.final_main + item.main_edges + gap;
@@ -238,7 +242,7 @@ pub fn layout_flex(
                     height: child.dimensions.content.size.height,
                 };
                 for grandchild in &mut child.children {
-                    if matches!(grandchild.box_type, BoxType::Block | BoxType::Flex) {
+                    if matches!(grandchild.box_type, BoxType::Block | BoxType::Flex | BoxType::Grid) {
                         layout_block(grandchild, child_containing, styles);
                     }
                 }
@@ -304,20 +308,52 @@ fn resolve_flex_container_size(
 ) {
     let style = layout_box.node_id.and_then(|id| styles.get(&id));
 
-    let padding = style.map(|s| {
-        Insets::new(s.padding_top, s.padding_right, s.padding_bottom, s.padding_left)
-    }).unwrap_or_default();
-    let border = style.map(|s| {
-        Insets::new(s.border_top_width, s.border_right_width, s.border_bottom_width, s.border_left_width)
-    }).unwrap_or_default();
-    let margin = style.map(|s| {
-        Insets::new(
-            if s.margin_top.is_nan() { 0.0 } else { s.margin_top },
-            if s.margin_right.is_nan() { 0.0 } else { s.margin_right },
-            if s.margin_bottom.is_nan() { 0.0 } else { s.margin_bottom },
-            if s.margin_left.is_nan() { 0.0 } else { s.margin_left },
-        )
-    }).unwrap_or_default();
+    let padding = style
+        .map(|s| {
+            Insets::new(
+                s.padding_top,
+                s.padding_right,
+                s.padding_bottom,
+                s.padding_left,
+            )
+        })
+        .unwrap_or_default();
+    let border = style
+        .map(|s| {
+            Insets::new(
+                s.border_top_width,
+                s.border_right_width,
+                s.border_bottom_width,
+                s.border_left_width,
+            )
+        })
+        .unwrap_or_default();
+    let margin = style
+        .map(|s| {
+            Insets::new(
+                if s.margin_top.is_nan() {
+                    0.0
+                } else {
+                    s.margin_top
+                },
+                if s.margin_right.is_nan() {
+                    0.0
+                } else {
+                    s.margin_right
+                },
+                if s.margin_bottom.is_nan() {
+                    0.0
+                } else {
+                    s.margin_bottom
+                },
+                if s.margin_left.is_nan() {
+                    0.0
+                } else {
+                    s.margin_left
+                },
+            )
+        })
+        .unwrap_or_default();
 
     layout_box.dimensions.padding = padding;
     layout_box.dimensions.border = border;
@@ -349,22 +385,41 @@ fn resolve_flex_container_size(
     }
 }
 
-fn resolve_child_edges(
-    child: &mut LayoutBox,
-    style: Option<&ComputedStyle>,
-) {
+fn resolve_child_edges(child: &mut LayoutBox, style: Option<&ComputedStyle>) {
     if let Some(s) = style {
         child.dimensions.padding = Insets::new(
-            s.padding_top, s.padding_right, s.padding_bottom, s.padding_left,
+            s.padding_top,
+            s.padding_right,
+            s.padding_bottom,
+            s.padding_left,
         );
         child.dimensions.border = Insets::new(
-            s.border_top_width, s.border_right_width, s.border_bottom_width, s.border_left_width,
+            s.border_top_width,
+            s.border_right_width,
+            s.border_bottom_width,
+            s.border_left_width,
         );
         child.dimensions.margin = Insets::new(
-            if s.margin_top.is_nan() { 0.0 } else { s.margin_top },
-            if s.margin_right.is_nan() { 0.0 } else { s.margin_right },
-            if s.margin_bottom.is_nan() { 0.0 } else { s.margin_bottom },
-            if s.margin_left.is_nan() { 0.0 } else { s.margin_left },
+            if s.margin_top.is_nan() {
+                0.0
+            } else {
+                s.margin_top
+            },
+            if s.margin_right.is_nan() {
+                0.0
+            } else {
+                s.margin_right
+            },
+            if s.margin_bottom.is_nan() {
+                0.0
+            } else {
+                s.margin_bottom
+            },
+            if s.margin_left.is_nan() {
+                0.0
+            } else {
+                s.margin_left
+            },
         );
     }
 }
@@ -377,7 +432,9 @@ fn wrap_into_lines(items: &[FlexItem], container_main: f32) -> Vec<FlexLine> {
     for (i, item) in items.iter().enumerate() {
         let item_main = item.base_size + item.main_edges;
         if line_main + item_main > container_main && !current.is_empty() {
-            lines.push(FlexLine { items: std::mem::take(&mut current) });
+            lines.push(FlexLine {
+                items: std::mem::take(&mut current),
+            });
             line_main = 0.0;
         }
         current.push(i);
@@ -398,7 +455,11 @@ fn justify_offsets(justify: JustifyContent, free_space: f32, count: usize) -> (f
         JustifyContent::FlexEnd => (free_space, 0.0),
         JustifyContent::Center => (free_space / 2.0, 0.0),
         JustifyContent::SpaceBetween => {
-            if count <= 1 { (0.0, 0.0) } else { (0.0, free_space / (count - 1) as f32) }
+            if count <= 1 {
+                (0.0, 0.0)
+            } else {
+                (0.0, free_space / (count - 1) as f32)
+            }
         }
         JustifyContent::SpaceAround => {
             let gap = free_space / count as f32;
@@ -442,13 +503,20 @@ mod tests {
         b
     }
 
-    fn make_flex_child(id: u32, basis: f32, grow: f32, shrink: f32) -> (VexId, LayoutBox, ComputedStyle) {
+    fn make_flex_child(
+        id: u32,
+        basis: f32,
+        grow: f32,
+        shrink: f32,
+    ) -> (VexId, LayoutBox, ComputedStyle) {
         let vid = VexId::new(id);
         let b = LayoutBox::new(Some(vid), BoxType::Block);
-        let mut s = ComputedStyle::default();
-        s.flex_basis = basis;
-        s.flex_grow = grow;
-        s.flex_shrink = shrink;
+        let s = ComputedStyle {
+            flex_basis: basis,
+            flex_grow: grow,
+            flex_shrink: shrink,
+            ..Default::default()
+        };
         (vid, b, s)
     }
 
@@ -463,7 +531,14 @@ mod tests {
         let mut container = make_flex_container(600.0);
         container.children = vec![child1, child2];
 
-        layout_flex(&mut container, ContainingBlock { width: 600.0, height: 400.0 }, &styles);
+        layout_flex(
+            &mut container,
+            ContainingBlock {
+                width: 600.0,
+                height: 400.0,
+            },
+            &styles,
+        );
 
         // 400 free space: child1 gets +100, child2 gets +300
         let w1 = container.children[0].dimensions.content.size.width;
@@ -483,12 +558,25 @@ mod tests {
         let mut container = make_flex_container(600.0);
         container.children = vec![child1, child2];
 
-        layout_flex(&mut container, ContainingBlock { width: 600.0, height: 400.0 }, &styles);
+        layout_flex(
+            &mut container,
+            ContainingBlock {
+                width: 600.0,
+                height: 400.0,
+            },
+            &styles,
+        );
 
         let w1 = container.children[0].dimensions.content.size.width;
         let w2 = container.children[1].dimensions.content.size.width;
-        assert!((w1 - 300.0).abs() < 1.0, "child1 should shrink to 300, got {w1}");
-        assert!((w2 - 300.0).abs() < 1.0, "child2 should shrink to 300, got {w2}");
+        assert!(
+            (w1 - 300.0).abs() < 1.0,
+            "child1 should shrink to 300, got {w1}"
+        );
+        assert!(
+            (w2 - 300.0).abs() < 1.0,
+            "child2 should shrink to 300, got {w2}"
+        );
     }
 
     #[test]

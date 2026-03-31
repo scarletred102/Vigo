@@ -103,14 +103,10 @@ fn is_void(tag: &str) -> bool {
 mod tests {
     use super::*;
     use crate::arena::NodeArena;
-    use crate::node::{Attribute, ElementData, Namespace, NodeData};
+    use crate::node::{Attribute, ElementData, ElementState, Namespace, NodeData};
     use crate::tree::append_child;
 
-    fn make_element(
-        arena: &mut NodeArena,
-        tag: &str,
-        attrs: Vec<(&str, &str)>,
-    ) -> VexId {
+    fn make_element(arena: &mut NodeArena, tag: &str, attrs: Vec<(&str, &str)>) -> VexId {
         arena.alloc(NodeData::Element(ElementData {
             tag_name: tag.into(),
             namespace: Namespace::Html,
@@ -123,6 +119,7 @@ mod tests {
                 .collect(),
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }))
     }
 
@@ -189,9 +186,6 @@ mod tests {
         append_child(&mut arena, ul, li2);
         append_child(&mut arena, li2, t2);
 
-        assert_eq!(
-            serialize(&arena, root),
-            "<ul><li>one</li><li>two</li></ul>"
-        );
+        assert_eq!(serialize(&arena, root), "<ul><li>one</li><li>two</li></ul>");
     }
 }

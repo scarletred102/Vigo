@@ -5,4 +5,4 @@
 
 pub mod stylesheet;
 
-pub use stylesheet::{parse_stylesheet, parse_inline_style, Stylesheet, CssRule};
+pub use stylesheet::{parse_inline_style, parse_stylesheet, CssRule, Stylesheet};

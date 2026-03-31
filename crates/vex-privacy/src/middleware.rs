@@ -155,8 +155,10 @@ mod tests {
     fn sanitizes_headers() {
         let layer = PrivacyLayer::new();
         let mut req = Request::get("https://example.com/").unwrap();
-        req.headers.insert("x-client-data".to_string(), "abc".to_string());
-        req.headers.insert("accept".to_string(), "text/html".to_string());
+        req.headers
+            .insert("x-client-data".to_string(), "abc".to_string());
+        req.headers
+            .insert("accept".to_string(), "text/html".to_string());
 
         layer.process_request(&mut req).unwrap();
         assert!(!req.headers.contains_key("x-client-data"));
@@ -169,7 +171,8 @@ mod tests {
             strip_tracking: false,
             ..Default::default()
         };
-        let layer = PrivacyLayer::with_config(config, AdblockEngine::new(std::iter::empty::<String>()));
+        let layer =
+            PrivacyLayer::with_config(config, AdblockEngine::new(std::iter::empty::<String>()));
 
         let mut req = Request::get("https://example.com/?utm_source=x").unwrap();
         layer.process_request(&mut req).unwrap();

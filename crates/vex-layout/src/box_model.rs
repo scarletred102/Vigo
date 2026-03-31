@@ -12,6 +12,7 @@ pub enum BoxType {
     Inline,
     InlineBlock,
     Flex,
+    Grid,
     /// Wrapper box not tied to a DOM element (e.g. anonymous block for mixed content).
     Anonymous,
 }

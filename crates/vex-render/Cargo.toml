@@ -9,9 +9,15 @@ rust-version.workspace = true
 
 [dependencies]
 vex-core = { path = "../vex-core" }
+vex-css = { path = "../vex-css" }
+vex-dom = { path = "../vex-dom" }
 vex-layout = { path = "../vex-layout" }
+vex-privacy = { path = "../vex-privacy" }
 wgpu.workspace = true
+bytemuck.workspace = true
 raw-window-handle.workspace = true
 pollster.workspace = true
 image.workspace = true
 tracing.workspace = true
+cosmic-text.workspace = true
+log.workspace = true

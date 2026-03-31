@@ -8,9 +8,9 @@
 use std::collections::HashMap;
 
 use vex_core::{Insets, VexId};
-use vex_css::ComputedStyle;
 use vex_css::values::box_model::BoxSizing;
 use vex_css::values::Overflow;
+use vex_css::ComputedStyle;
 
 use crate::box_model::{BoxType, LayoutBox};
 
@@ -116,19 +116,33 @@ fn calculate_block_width(
     }
 
     layout_box.dimensions.margin = Insets::new(
-        if style.margin_top.is_nan() { 0.0 } else { style.margin_top },
+        if style.margin_top.is_nan() {
+            0.0
+        } else {
+            style.margin_top
+        },
         used_mr,
-        if style.margin_bottom.is_nan() { 0.0 } else { style.margin_bottom },
+        if style.margin_bottom.is_nan() {
+            0.0
+        } else {
+            style.margin_bottom
+        },
         used_ml,
     );
     layout_box.dimensions.content.size.width = used_width;
 }
 
 /// Layout block children vertically, stacking them top-to-bottom.
-fn layout_block_children(
-    layout_box: &mut LayoutBox,
-    styles: &HashMap<VexId, ComputedStyle>,
-) {
+///
+/// If any child has `float` or `clear` set, delegates to the float-aware
+/// layout path in [`crate::float`].
+fn layout_block_children(layout_box: &mut LayoutBox, styles: &HashMap<VexId, ComputedStyle>) {
+    // Check if any child uses floats or clears — if so, use the float layout path.
+    if crate::float::has_floats_or_clears(layout_box, styles) {
+        crate::float::layout_block_children_with_floats(layout_box, styles);
+        return;
+    }
+
     let d = &layout_box.dimensions;
     let containing = ContainingBlock {
         width: d.content.size.width,
@@ -144,7 +158,7 @@ fn layout_block_children(
 
     for child in &mut children {
         match child.box_type {
-            BoxType::Block | BoxType::Anonymous | BoxType::Flex => {
+            BoxType::Block | BoxType::Anonymous | BoxType::Flex | BoxType::Grid => {
                 // Recursively layout the child
                 layout_block(child, containing, styles);
 
@@ -185,10 +199,7 @@ fn layout_block_children(
 }
 
 /// CSS 2.1 §10.6.3 — calculate the height of a block box.
-fn calculate_block_height(
-    layout_box: &mut LayoutBox,
-    styles: &HashMap<VexId, ComputedStyle>,
-) {
+fn calculate_block_height(layout_box: &mut LayoutBox, styles: &HashMap<VexId, ComputedStyle>) {
     let style = layout_box.node_id.and_then(|id| styles.get(&id));
 
     // Explicit height?
@@ -217,12 +228,12 @@ fn calculate_block_height(
 }
 
 /// Set a clip rect when overflow is hidden or scroll.
-fn apply_overflow_clip(
-    layout_box: &mut LayoutBox,
-    styles: &HashMap<VexId, ComputedStyle>,
-) {
+fn apply_overflow_clip(layout_box: &mut LayoutBox, styles: &HashMap<VexId, ComputedStyle>) {
     if let Some(style) = layout_box.node_id.and_then(|id| styles.get(&id)) {
-        if matches!(style.overflow, Overflow::Hidden | Overflow::Scroll | Overflow::Auto) {
+        if matches!(
+            style.overflow,
+            Overflow::Hidden | Overflow::Scroll | Overflow::Auto
+        ) {
             layout_box.clip_rect = Some(layout_box.dimensions.border_box());
         }
     }
@@ -267,7 +278,7 @@ fn clamp_dimension(value: f32, min: f32, max: f32) -> f32 {
 
 /// Collapse two adjacent vertical margins per CSS 2.1 §8.3.1.
 /// Returns the effective margin (max of both, respecting negative margins).
-fn collapse_margins(margin_a: f32, margin_b: f32) -> f32 {
+pub fn collapse_margins(margin_a: f32, margin_b: f32) -> f32 {
     if margin_a >= 0.0 && margin_b >= 0.0 {
         margin_a.max(margin_b)
     } else if margin_a < 0.0 && margin_b < 0.0 {
@@ -283,9 +294,10 @@ mod tests {
     use vex_core::Rect;
 
     fn style_with_width(w: f32) -> ComputedStyle {
-        let mut s = ComputedStyle::default();
-        s.width = w;
-        s
+        ComputedStyle {
+            width: w,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -368,8 +380,10 @@ mod tests {
     fn explicit_height_respected() {
         let id = VexId::new(1);
         let mut styles = HashMap::new();
-        let mut s = ComputedStyle::default();
-        s.height = 300.0;
+        let s = ComputedStyle {
+            height: 300.0,
+            ..Default::default()
+        };
         styles.insert(id, s);
 
         let mut b = LayoutBox::new(Some(id), BoxType::Block);
@@ -388,8 +402,10 @@ mod tests {
     fn overflow_hidden_sets_clip() {
         let id = VexId::new(1);
         let mut styles = HashMap::new();
-        let mut s = ComputedStyle::default();
-        s.overflow = Overflow::Hidden;
+        let s = ComputedStyle {
+            overflow: Overflow::Hidden,
+            ..Default::default()
+        };
         styles.insert(id, s);
 
         let mut b = LayoutBox::new(Some(id), BoxType::Block);

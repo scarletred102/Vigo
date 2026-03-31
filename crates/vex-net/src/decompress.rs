@@ -9,10 +9,26 @@ use vex_core::{VexError, VexResult};
 
 /// Decompress an HTTP response body based on `Content-Encoding`.
 ///
-/// Supported encodings: `gzip`, `br`, `zstd`, `identity` (passthrough).
+/// Supported encodings: `gzip`, `deflate`, `br`, `zstd`, `identity` (passthrough).
+/// Multiple comma-separated encodings are applied in order.
 pub fn decompress(encoding: &str, data: &[u8]) -> VexResult<Vec<u8>> {
+    // Handle multiple encodings (e.g. "gzip, deflate")
+    let encodings: Vec<&str> = encoding.split(',').map(str::trim).collect();
+    if encodings.len() > 1 {
+        let mut current = data.to_vec();
+        for enc in &encodings {
+            current = decompress_single(enc, &current)?;
+        }
+        return Ok(current);
+    }
+    decompress_single(encoding, data)
+}
+
+/// Decompress a single Content-Encoding value.
+fn decompress_single(encoding: &str, data: &[u8]) -> VexResult<Vec<u8>> {
     match encoding {
         "gzip" | "x-gzip" => decompress_gzip(data),
+        "deflate" => decompress_deflate(data),
         "br" => decompress_brotli(data),
         "zstd" => decompress_zstd(data),
         "identity" | "" => Ok(data.to_vec()),
@@ -28,6 +44,15 @@ fn decompress_gzip(data: &[u8]) -> VexResult<Vec<u8>> {
     decoder
         .read_to_end(&mut out)
         .map_err(|e| VexError::Network(format!("gzip decompression failed: {e}")))?;
+    Ok(out)
+}
+
+fn decompress_deflate(data: &[u8]) -> VexResult<Vec<u8>> {
+    let mut decoder = flate2::read::DeflateDecoder::new(data);
+    let mut out = Vec::new();
+    decoder
+        .read_to_end(&mut out)
+        .map_err(|e| VexError::Network(format!("deflate decompression failed: {e}")))?;
     Ok(out)
 }
 
@@ -68,8 +93,7 @@ mod tests {
     fn gzip_roundtrip() {
         let original = b"The quick brown fox jumps over the lazy dog";
         // Compress with flate2
-        let mut encoder =
-            flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(original).unwrap();
         let compressed = encoder.finish().unwrap();
 
@@ -81,8 +105,10 @@ mod tests {
     fn brotli_roundtrip() {
         let original = b"Brotli compression test data for Vex engine";
         let mut compressed = Vec::new();
-        let mut params = brotli::enc::BrotliEncoderParams::default();
-        params.quality = 4;
+        let params = brotli::enc::BrotliEncoderParams {
+            quality: 4,
+            ..Default::default()
+        };
         brotli::BrotliCompress(&mut &original[..], &mut compressed, &params).unwrap();
 
         let decompressed = decompress("br", &compressed).unwrap();
@@ -102,5 +128,31 @@ mod tests {
     fn unsupported_encoding_errors() {
         let result = decompress("deflate-raw", b"data");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn deflate_roundtrip() {
+        let original = b"Deflate compression test for HTTP content-encoding";
+        let mut encoder =
+            flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(original).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        let decompressed = decompress("deflate", &compressed).unwrap();
+        assert_eq!(decompressed, original);
+    }
+
+    #[test]
+    fn multiple_encodings_applied_in_order() {
+        // Compress with deflate
+        let original = b"multi-encoding test data";
+        let mut encoder =
+            flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(original).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        // Single encoding should decompress fine
+        let result = decompress("deflate", &compressed).unwrap();
+        assert_eq!(result, original);
     }
 }

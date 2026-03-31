@@ -6,7 +6,8 @@
 use vex_core::VexId;
 
 use crate::arena::NodeArena;
-use crate::node::{ElementData, Namespace, NodeData};
+use crate::forms::FormStateMap;
+use crate::node::{ElementData, ElementState, Namespace, NodeData};
 use crate::traversal::{Children, Descendants};
 use crate::tree;
 
@@ -16,6 +17,7 @@ use crate::tree;
 pub struct Document {
     arena: NodeArena,
     root: VexId,
+    form_states: FormStateMap,
 }
 
 impl Document {
@@ -23,7 +25,11 @@ impl Document {
     pub fn new() -> Self {
         let mut arena = NodeArena::new();
         let root = arena.alloc(NodeData::Document);
-        Self { arena, root }
+        Self {
+            arena,
+            root,
+            form_states: FormStateMap::new(),
+        }
     }
 
     /// The root `#document` node id.
@@ -47,6 +53,16 @@ impl Document {
         &mut self.arena
     }
 
+    /// Borrow the form state map.
+    pub fn form_states(&self) -> &FormStateMap {
+        &self.form_states
+    }
+
+    /// Mutably borrow the form state map.
+    pub fn form_states_mut(&mut self) -> &mut FormStateMap {
+        &mut self.form_states
+    }
+
     // ── Factory methods ──────────────────────────────────────────────
 
     /// Create a detached element node.
@@ -57,6 +73,7 @@ impl Document {
             attributes: Vec::new(),
             template_contents: None,
             mathml_annotation_xml_integration_point: false,
+            state: ElementState::default(),
         }))
     }
 

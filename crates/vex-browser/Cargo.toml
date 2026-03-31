@@ -16,9 +16,12 @@ vex-layout = { path = "../vex-layout" }
 vex-js = { path = "../vex-js" }
 vex-render = { path = "../vex-render" }
 vex-net = { path = "../vex-net" }
+vex-security = { path = "../vex-security" }
 vex-storage = { path = "../vex-storage" }
 vex-privacy = { path = "../vex-privacy" }
 tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 url.workspace = true
+tokio.workspace = true
+thiserror.workspace = true

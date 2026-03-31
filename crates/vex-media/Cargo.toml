@@ -7,8 +7,13 @@ license.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 
+[features]
+default = []
+zig-media = []
+
 [dependencies]
 vex-core = { path = "../vex-core" }
 vex-render = { path = "../vex-render" }
+thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

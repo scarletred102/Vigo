@@ -48,7 +48,12 @@ mod tests {
     use crate::cascade::specificity::Specificity;
     use crate::values::color::ColorValue;
 
-    fn make_decl(prop: Property, origin: Origin, spec: Specificity, order: usize) -> MatchedDeclaration {
+    fn make_decl(
+        prop: Property,
+        origin: Origin,
+        spec: Specificity,
+        order: usize,
+    ) -> MatchedDeclaration {
         MatchedDeclaration {
             property: prop,
             specificity: spec,
@@ -60,51 +65,113 @@ mod tests {
     #[test]
     fn higher_specificity_wins() {
         let decls = vec![
-            make_decl(Property::Color(ColorValue::Rgba(vex_core::Color::BLACK)), Origin::Author, Specificity(0, 0, 1), 0),
-            make_decl(Property::Color(ColorValue::Rgba(vex_core::Color::WHITE)), Origin::Author, Specificity(0, 1, 0), 1),
+            make_decl(
+                Property::Color(ColorValue::Rgba(vex_core::Color::BLACK)),
+                Origin::Author,
+                Specificity(0, 0, 1),
+                0,
+            ),
+            make_decl(
+                Property::Color(ColorValue::Rgba(vex_core::Color::WHITE)),
+                Origin::Author,
+                Specificity(0, 1, 0),
+                1,
+            ),
         ];
         let result = resolve_cascade(&decls);
         assert_eq!(result.len(), 1);
         // The class selector (0,1,0) should win over type (0,0,1)
-        assert_eq!(result[0], Property::Color(ColorValue::Rgba(vex_core::Color::WHITE)));
+        assert_eq!(
+            result[0],
+            Property::Color(ColorValue::Rgba(vex_core::Color::WHITE))
+        );
     }
 
     #[test]
     fn important_overrides() {
         let decls = vec![
-            make_decl(Property::Color(ColorValue::Rgba(vex_core::Color::BLACK)), Origin::AuthorImportant, Specificity(0, 0, 1), 0),
-            make_decl(Property::Color(ColorValue::Rgba(vex_core::Color::WHITE)), Origin::Author, Specificity(1, 0, 0), 1),
+            make_decl(
+                Property::Color(ColorValue::Rgba(vex_core::Color::BLACK)),
+                Origin::AuthorImportant,
+                Specificity(0, 0, 1),
+                0,
+            ),
+            make_decl(
+                Property::Color(ColorValue::Rgba(vex_core::Color::WHITE)),
+                Origin::Author,
+                Specificity(1, 0, 0),
+                1,
+            ),
         ];
         let result = resolve_cascade(&decls);
-        assert_eq!(result[0], Property::Color(ColorValue::Rgba(vex_core::Color::BLACK)));
+        assert_eq!(
+            result[0],
+            Property::Color(ColorValue::Rgba(vex_core::Color::BLACK))
+        );
     }
 
     #[test]
     fn source_order_tiebreak() {
         let decls = vec![
-            make_decl(Property::Color(ColorValue::Rgba(vex_core::Color::BLACK)), Origin::Author, Specificity(0, 1, 0), 0),
-            make_decl(Property::Color(ColorValue::Rgba(vex_core::Color::WHITE)), Origin::Author, Specificity(0, 1, 0), 1),
+            make_decl(
+                Property::Color(ColorValue::Rgba(vex_core::Color::BLACK)),
+                Origin::Author,
+                Specificity(0, 1, 0),
+                0,
+            ),
+            make_decl(
+                Property::Color(ColorValue::Rgba(vex_core::Color::WHITE)),
+                Origin::Author,
+                Specificity(0, 1, 0),
+                1,
+            ),
         ];
         let result = resolve_cascade(&decls);
         // Later source order wins
-        assert_eq!(result[0], Property::Color(ColorValue::Rgba(vex_core::Color::WHITE)));
+        assert_eq!(
+            result[0],
+            Property::Color(ColorValue::Rgba(vex_core::Color::WHITE))
+        );
     }
 
     #[test]
     fn inline_beats_author() {
         let decls = vec![
-            make_decl(Property::Color(ColorValue::Rgba(vex_core::Color::BLACK)), Origin::Author, Specificity(1, 1, 1), 0),
-            make_decl(Property::Color(ColorValue::Rgba(vex_core::Color::WHITE)), Origin::Inline, Specificity::INLINE, 1),
+            make_decl(
+                Property::Color(ColorValue::Rgba(vex_core::Color::BLACK)),
+                Origin::Author,
+                Specificity(1, 1, 1),
+                0,
+            ),
+            make_decl(
+                Property::Color(ColorValue::Rgba(vex_core::Color::WHITE)),
+                Origin::Inline,
+                Specificity::INLINE,
+                1,
+            ),
         ];
         let result = resolve_cascade(&decls);
-        assert_eq!(result[0], Property::Color(ColorValue::Rgba(vex_core::Color::WHITE)));
+        assert_eq!(
+            result[0],
+            Property::Color(ColorValue::Rgba(vex_core::Color::WHITE))
+        );
     }
 
     #[test]
     fn multiple_properties_resolved() {
         let decls = vec![
-            make_decl(Property::Color(ColorValue::Rgba(vex_core::Color::BLACK)), Origin::Author, Specificity(0, 0, 1), 0),
-            make_decl(Property::Opacity(0.5), Origin::Author, Specificity(0, 0, 1), 1),
+            make_decl(
+                Property::Color(ColorValue::Rgba(vex_core::Color::BLACK)),
+                Origin::Author,
+                Specificity(0, 0, 1),
+                0,
+            ),
+            make_decl(
+                Property::Opacity(0.5),
+                Origin::Author,
+                Specificity(0, 0, 1),
+                1,
+            ),
         ];
         let result = resolve_cascade(&decls);
         assert_eq!(result.len(), 2);

@@ -52,11 +52,19 @@ fn attributes_preserved() {
     let arena = doc.arena();
     if let NodeData::Element(ref el) = arena.get(links[0]).data {
         assert_eq!(
-            el.attributes.iter().find(|a| a.name == "href").unwrap().value,
+            el.attributes
+                .iter()
+                .find(|a| a.name == "href")
+                .unwrap()
+                .value,
             "/foo"
         );
         assert_eq!(
-            el.attributes.iter().find(|a| a.name == "class").unwrap().value,
+            el.attributes
+                .iter()
+                .find(|a| a.name == "class")
+                .unwrap()
+                .value,
             "link"
         );
         assert_eq!(
@@ -174,9 +182,7 @@ fn doctype_preserved() {
     let arena = doc.arena();
     let root = doc.root();
     let first = arena.get(root).first_child.expect("first child");
-    assert!(
-        matches!(arena.get(first).data, NodeData::Doctype { ref name, .. } if name == "html")
-    );
+    assert!(matches!(arena.get(first).data, NodeData::Doctype { ref name, .. } if name == "html"));
 }
 
 // ── Serialization round-trip ─────────────────────────────────────────

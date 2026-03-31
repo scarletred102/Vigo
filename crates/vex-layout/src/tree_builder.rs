@@ -13,18 +13,15 @@
 use std::collections::HashMap;
 
 use vex_core::VexId;
-use vex_css::ComputedStyle;
 use vex_css::values::display::Display;
-use vex_dom::{Document, NodeData};
+use vex_css::ComputedStyle;
 use vex_dom::traversal::Children;
+use vex_dom::{Document, NodeData};
 
 use crate::box_model::{BoxType, LayoutBox};
 
 /// Build the root layout box from a document and its computed styles.
-pub fn build_layout_tree(
-    document: &Document,
-    styles: &HashMap<VexId, ComputedStyle>,
-) -> LayoutBox {
+pub fn build_layout_tree(document: &Document, styles: &HashMap<VexId, ComputedStyle>) -> LayoutBox {
     let arena = document.arena();
 
     // Start from the root element (<html>), or the document root.
@@ -85,7 +82,7 @@ fn build_box_for_node(
 
             // Anonymous block wrapping: if a block container has mixed
             // block + inline children, wrap inline runs in anonymous blocks.
-            if box_type == BoxType::Block || box_type == BoxType::Flex {
+            if box_type == BoxType::Block || box_type == BoxType::Flex || box_type == BoxType::Grid {
                 layout_box.children = wrap_anonymous_blocks(child_boxes);
             } else {
                 layout_box.children = child_boxes;
@@ -103,9 +100,13 @@ fn build_box_for_node(
             for child_id in Children::new(arena, node_id) {
                 let child = arena.get(child_id);
                 if let NodeData::Element(_) = &child.data {
-                    let d = styles.get(&child_id).map(|s| s.display).unwrap_or(Display::Inline);
+                    let d = styles
+                        .get(&child_id)
+                        .map(|s| s.display)
+                        .unwrap_or(Display::Inline);
                     if d != Display::None {
-                        root.children.push(build_box_for_node(child_id, arena, styles));
+                        root.children
+                            .push(build_box_for_node(child_id, arena, styles));
                     }
                 }
             }
@@ -120,10 +121,9 @@ fn display_to_box_type(display: Display) -> BoxType {
         Display::Block | Display::ListItem | Display::Table => BoxType::Block,
         Display::Inline => BoxType::Inline,
         Display::InlineBlock => BoxType::InlineBlock,
-        Display::Flex => BoxType::Flex,
-        Display::InlineFlex => BoxType::Flex,
-        Display::Grid | Display::InlineGrid => BoxType::Block, // Grid → block for now
-        Display::None => BoxType::Block, // Shouldn't reach here
+        Display::Flex | Display::InlineFlex => BoxType::Flex,
+        Display::Grid | Display::InlineGrid => BoxType::Grid,
+        Display::None => BoxType::Block,     // Shouldn't reach here
         Display::Contents => BoxType::Block,
         Display::TableRow | Display::TableCell => BoxType::Block,
     }
@@ -132,8 +132,10 @@ fn display_to_box_type(display: Display) -> BoxType {
 /// If a list of child boxes has a mix of block and inline children,
 /// wrap consecutive inline children in anonymous block boxes.
 fn wrap_anonymous_blocks(children: Vec<LayoutBox>) -> Vec<LayoutBox> {
-    let has_block = children.iter().any(|c| c.box_type == BoxType::Block);
-    let has_inline = children.iter().any(|c| c.box_type != BoxType::Block);
+    let is_block_level =
+        |bt: BoxType| matches!(bt, BoxType::Block | BoxType::Flex | BoxType::Grid);
+    let has_block = children.iter().any(|c| is_block_level(c.box_type));
+    let has_inline = children.iter().any(|c| !is_block_level(c.box_type));
 
     // No mixing — return as-is
     if !has_block || !has_inline {
@@ -144,7 +146,7 @@ fn wrap_anonymous_blocks(children: Vec<LayoutBox>) -> Vec<LayoutBox> {
     let mut inline_run: Vec<LayoutBox> = Vec::new();
 
     for child in children {
-        if child.box_type == BoxType::Block || child.box_type == BoxType::Flex {
+        if is_block_level(child.box_type) {
             // Flush any accumulated inline run
             if !inline_run.is_empty() {
                 let mut anon = LayoutBox::new(None, BoxType::Anonymous);
@@ -173,11 +175,7 @@ mod tests {
 
     fn build_test(html: &str) -> (Document, HashMap<VexId, ComputedStyle>) {
         let doc = vex_html::parse_html(html);
-        let styles = vex_css::compute_styles(
-            &doc,
-            &[],
-            vex_core::Size::new(1280.0, 720.0),
-        );
+        let styles = vex_css::compute_styles(&doc, &[], vex_core::Size::new(1280.0, 720.0));
         (doc, styles)
     }
 
@@ -203,7 +201,7 @@ mod tests {
         }
         let total = count_visible(&tree);
         // With or without inline style parsing, we should have a reasonable tree
-        assert!(total >= 3 && total <= 8, "Expected 3-8 boxes, got {total}");
+        assert!((3..=8).contains(&total), "Expected 3-8 boxes, got {total}");
     }
 
     #[test]
