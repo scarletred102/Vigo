@@ -2,7 +2,8 @@ param(
     [string]$Url = "https://example.com",
     [int]$RunSeconds = 12,
     [switch]$SkipTests,
-    [switch]$SkipLaunch
+    [switch]$SkipLaunch,
+    [switch]$KeepSession
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,7 +30,13 @@ if (-not $SkipLaunch) {
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "cargo"
-    $psi.Arguments = "run -q -p vex-app --bin vigo -- `"$Url`""
+    $launchArgs = @("run", "-q", "-p", "vex-app", "--bin", "vigo", "--")
+    if (-not $KeepSession) {
+        $launchArgs += "--fresh"
+    }
+    $launchArgs += @("--url", ('"' + $Url + '"'))
+    $psi.Arguments = ($launchArgs -join " ")
+    Write-Host "Launch: cargo $($psi.Arguments)" -ForegroundColor DarkGray
     $psi.WorkingDirectory = (Get-Location).Path
     $psi.UseShellExecute = $false
 

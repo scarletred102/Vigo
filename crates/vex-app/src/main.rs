@@ -73,7 +73,7 @@ fn run() {
 
     // ── Settings ─────────────────────────────────────────────────
     let settings = BrowserSettings::default();
-    let startup_url = startup_target_from_args(&settings);
+    let launch = launch_options_from_args(&settings);
     let window = Window::new(
         "Vigo Browser",
         settings.window_width,
@@ -173,16 +173,20 @@ fn run() {
         tracing::info!("Loaded {} bookmarks", bookmarks.count());
     }
 
-    if let Ok(session) = SessionState::load(&session_path) {
-        if !session.tabs.is_empty() {
-            session.restore_into(&mut tab_mgr);
-            tracing::info!("Restored {} tabs from session", tab_mgr.tab_count());
+    if launch.restore_session {
+        if let Ok(session) = SessionState::load(&session_path) {
+            if !session.tabs.is_empty() {
+                session.restore_into(&mut tab_mgr);
+                tracing::info!("Restored {} tabs from session", tab_mgr.tab_count());
+            }
         }
+    } else {
+        tracing::info!("Session restore disabled by launch options");
     }
 
     // ── Bootstrap active tab content if needed ─────────────────────────────
     {
-        if let Some(url) = startup_url {
+        if let Some(url) = launch.startup_url.clone() {
             tracing::info!(url = %url, "Startup URL argument detected");
             navigate_tab(&mut tab_mgr, &url, vp_w, vp_h);
         } else {
@@ -1362,8 +1366,9 @@ fn process_embedder_bus(
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::{
-        current_process_working_set_bytes, load_session_health, resolve_browser_request_url,
-        save_session_health, startup_target_from_input, write_kpi_snapshot, SessionHealthSnapshot,
+        current_process_working_set_bytes, launch_options_from_iter, load_session_health,
+        resolve_browser_request_url, save_session_health, startup_target_from_input,
+        write_kpi_snapshot, SessionHealthSnapshot,
     };
     use vex_core::VexUrl;
 
@@ -1447,10 +1452,39 @@ mod tests {
     }
 
     #[test]
-    fn startup_target_skips_empty_and_new_tab_flag() {
+    fn startup_target_skips_empty_input() {
         let settings = vex_browser::BrowserSettings::default();
         assert!(startup_target_from_input("   ", &settings).is_none());
-        assert!(startup_target_from_input("--new-tab", &settings).is_none());
+    }
+
+    #[test]
+    fn launch_options_fresh_disables_session_restore() {
+        let settings = vex_browser::BrowserSettings::default();
+        let launch = launch_options_from_iter(["--fresh"], &settings);
+        assert!(!launch.restore_session);
+        assert!(launch.startup_url.is_none());
+    }
+
+    #[test]
+    fn launch_options_url_flag_sets_startup_target() {
+        let settings = vex_browser::BrowserSettings::default();
+        let launch = launch_options_from_iter(["--url", "https://example.com"], &settings);
+        assert!(launch.restore_session);
+        assert_eq!(
+            launch
+                .startup_url
+                .as_ref()
+                .expect("startup url should be set")
+                .as_ref(),
+            "https://example.com/"
+        );
+    }
+
+    #[test]
+    fn launch_options_new_tab_overrides_positional_target() {
+        let settings = vex_browser::BrowserSettings::default();
+        let launch = launch_options_from_iter(["--new-tab", "https://example.com"], &settings);
+        assert!(launch.startup_url.is_none());
     }
 
     #[test]
@@ -2580,12 +2614,58 @@ fn platform_to_shortcut(
     })
 }
 
-/// Convert a Win32 VK code to a character for text input.
 #[cfg(target_os = "windows")]
-fn startup_target_from_args(settings: &vex_browser::BrowserSettings) -> Option<vex_core::VexUrl> {
-    let mut args = std::env::args().skip(1);
-    let raw = args.next()?;
-    startup_target_from_input(&raw, settings)
+#[derive(Debug, Clone)]
+struct LaunchOptions {
+    startup_url: Option<vex_core::VexUrl>,
+    restore_session: bool,
+}
+
+/// Parse CLI launch options for deterministic smoke/dev runs.
+#[cfg(target_os = "windows")]
+fn launch_options_from_args(settings: &vex_browser::BrowserSettings) -> LaunchOptions {
+    launch_options_from_iter(std::env::args().skip(1), settings)
+}
+
+#[cfg(target_os = "windows")]
+fn launch_options_from_iter<I>(args: I, settings: &vex_browser::BrowserSettings) -> LaunchOptions
+where
+    I: IntoIterator,
+    I::Item: Into<String>,
+{
+    let mut restore_session = true;
+    let mut force_new_tab = false;
+    let mut explicit_target: Option<String> = None;
+    let mut positional_tokens: Vec<String> = Vec::new();
+
+    let mut iter = args.into_iter().map(Into::into);
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fresh" | "--no-session-restore" => restore_session = false,
+            "--new-tab" => force_new_tab = true,
+            "--url" => {
+                if let Some(next) = iter.next() {
+                    explicit_target = Some(next);
+                }
+            }
+            _ => positional_tokens.push(arg),
+        }
+    }
+
+    let startup_url = if force_new_tab {
+        None
+    } else if let Some(target) = explicit_target {
+        startup_target_from_input(&target, settings)
+    } else if positional_tokens.is_empty() {
+        None
+    } else {
+        startup_target_from_input(&positional_tokens.join(" "), settings)
+    };
+
+    LaunchOptions {
+        startup_url,
+        restore_session,
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -2594,7 +2674,7 @@ fn startup_target_from_input(
     settings: &vex_browser::BrowserSettings,
 ) -> Option<vex_core::VexUrl> {
     let trimmed = input.trim();
-    if trimmed.is_empty() || trimmed == "--new-tab" {
+    if trimmed.is_empty() {
         return None;
     }
 
