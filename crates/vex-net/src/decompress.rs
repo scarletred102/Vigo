@@ -155,4 +155,22 @@ mod tests {
         let result = decompress("deflate", &compressed).unwrap();
         assert_eq!(result, original);
     }
+
+    #[test]
+    fn decompress_robust_encodings_do_not_panic() {
+        let cases = [
+            "",
+            "identity",
+            "gzip,br",
+            "unknown",
+            "\u{0000}",
+            "GZIP",
+            " deflate ",
+            "gzip,unknown,br",
+        ];
+
+        for case in cases {
+            let _ = decompress(case, b"not-compressed");
+        }
+    }
 }

@@ -3,10 +3,16 @@
 
 //! DNS resolution with DNS-over-HTTPS (DoH) support.
 
+use std::future::Future;
 use std::net::IpAddr;
+use std::net::SocketAddr;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
+use hyper_util::client::legacy::connect::dns::Name;
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 use hickory_resolver::TokioAsyncResolver;
+use tower::Service;
 use vex_core::{VexError, VexResult};
 
 /// DNS resolution mode.
@@ -35,6 +41,7 @@ impl DoHProvider {
 }
 
 /// Async DNS resolver.
+#[derive(Clone)]
 pub struct DnsResolver {
     inner: TokioAsyncResolver,
     mode: DnsMode,
@@ -43,12 +50,20 @@ pub struct DnsResolver {
 impl DnsResolver {
     /// Create a new resolver with the given mode.
     pub fn new(mode: DnsMode) -> VexResult<Self> {
-        let config = match &mode {
-            DnsMode::System => ResolverConfig::default(),
-            DnsMode::DoH(provider) => provider.resolver_config(),
+        let inner = match &mode {
+            DnsMode::System => match TokioAsyncResolver::tokio_from_system_conf() {
+                Ok(resolver) => resolver,
+                Err(err) => {
+                    tracing::warn!(
+                        "failed to load system DNS config: {err}; falling back to default resolver"
+                    );
+                    TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
+                }
+            },
+            DnsMode::DoH(provider) => {
+                TokioAsyncResolver::tokio(provider.resolver_config(), ResolverOpts::default())
+            }
         };
-
-        let inner = TokioAsyncResolver::tokio(config, ResolverOpts::default());
 
         Ok(Self { inner, mode })
     }
@@ -72,6 +87,45 @@ impl DnsResolver {
     }
 }
 
+/// Hyper-compatible DNS service that delegates lookups to [`DnsResolver`].
+#[derive(Clone)]
+pub struct HyperDnsResolver {
+    resolver: DnsResolver,
+}
+
+impl HyperDnsResolver {
+    pub fn new(resolver: DnsResolver) -> Self {
+        Self { resolver }
+    }
+}
+
+impl Service<Name> for HyperDnsResolver {
+    type Response = std::vec::IntoIter<SocketAddr>;
+    type Error = std::io::Error;
+    type Future =
+        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, name: Name) -> Self::Future {
+        let resolver = self.resolver.clone();
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let ips = resolver.resolve(&host).await.map_err(|e| {
+                std::io::Error::other(format!("DNS resolve failed: {e}"))
+            })?;
+            let addrs: Vec<SocketAddr> = ips
+                .into_iter()
+                // Hyper sets the destination port later; resolver provides host IPs.
+                .map(|ip| SocketAddr::new(ip, 0))
+                .collect();
+            Ok(addrs.into_iter())
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,5 +139,15 @@ mod tests {
     fn create_doh_resolver() {
         let _resolver =
             DnsResolver::new(DnsMode::DoH(DoHProvider::Cloudflare)).expect("DoH should init");
+    }
+
+    #[tokio::test]
+    async fn hyper_dns_resolver_service_returns_addrs() {
+        let resolver = DnsResolver::new(DnsMode::System).expect("resolver init");
+        let mut service = HyperDnsResolver::new(resolver);
+
+        let name: Name = "localhost".parse().expect("valid host name");
+        let addrs = service.call(name).await.expect("resolve localhost");
+        assert!(addrs.into_iter().next().is_some());
     }
 }

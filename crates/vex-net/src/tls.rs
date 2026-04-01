@@ -79,6 +79,6 @@ mod tests {
         // This mainly verifies we can load native roots on this platform
         // without panicking and still produce a usable store.
         let root_store = build_root_store();
-        assert!(root_store.len() > 0);
+        assert!(!root_store.is_empty());
     }
 }

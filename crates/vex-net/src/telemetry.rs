@@ -1,0 +1,88 @@
+// Copyright (c) Vigo Contributors
+// SPDX-License-Identifier: MPL-2.0
+
+//! Structured network telemetry records for diagnostics and DevTools.
+
+/// Cache outcome for a network request attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CacheOutcome {
+    FreshHit,
+    StaleWhileRevalidateHit,
+    Revalidated304,
+    StaleIfErrorHit,
+    #[default]
+    Miss,
+}
+
+/// Timing breakdown captured during request processing.
+#[derive(Debug, Clone, Default)]
+pub struct NetworkTimings {
+    pub dns_ms: Option<u64>,
+    pub ttfb_ms: Option<u64>,
+    pub body_read_ms: Option<u64>,
+    pub total_ms: u64,
+}
+
+/// One telemetry record per completed request attempt.
+#[derive(Debug, Clone)]
+pub struct NetworkRecord {
+    pub request_id: u64,
+    pub method: String,
+    pub url: String,
+    pub status: Option<u16>,
+    pub cache_outcome: CacheOutcome,
+    pub was_cached: bool,
+    pub timings: NetworkTimings,
+    pub error: Option<String>,
+}
+
+/// Aggregated network metrics.
+#[derive(Debug, Clone, Default)]
+pub struct NetworkStats {
+    pub total_requests: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub revalidated_304: u64,
+    pub stale_if_error_hits: u64,
+    pub errors: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_cache_outcome_is_miss() {
+        assert_eq!(CacheOutcome::default(), CacheOutcome::Miss);
+    }
+
+    #[test]
+    fn network_record_can_store_success() {
+        let rec = NetworkRecord {
+            request_id: 1,
+            method: "GET".to_string(),
+            url: "https://example.com/".to_string(),
+            status: Some(200),
+            cache_outcome: CacheOutcome::FreshHit,
+            was_cached: true,
+            timings: NetworkTimings {
+                dns_ms: Some(1),
+                ttfb_ms: Some(2),
+                body_read_ms: Some(3),
+                total_ms: 6,
+            },
+            error: None,
+        };
+
+        assert_eq!(rec.status, Some(200));
+        assert!(rec.was_cached);
+        assert_eq!(rec.timings.total_ms, 6);
+    }
+
+    #[test]
+    fn network_stats_default_zeroed() {
+        let stats = NetworkStats::default();
+        assert_eq!(stats.total_requests, 0);
+        assert_eq!(stats.errors, 0);
+    }
+}

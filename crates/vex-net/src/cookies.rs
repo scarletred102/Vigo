@@ -7,14 +7,17 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
+use serde::{Deserialize, Serialize};
 use vex_core::VexUrl;
+use vex_core::{VexError, VexResult};
 
 /// A single stored cookie.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Cookie {
     name: String,
     value: String,
     domain: String,
+    host_only: bool,
     path: String,
     secure: bool,
     http_only: bool,
@@ -23,7 +26,7 @@ struct Cookie {
 }
 
 /// SameSite attribute.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SameSite {
     /// No same-site restriction (requires `Secure`).
     None,
@@ -106,11 +109,11 @@ impl CookieJar {
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        let pairs: Vec<String> = store
+        let mut cookies: Vec<&Cookie> = store
             .values()
             .filter(|c| {
                 // Domain match: host equals domain or is a subdomain
-                domain_matches(host, &c.domain)
+                domain_matches(host, &c.domain, c.host_only)
                     && path.starts_with(&c.path)
                     && (!c.secure || secure)
                     && c.expires.map_or(true, |exp| exp > now)
@@ -127,7 +130,7 @@ impl CookieJar {
                 match c.same_site {
                     SameSite::None => {
                         // SameSite=None requires Secure
-                        c.secure || !secure
+                        c.secure
                     }
                     SameSite::Lax => {
                         // Lax: allowed on same-site + top-level cross-site nav
@@ -142,6 +145,17 @@ impl CookieJar {
                     }
                 }
             })
+            .collect();
+
+        cookies.sort_by(|a, b| {
+            b.path
+                .len()
+                .cmp(&a.path.len())
+                .then_with(|| a.name.cmp(&b.name))
+        });
+
+        let pairs: Vec<String> = cookies
+            .into_iter()
             .map(|c| format!("{}={}", c.name, c.value))
             .collect();
 
@@ -161,6 +175,36 @@ impl CookieJar {
         };
         store.retain(|_, c| c.expires.map_or(true, |exp| exp > now));
     }
+
+    /// Export all cookies in the jar as a JSON string.
+    pub fn export_json(&self) -> VexResult<String> {
+        let store = match self.store.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let cookies: Vec<Cookie> = store.values().cloned().collect();
+        serde_json::to_string(&cookies)
+            .map_err(|e| VexError::Storage(format!("cookie export failed: {e}")))
+    }
+
+    /// Import cookies from a JSON string, replacing existing jar contents.
+    pub fn import_json(&self, json: &str) -> VexResult<()> {
+        let cookies: Vec<Cookie> = serde_json::from_str(json)
+            .map_err(|e| VexError::Storage(format!("cookie import failed: {e}")))?;
+
+        let mut new_store = HashMap::new();
+        for cookie in cookies {
+            let key = format!("{}:{}:{}", cookie.domain, cookie.path, cookie.name);
+            new_store.insert(key, cookie);
+        }
+
+        let mut store = match self.store.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *store = new_store;
+        Ok(())
+    }
 }
 
 impl Default for CookieJar {
@@ -170,12 +214,17 @@ impl Default for CookieJar {
 }
 
 /// Check if `host` matches `domain` (exact or subdomain).
-fn domain_matches(host: &str, domain: &str) -> bool {
+fn domain_matches(host: &str, domain: &str, host_only: bool) -> bool {
+    if host_only {
+        return host.eq_ignore_ascii_case(domain);
+    }
+
     if host == domain {
         return true;
     }
     // Subdomain: host ends with ".domain"
-    host.ends_with(&format!(".{domain}"))
+    host.to_ascii_lowercase()
+        .ends_with(&format!(".{}", domain.to_ascii_lowercase()))
 }
 
 /// Parse a `Set-Cookie` header into a `Cookie` struct.
@@ -191,7 +240,8 @@ fn parse_set_cookie(url: &VexUrl, header: &str) -> Option<Cookie> {
         return None;
     }
 
-    let default_domain = url.host().unwrap_or("").to_string();
+    let origin_host = url.host()?.to_ascii_lowercase();
+    let default_domain = origin_host.clone();
     let default_path = {
         let p = url.path();
         match p.rfind('/') {
@@ -201,6 +251,7 @@ fn parse_set_cookie(url: &VexUrl, header: &str) -> Option<Cookie> {
     };
 
     let mut domain = default_domain;
+    let mut host_only = true;
     let mut path = default_path;
     let mut secure = false;
     let mut http_only = false;
@@ -213,7 +264,13 @@ fn parse_set_cookie(url: &VexUrl, header: &str) -> Option<Cookie> {
 
         if lower.starts_with("domain=") {
             let d = attr[7..].trim().trim_start_matches('.');
-            domain = d.to_string();
+            let candidate = d.to_ascii_lowercase();
+            // Reject invalid Domain attributes that don't match request host.
+            if !domain_matches(&origin_host, &candidate, false) {
+                return None;
+            }
+            domain = candidate;
+            host_only = false;
         } else if lower.starts_with("path=") {
             path = attr[5..].trim().to_string();
         } else if lower == "secure" {
@@ -233,10 +290,24 @@ fn parse_set_cookie(url: &VexUrl, header: &str) -> Option<Cookie> {
         }
     }
 
+    // SameSite=None requires Secure.
+    if same_site == SameSite::None && !secure {
+        return None;
+    }
+
+    // Cookie name prefix hardening.
+    if name.starts_with("__Secure-") && (!secure || !url.is_https()) {
+        return None;
+    }
+    if name.starts_with("__Host-") && (!secure || !url.is_https() || !host_only || path != "/") {
+        return None;
+    }
+
     Some(Cookie {
         name,
         value,
         domain,
+        host_only,
         path,
         secure,
         http_only,
@@ -337,6 +408,109 @@ mod tests {
         jar.insert(&url, ""); // empty
         jar.insert(&url, "=noname"); // empty name
         assert!(jar.get_cookies(&url).is_none());
+    }
+
+    #[test]
+    fn samesite_none_without_secure_is_rejected() {
+        let jar = CookieJar::new();
+        let url = test_url("https://example.com/");
+        jar.insert(&url, "none_tok=1; SameSite=None");
+        assert!(jar.get_cookies(&url).is_none());
+    }
+
+    #[test]
+    fn secure_prefix_requires_secure_and_https() {
+        let jar = CookieJar::new();
+        let http_url = test_url("http://example.com/");
+        jar.insert(&http_url, "__Secure-id=1; Secure");
+        assert!(jar.get_cookies(&http_url).is_none());
+
+        let https_url = test_url("https://example.com/");
+        jar.insert(&https_url, "__Secure-id=1; Secure");
+        assert!(jar
+            .get_cookies(&https_url)
+            .is_some_and(|c| c.contains("__Secure-id=1")));
+    }
+
+    #[test]
+    fn host_prefix_requires_host_only_and_root_path() {
+        let jar = CookieJar::new();
+        let url = test_url("https://example.com/app");
+
+        // invalid path
+        jar.insert(&url, "__Host-a=1; Secure; Path=/app");
+        assert!(jar.get_cookies(&url).is_none());
+
+        // invalid domain attribute for __Host-
+        jar.insert(&url, "__Host-a=1; Secure; Path=/; Domain=example.com");
+        assert!(jar.get_cookies(&url).is_none());
+
+        // valid host-only root-path cookie
+        jar.insert(&url, "__Host-a=1; Secure; Path=/");
+        assert!(jar
+            .get_cookies(&url)
+            .is_some_and(|c| c.contains("__Host-a=1")));
+    }
+
+    #[test]
+    fn cookies_sorted_by_path_length_then_name() {
+        let jar = CookieJar::new();
+        let root = test_url("https://example.com/");
+        let app = test_url("https://example.com/app/page");
+
+        jar.insert(&root, "b=1; Path=/");
+        jar.insert(&root, "a=2; Path=/");
+        jar.insert(&app, "z=3; Path=/app");
+
+        let cookies = jar.get_cookies(&app).unwrap();
+        assert!(cookies.starts_with("z=3"));
+        assert!(cookies.contains("a=2"));
+        assert!(cookies.contains("b=1"));
+        // a should sort before b when path length is equal.
+        assert!(cookies.find("a=2").unwrap() < cookies.find("b=1").unwrap());
+    }
+
+    #[test]
+    fn cookie_jar_json_roundtrip() {
+        let jar = CookieJar::new();
+        let url = test_url("https://example.com/");
+        jar.insert(&url, "a=1; Path=/");
+        jar.insert(&url, "b=2; Path=/app");
+
+        let json = jar.export_json().expect("export json");
+
+        let restored = CookieJar::new();
+        restored.import_json(&json).expect("import json");
+
+        let cookies = restored.get_cookies(&test_url("https://example.com/app/page")).unwrap();
+        assert!(cookies.contains("a=1"));
+        assert!(cookies.contains("b=2"));
+    }
+
+    #[test]
+    fn cookie_parser_robust_inputs_do_not_panic() {
+        let jar = CookieJar::new();
+        let url = test_url("https://example.com/");
+        let cases = [
+            "",
+            "=",
+            "=x",
+            "x",
+            "x=1; Domain=..",
+            "x=1; Max-Age=not-number",
+            "x=1; SameSite=Unknown",
+            "__Host-a=1; Path=/",
+            "__Secure-a=1",
+            "x=1; Domain=other.com",
+            "x=1; Path=",
+        ];
+
+        for case in cases {
+            jar.insert(&url, case);
+        }
+
+        // Main assertion: parser accepted/rejected inputs safely without panic.
+        let _ = jar.get_cookies(&url);
     }
 
     #[test]

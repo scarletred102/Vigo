@@ -100,7 +100,7 @@ async fn fetch_ten_https_sites() {
 
                 match response.text() {
                     Ok(body) => {
-                        if !looks_like_html(&body) {
+                        if !looks_like_html(body) {
                             failures.push(format!("{url}: response did not look like HTML"));
                         }
                     }

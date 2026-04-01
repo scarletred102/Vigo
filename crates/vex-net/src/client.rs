@@ -4,10 +4,14 @@
 //! HTTP client with TLS 1.3, connection pooling, redirect following, and decompression.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
+use futures_util::future::join_all;
+use futures_util::stream;
+use futures_util::StreamExt;
 use http_body_util::{BodyExt, Full};
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
@@ -18,15 +22,24 @@ use vex_core::{VexError, VexResult, VexUrl};
 use crate::cache::HttpCache;
 use crate::cookies::CookieJar;
 use crate::decompress;
-use crate::dns::{DnsMode, DnsResolver};
+use crate::dns::{DnsMode, DnsResolver, HyperDnsResolver};
+use crate::telemetry::{CacheOutcome, NetworkRecord, NetworkStats, NetworkTimings};
 use crate::tls;
 use crate::types::{Method, Request, Response};
 
 /// Maximum number of redirects to follow.
 const MAX_REDIRECTS: u8 = 10;
 
-/// Default request timeout (seconds).
-const DEFAULT_TIMEOUT_SECS: u64 = 30;
+/// Default connect timeout (seconds).
+const DEFAULT_CONNECT_TIMEOUT_SECS: u64 = 10;
+/// Default first-byte timeout (seconds).
+const DEFAULT_FIRST_BYTE_TIMEOUT_SECS: u64 = 30;
+/// Default full-body read timeout (seconds).
+const DEFAULT_BODY_TIMEOUT_SECS: u64 = 30;
+/// Default pooled idle timeout (seconds).
+const DEFAULT_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
+/// Default max idle connections per host.
+const DEFAULT_POOL_MAX_IDLE_PER_HOST: usize = 32;
 
 /// Configuration for building an `HttpClient`.
 #[derive(Debug, Clone)]
@@ -34,7 +47,11 @@ pub struct ClientConfig {
     pub user_agent: String,
     pub follow_redirects: bool,
     pub max_redirects: u8,
-    pub timeout_secs: u64,
+    pub connect_timeout_secs: u64,
+    pub first_byte_timeout_secs: u64,
+    pub body_timeout_secs: u64,
+    pub pool_idle_timeout_secs: u64,
+    pub pool_max_idle_per_host: usize,
     pub dns_mode: DnsMode,
 }
 
@@ -44,7 +61,11 @@ impl Default for ClientConfig {
             user_agent: format!("Vigo/{} Vex", env!("CARGO_PKG_VERSION")),
             follow_redirects: true,
             max_redirects: MAX_REDIRECTS,
-            timeout_secs: DEFAULT_TIMEOUT_SECS,
+            connect_timeout_secs: DEFAULT_CONNECT_TIMEOUT_SECS,
+            first_byte_timeout_secs: DEFAULT_FIRST_BYTE_TIMEOUT_SECS,
+            body_timeout_secs: DEFAULT_BODY_TIMEOUT_SECS,
+            pool_idle_timeout_secs: DEFAULT_POOL_IDLE_TIMEOUT_SECS,
+            pool_max_idle_per_host: DEFAULT_POOL_MAX_IDLE_PER_HOST,
             dns_mode: DnsMode::System,
         }
     }
@@ -53,13 +74,17 @@ impl Default for ClientConfig {
 /// The main HTTP client.
 pub struct HttpClient {
     inner: Client<
-        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector<
+            HyperDnsResolver,
+        >>,
         Full<Bytes>,
     >,
     config: ClientConfig,
     cookies: CookieJar,
-    dns_resolver: DnsResolver,
     cache: Mutex<HttpCache>,
+    request_counter: AtomicU64,
+    network_records: Mutex<Vec<NetworkRecord>>,
+    network_stats: Mutex<NetworkStats>,
 }
 
 impl HttpClient {
@@ -72,12 +97,13 @@ impl HttpClient {
     pub fn with_config(config: ClientConfig) -> VexResult<Self> {
         let tls = tls::tls_config()?;
         let dns_resolver = DnsResolver::new(config.dns_mode.clone())?;
+        let hyper_dns = HyperDnsResolver::new(dns_resolver);
 
-        let mut http = HttpConnector::new();
+        let mut http = HttpConnector::new_with_resolver(hyper_dns);
         http.enforce_http(false);
         http.set_nodelay(true);
         http.set_happy_eyeballs_timeout(Some(Duration::from_millis(300)));
-        http.set_connect_timeout(Some(Duration::from_secs(config.timeout_secs)));
+        http.set_connect_timeout(Some(Duration::from_secs(config.connect_timeout_secs)));
 
         let https = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config((*tls).clone())
@@ -86,14 +112,20 @@ impl HttpClient {
             .enable_http2()
             .wrap_connector(http);
 
-        let inner = Client::builder(TokioExecutor::new()).build(https);
+        let mut client_builder = Client::builder(TokioExecutor::new());
+        client_builder.pool_timer(hyper_util::rt::TokioTimer::new());
+        client_builder.pool_idle_timeout(Duration::from_secs(config.pool_idle_timeout_secs));
+        client_builder.pool_max_idle_per_host(config.pool_max_idle_per_host);
+        let inner = client_builder.build(https);
 
         Ok(Self {
             inner,
             config,
             cookies: CookieJar::new(),
-            dns_resolver,
             cache: Mutex::new(HttpCache::new()),
+            request_counter: AtomicU64::new(0),
+            network_records: Mutex::new(Vec::new()),
+            network_stats: Mutex::new(NetworkStats::default()),
         })
     }
 
@@ -116,11 +148,106 @@ impl HttpClient {
         &self.cache
     }
 
+    /// Snapshot all collected network records.
+    pub fn network_records(&self) -> Vec<NetworkRecord> {
+        self.network_records
+            .lock()
+            .map(|records| records.clone())
+            .unwrap_or_default()
+    }
+
+    /// Drain and return all collected network records.
+    pub fn take_network_records(&self) -> Vec<NetworkRecord> {
+        self.network_records
+            .lock()
+            .map(|mut records| std::mem::take(&mut *records))
+            .unwrap_or_default()
+    }
+
+    /// Snapshot aggregated network stats.
+    pub fn network_stats(&self) -> NetworkStats {
+        self.network_stats
+            .lock()
+            .map(|stats| stats.clone())
+            .unwrap_or_default()
+    }
+
     /// Fetch a URL, returning the response.
     ///
     /// Handles: TLS, decompression, redirects, cookies.
     pub async fn fetch(&self, request: Request) -> VexResult<Response> {
         self.fetch_filtered(request, |_| Ok(())).await
+    }
+
+    /// Fetch many requests concurrently.
+    ///
+    /// This is useful for preload/resource fan-out phases where multiple
+    /// independent subresources should be fetched in parallel.
+    pub async fn fetch_many(&self, requests: Vec<Request>) -> Vec<VexResult<Response>> {
+        join_all(requests.into_iter().map(|request| self.fetch(request))).await
+    }
+
+    /// Fetch many requests with a bounded in-flight concurrency.
+    ///
+    /// Results preserve the input order.
+    pub async fn fetch_many_limited(
+        &self,
+        requests: Vec<Request>,
+        max_in_flight: usize,
+    ) -> Vec<VexResult<Response>> {
+        if requests.is_empty() {
+            return Vec::new();
+        }
+
+        let limit = max_in_flight.max(1);
+
+        let mut indexed_results = stream::iter(requests.into_iter().enumerate())
+            .map(|(idx, request)| async move { (idx, self.fetch(request).await) })
+            .buffer_unordered(limit)
+            .collect::<Vec<_>>()
+            .await;
+
+        indexed_results.sort_by_key(|(idx, _)| *idx);
+        indexed_results.into_iter().map(|(_, result)| result).collect()
+    }
+
+    /// Fetch many requests with bounded concurrency and cooperative cancellation.
+    ///
+    /// If `cancel` becomes `true`, pending requests return a cancellation error.
+    pub async fn fetch_many_limited_with_cancel(
+        &self,
+        requests: Vec<Request>,
+        max_in_flight: usize,
+        cancel: Arc<AtomicBool>,
+    ) -> Vec<VexResult<Response>> {
+        if requests.is_empty() {
+            return Vec::new();
+        }
+
+        let limit = max_in_flight.max(1);
+
+        let mut indexed_results = stream::iter(requests.into_iter().enumerate())
+            .map(|(idx, request)| {
+                let cancel = Arc::clone(&cancel);
+                async move {
+                    if cancel.load(Ordering::Relaxed) {
+                        (
+                            idx,
+                            Err(VexError::Network(
+                                "request cancelled by scheduler".to_string(),
+                            )),
+                        )
+                    } else {
+                        (idx, self.fetch(request).await)
+                    }
+                }
+            })
+            .buffer_unordered(limit)
+            .collect::<Vec<_>>()
+            .await;
+
+        indexed_results.sort_by_key(|(idx, _)| *idx);
+        indexed_results.into_iter().map(|(_, result)| result).collect()
     }
 
     /// Fetch a URL after running the request through a filter.
@@ -139,30 +266,66 @@ impl HttpClient {
     {
         filter(&mut request)?;
 
+        let request_id = self.request_counter.fetch_add(1, Ordering::Relaxed) + 1;
+
         let mut current_url = request.url.clone();
         let mut current_method = request.method;
+        let mut current_headers = request.headers.clone();
+        let mut current_body = request.body.clone();
         let mut redirects = 0u8;
 
         loop {
             let resp = match self
                 .do_fetch(
+                    request_id,
                     &current_url,
                     current_method,
-                    &request.headers,
-                    &request.body,
+                    &current_headers,
+                    &current_body,
                 )
                 .await
             {
                 Ok(resp) => resp,
-                Err(err) if current_method == Method::Get && is_connect_error(&err) => {
-                    warn!(url = %current_url, "transient connect failure, retrying once");
-                    self.do_fetch(
-                        &current_url,
-                        current_method,
-                        &request.headers,
-                        &request.body,
-                    )
-                    .await?
+                Err(err) if current_method == Method::Get => {
+                    let stale = self
+                        .cache
+                        .lock()
+                        .ok()
+                        .and_then(|cache| cache.get_stale_if_error(&current_url, &current_headers).cloned());
+
+                    if let Some(stale) = stale {
+                        warn!(url = %current_url, "network failure served from stale-if-error cache: {err}");
+                        self.push_network_record(NetworkRecord {
+                            request_id,
+                            method: method_name(current_method).to_string(),
+                            url: current_url.to_string(),
+                            status: Some(stale.status),
+                            cache_outcome: CacheOutcome::StaleIfErrorHit,
+                            was_cached: true,
+                            timings: NetworkTimings {
+                                dns_ms: None,
+                                ttfb_ms: None,
+                                body_read_ms: None,
+                                total_ms: 0,
+                            },
+                            error: Some(err.to_string()),
+                        });
+                        return Ok(cached_to_response(&current_url, &stale));
+                    }
+
+                    if is_connect_error(&err) {
+                        warn!(url = %current_url, "transient connect failure, retrying once");
+                        self.do_fetch(
+                            request_id,
+                            &current_url,
+                            current_method,
+                            &current_headers,
+                            &current_body,
+                        )
+                        .await?
+                    } else {
+                        return Err(err);
+                    }
                 }
                 Err(err) => return Err(err),
             };
@@ -173,18 +336,33 @@ impl HttpClient {
                 && redirects < self.config.max_redirects
             {
                 if let Some(location) = resp.headers.get("location") {
+                    let prev_url = current_url.clone();
                     let next_url = resolve_redirect(&current_url, location)?;
                     debug!(status = resp.status, to = %next_url, "following redirect");
 
                     // 303: always change to GET
                     if resp.status == 303 {
                         current_method = Method::Get;
+                        current_body = None;
+                        strip_entity_headers(&mut current_headers);
                     }
                     // 301/302: change to GET for POST (historical browser behavior)
                     if (resp.status == 301 || resp.status == 302) && current_method == Method::Post
                     {
                         current_method = Method::Get;
+                        current_body = None;
+                        strip_entity_headers(&mut current_headers);
                     }
+
+                    if is_https_downgrade(&prev_url, &next_url) {
+                        warn!(
+                            from = %prev_url,
+                            to = %next_url,
+                            "redirect attempted HTTPS->HTTP downgrade; sensitive headers will be stripped"
+                        );
+                    }
+
+                    sanitize_headers_for_redirect(&prev_url, &next_url, &mut current_headers);
 
                     current_url = next_url;
                     redirects += 1;
@@ -204,24 +382,57 @@ impl HttpClient {
     /// If-Modified-Since); a 304 reuses the cached body.
     async fn do_fetch(
         &self,
+        request_id: u64,
         url: &VexUrl,
         method: Method,
         extra_headers: &HashMap<String, String>,
         body: &Option<Vec<u8>>,
     ) -> VexResult<Response> {
+        let started = Instant::now();
+        let dns_ms: Option<u64> = None;
+
         // ── Cache lookup (GET only) ──────────────────────────────────
         if method == Method::Get {
             if let Ok(cache) = self.cache.lock() {
-                if let Some(cached) = cache.get(url) {
+                if let Some(cached) = cache.get(url, extra_headers) {
                     if cached.is_fresh() {
                         debug!(url = %url, "cache hit (fresh)");
-                        return Ok(Response {
-                            status: cached.status,
-                            headers: cached.headers.clone(),
-                            body: cached.body.clone(),
-                            url: url.clone(),
+                        self.push_network_record(NetworkRecord {
+                            request_id,
+                            method: method_name(method).to_string(),
+                            url: url.to_string(),
+                            status: Some(cached.status),
+                            cache_outcome: CacheOutcome::FreshHit,
                             was_cached: true,
+                            timings: NetworkTimings {
+                                dns_ms,
+                                ttfb_ms: None,
+                                body_read_ms: None,
+                                total_ms: millis(started.elapsed()),
+                            },
+                            error: None,
                         });
+                        return Ok(cached_to_response(url, cached));
+                    }
+
+                    if cached.can_serve_while_revalidating() {
+                        debug!(url = %url, "cache hit (stale-while-revalidate)");
+                        self.push_network_record(NetworkRecord {
+                            request_id,
+                            method: method_name(method).to_string(),
+                            url: url.to_string(),
+                            status: Some(cached.status),
+                            cache_outcome: CacheOutcome::StaleWhileRevalidateHit,
+                            was_cached: true,
+                            timings: NetworkTimings {
+                                dns_ms,
+                                ttfb_ms: None,
+                                body_read_ms: None,
+                                total_ms: millis(started.elapsed()),
+                            },
+                            error: None,
+                        });
+                        return Ok(cached_to_response(url, cached));
                     }
                 }
             }
@@ -233,19 +444,13 @@ impl HttpClient {
                 .lock()
                 .ok()
                 .and_then(|c| {
-                    c.get(url)
+                    c.get(url, extra_headers)
                         .map(|e| (e.etag.clone(), e.last_modified.clone()))
                 })
                 .unwrap_or((None, None))
         } else {
             (None, None)
         };
-
-        if let Some(host) = url.host() {
-            // Resolve using the configured resolver (system DNS or DoH).
-            let resolved = self.dns_resolver.resolve(host).await?;
-            debug!(host, ?resolved, "DNS resolved");
-        }
 
         let uri: hyper::Uri = url
             .inner()
@@ -288,19 +493,57 @@ impl HttpClient {
             .map_err(|e| VexError::Network(format!("request build failed: {e}")))?;
 
         debug!(method = %method.to_http(), %uri, "sending request");
-
-        let hyper_resp = tokio::time::timeout(
-            std::time::Duration::from_secs(self.config.timeout_secs),
+        let ttfb_started = Instant::now();
+        let hyper_resp = match tokio::time::timeout(
+            std::time::Duration::from_secs(self.config.first_byte_timeout_secs),
             self.inner.request(hyper_req),
         )
         .await
-        .map_err(|_| {
-            VexError::Network(format!(
-                "request timed out after {}s",
-                self.config.timeout_secs
-            ))
-        })?
-        .map_err(|e| VexError::Network(format!("request failed: {e}; debug={e:?}")))?;
+        {
+            Ok(Ok(resp)) => resp,
+            Ok(Err(e)) => {
+                let msg = format!("request failed: {e}; debug={e:?}");
+                self.push_network_record(NetworkRecord {
+                    request_id,
+                    method: method_name(method).to_string(),
+                    url: url.to_string(),
+                    status: None,
+                    cache_outcome: CacheOutcome::Miss,
+                    was_cached: false,
+                    timings: NetworkTimings {
+                        dns_ms,
+                        ttfb_ms: Some(millis(ttfb_started.elapsed())),
+                        body_read_ms: None,
+                        total_ms: millis(started.elapsed()),
+                    },
+                    error: Some(msg.clone()),
+                });
+                return Err(VexError::Network(msg));
+            }
+            Err(_) => {
+                let msg = format!(
+                    "request timed out waiting for first byte after {}s",
+                    self.config.first_byte_timeout_secs
+                );
+                self.push_network_record(NetworkRecord {
+                    request_id,
+                    method: method_name(method).to_string(),
+                    url: url.to_string(),
+                    status: None,
+                    cache_outcome: CacheOutcome::Miss,
+                    was_cached: false,
+                    timings: NetworkTimings {
+                        dns_ms,
+                        ttfb_ms: Some(millis(ttfb_started.elapsed())),
+                        body_read_ms: None,
+                        total_ms: millis(started.elapsed()),
+                    },
+                    error: Some(msg.clone()),
+                });
+                return Err(VexError::Network(msg));
+            }
+        };
+        let ttfb_ms = Some(millis(ttfb_started.elapsed()));
 
         let status = hyper_resp.status().as_u16();
 
@@ -314,16 +557,26 @@ impl HttpClient {
 
         // Handle 304 Not Modified — reuse cached body
         if status == 304 && method == Method::Get {
-            if let Ok(cache) = self.cache.lock() {
-                if let Some(cached) = cache.get(url) {
+            if let Ok(mut cache) = self.cache.lock() {
+                cache.refresh_from_not_modified(url, extra_headers, &headers);
+                if let Some(cached) = cache.get(url, extra_headers) {
                     debug!(url = %url, "304 Not Modified, using cached body");
-                    return Ok(Response {
-                        status: cached.status,
-                        headers: cached.headers.clone(),
-                        body: cached.body.clone(),
-                        url: url.clone(),
+                    self.push_network_record(NetworkRecord {
+                        request_id,
+                        method: method_name(method).to_string(),
+                        url: url.to_string(),
+                        status: Some(cached.status),
+                        cache_outcome: CacheOutcome::Revalidated304,
                         was_cached: true,
+                        timings: NetworkTimings {
+                            dns_ms,
+                            ttfb_ms,
+                            body_read_ms: None,
+                            total_ms: millis(started.elapsed()),
+                        },
+                        error: None,
                     });
+                    return Ok(cached_to_response(url, cached));
                 }
             }
         }
@@ -336,13 +589,57 @@ impl HttpClient {
         }
 
         // Read body
-        let raw_body = hyper_resp
-            .into_body()
-            .collect()
-            .await
-            .map_err(|e| VexError::Network(format!("failed to read body: {e}")))?
-            .to_bytes()
-            .to_vec();
+        let body_started = Instant::now();
+        let raw_body = match tokio::time::timeout(
+            std::time::Duration::from_secs(self.config.body_timeout_secs),
+            hyper_resp.into_body().collect(),
+        )
+        .await
+        {
+            Ok(Ok(body)) => body.to_bytes().to_vec(),
+            Ok(Err(e)) => {
+                let msg = format!("failed to read body: {e}");
+                self.push_network_record(NetworkRecord {
+                    request_id,
+                    method: method_name(method).to_string(),
+                    url: url.to_string(),
+                    status: Some(status),
+                    cache_outcome: CacheOutcome::Miss,
+                    was_cached: false,
+                    timings: NetworkTimings {
+                        dns_ms,
+                        ttfb_ms,
+                        body_read_ms: Some(millis(body_started.elapsed())),
+                        total_ms: millis(started.elapsed()),
+                    },
+                    error: Some(msg.clone()),
+                });
+                return Err(VexError::Network(msg));
+            }
+            Err(_) => {
+                let msg = format!(
+                    "request body read timed out after {}s",
+                    self.config.body_timeout_secs
+                );
+                self.push_network_record(NetworkRecord {
+                    request_id,
+                    method: method_name(method).to_string(),
+                    url: url.to_string(),
+                    status: Some(status),
+                    cache_outcome: CacheOutcome::Miss,
+                    was_cached: false,
+                    timings: NetworkTimings {
+                        dns_ms,
+                        ttfb_ms,
+                        body_read_ms: Some(millis(body_started.elapsed())),
+                        total_ms: millis(started.elapsed()),
+                    },
+                    error: Some(msg.clone()),
+                });
+                return Err(VexError::Network(msg));
+            }
+        };
+        let body_read_ms = Some(millis(body_started.elapsed()));
 
         // Decompress if needed
         let encoding = headers
@@ -364,11 +661,27 @@ impl HttpClient {
         // Store in cache (GET only)
         if method == Method::Get {
             if let Ok(mut cache) = self.cache.lock() {
-                cache.store(url, status, &headers, &body);
+                cache.store(url, extra_headers, status, &headers, &body);
             }
         }
 
         debug!(status, bytes = body.len(), "response received");
+
+        self.push_network_record(NetworkRecord {
+            request_id,
+            method: method_name(method).to_string(),
+            url: url.to_string(),
+            status: Some(status),
+            cache_outcome: CacheOutcome::Miss,
+            was_cached: false,
+            timings: NetworkTimings {
+                dns_ms,
+                ttfb_ms,
+                body_read_ms,
+                total_ms: millis(started.elapsed()),
+            },
+            error: None,
+        });
 
         Ok(Response {
             status,
@@ -377,6 +690,32 @@ impl HttpClient {
             url: url.clone(),
             was_cached: false,
         })
+    }
+
+    fn push_network_record(&self, record: NetworkRecord) {
+        if let Ok(mut stats) = self.network_stats.lock() {
+            stats.total_requests += 1;
+
+            if record.was_cached {
+                stats.cache_hits += 1;
+            } else {
+                stats.cache_misses += 1;
+            }
+
+            if record.error.is_some() {
+                stats.errors += 1;
+            }
+
+            match record.cache_outcome {
+                CacheOutcome::Revalidated304 => stats.revalidated_304 += 1,
+                CacheOutcome::StaleIfErrorHit => stats.stale_if_error_hits += 1,
+                _ => {}
+            }
+        }
+
+        if let Ok(mut records) = self.network_records.lock() {
+            records.push(record);
+        }
     }
 }
 
@@ -409,6 +748,64 @@ fn resolve_redirect(base: &VexUrl, location: &str) -> VexResult<VexUrl> {
     }
 }
 
+fn millis(d: Duration) -> u64 {
+    d.as_millis().min(u64::MAX as u128) as u64
+}
+
+fn method_name(method: Method) -> &'static str {
+    match method {
+        Method::Get => "GET",
+        Method::Post => "POST",
+        Method::Put => "PUT",
+        Method::Delete => "DELETE",
+        Method::Head => "HEAD",
+        Method::Options => "OPTIONS",
+    }
+}
+
+fn cached_to_response(url: &VexUrl, cached: &crate::cache::CachedResponse) -> Response {
+    Response {
+        status: cached.status,
+        headers: cached.headers.clone(),
+        body: cached.body.clone(),
+        url: url.clone(),
+        was_cached: true,
+    }
+}
+
+fn strip_entity_headers(headers: &mut HashMap<String, String>) {
+    headers.retain(|k, _| {
+        let lk = k.to_ascii_lowercase();
+        lk != "content-type" && lk != "content-length" && lk != "content-encoding"
+    });
+}
+
+fn same_origin(a: &VexUrl, b: &VexUrl) -> bool {
+    a.inner().scheme() == b.inner().scheme()
+        && a.inner().host_str() == b.inner().host_str()
+        && a.inner().port_or_known_default() == b.inner().port_or_known_default()
+}
+
+fn sanitize_headers_for_redirect(
+    from: &VexUrl,
+    to: &VexUrl,
+    headers: &mut HashMap<String, String>,
+) {
+    let cross_origin = !same_origin(from, to);
+    let https_to_http_downgrade = is_https_downgrade(from, to);
+
+    if cross_origin || https_to_http_downgrade {
+        headers.retain(|k, _| {
+            let lk = k.to_ascii_lowercase();
+            lk != "authorization" && lk != "proxy-authorization" && lk != "cookie"
+        });
+    }
+}
+
+fn is_https_downgrade(from: &VexUrl, to: &VexUrl) -> bool {
+    from.is_https() && to.scheme() == "http"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,6 +814,84 @@ mod tests {
     fn default_config_uses_system_dns() {
         let config = ClientConfig::default();
         assert!(matches!(config.dns_mode, DnsMode::System));
+    }
+
+    #[tokio::test]
+    async fn fetch_many_with_empty_input_returns_empty() {
+        let client = HttpClient::new().expect("client should init");
+        let results = client.fetch_many(Vec::new()).await;
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fetch_many_limited_with_empty_input_returns_empty() {
+        let client = HttpClient::new().expect("client should init");
+        let results = client.fetch_many_limited(Vec::new(), 4).await;
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fetch_many_limited_with_cancel_on_empty_input_returns_empty() {
+        let client = HttpClient::new().expect("client should init");
+        let cancel = Arc::new(AtomicBool::new(false));
+        let results = client
+            .fetch_many_limited_with_cancel(Vec::new(), 4, cancel)
+            .await;
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fetch_many_limited_with_cancel_short_circuits_requests() {
+        let client = HttpClient::new().expect("client should init");
+        let cancel = Arc::new(AtomicBool::new(true));
+        let req = Request::get("https://example.com").expect("request build");
+
+        let results = client
+            .fetch_many_limited_with_cancel(vec![req], 1, cancel)
+            .await;
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_err());
+    }
+
+    #[test]
+    fn redirect_sanitization_strips_credentials_on_cross_origin() {
+        let from = VexUrl::parse("https://a.example/path").unwrap();
+        let to = VexUrl::parse("https://b.example/next").unwrap();
+        let mut headers = HashMap::from([
+            ("Authorization".to_string(), "Bearer x".to_string()),
+            ("Cookie".to_string(), "sid=1".to_string()),
+            ("X-Test".to_string(), "ok".to_string()),
+        ]);
+
+        sanitize_headers_for_redirect(&from, &to, &mut headers);
+
+        assert!(headers.contains_key("X-Test"));
+        assert!(!headers.contains_key("Authorization"));
+        assert!(!headers.contains_key("Cookie"));
+    }
+
+    #[test]
+    fn redirect_sanitization_keeps_credentials_same_origin() {
+        let from = VexUrl::parse("https://example.com/a").unwrap();
+        let to = VexUrl::parse("https://example.com/b").unwrap();
+        let mut headers = HashMap::from([("authorization".to_string(), "Bearer x".to_string())]);
+
+        sanitize_headers_for_redirect(&from, &to, &mut headers);
+        assert!(headers.contains_key("authorization"));
+    }
+
+    #[test]
+    fn strip_entity_headers_removes_content_headers() {
+        let mut headers = HashMap::from([
+            ("Content-Type".to_string(), "application/json".to_string()),
+            ("Content-Length".to_string(), "12".to_string()),
+            ("X-Test".to_string(), "ok".to_string()),
+        ]);
+
+        strip_entity_headers(&mut headers);
+        assert!(headers.contains_key("X-Test"));
+        assert!(!headers.contains_key("Content-Type"));
+        assert!(!headers.contains_key("Content-Length"));
     }
 
     #[test]
@@ -436,19 +911,28 @@ mod tests {
     fn cache_stores_and_retrieves_entries() {
         let client = HttpClient::new().unwrap();
         let url = VexUrl::parse("https://example.com/page").unwrap();
+        let req_headers = HashMap::new();
 
         let mut headers = HashMap::new();
         headers.insert("cache-control".to_string(), "max-age=3600".to_string());
 
         {
             let mut cache = client.cache().lock().unwrap();
-            cache.store(&url, 200, &headers, b"cached body");
+            cache.store(&url, &req_headers, 200, &headers, b"cached body");
         }
 
         let cache = client.cache().lock().unwrap();
-        let entry = cache.get(&url).unwrap();
+        let entry = cache.get(&url, &req_headers).unwrap();
         assert_eq!(entry.status, 200);
         assert_eq!(entry.body, b"cached body");
         assert!(entry.is_fresh());
+    }
+
+    #[test]
+    fn network_stats_initially_zeroed() {
+        let client = HttpClient::new().expect("client init");
+        let stats = client.network_stats();
+        assert_eq!(stats.total_requests, 0);
+        assert_eq!(stats.errors, 0);
     }
 }
