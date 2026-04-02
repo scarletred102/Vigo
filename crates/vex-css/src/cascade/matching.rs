@@ -4,10 +4,12 @@
 //! Declaration matching: collect all CSS declarations that apply to an element.
 
 use vex_core::VexId;
-use vex_dom::{query_selector_all, NodeArena};
+use vex_core::Size;
+use vex_dom::{matches_selector_list, NodeArena};
 
 use crate::cascade::origin::Origin;
-use crate::cascade::specificity::{estimate_specificity, Specificity};
+use crate::cascade::specificity::{estimate_specificity, specificity_from_selector_list, Specificity};
+use crate::media::{evaluate_media, parse_media_condition};
 use crate::parser::Stylesheet;
 use crate::properties::{Declaration, Property};
 
@@ -25,36 +27,51 @@ pub fn collect_matching_declarations(
     element_id: VexId,
     arena: &NodeArena,
     stylesheets: &[Stylesheet],
+    viewport: Size,
 ) -> Vec<MatchedDeclaration> {
     let mut result = Vec::new();
     let mut source_order = 0;
 
     for stylesheet in stylesheets {
         for rule in &stylesheet.rules {
+            if let Some(condition) = &rule.media_condition {
+                let media_matches = parse_media_condition(condition)
+                    .map(|cond| evaluate_media(&cond, viewport))
+                    .unwrap_or(false);
+                if !media_matches {
+                    continue;
+                }
+            }
+
             for selector_str in &rule.selectors {
-                // Check if this selector matches our element
-                let root_id = VexId::new(0); // document root
-                let matches = query_selector_all(arena, root_id, selector_str);
+                let parsed = vex_dom::selector_impl::parse_selector(selector_str);
 
-                if let Ok(matched_ids) = matches {
-                    if matched_ids.contains(&element_id) {
-                        let specificity = estimate_specificity(selector_str);
+                // Match directly against element to avoid full-tree scans.
+                let is_match = parsed
+                    .as_ref()
+                    .map(|selectors| matches_selector_list(arena, element_id, selectors))
+                    .unwrap_or(false);
 
-                        for decl in &rule.declarations {
-                            let origin = if decl.important {
-                                Origin::AuthorImportant
-                            } else {
-                                Origin::Author
-                            };
+                if is_match {
+                    let specificity = parsed
+                        .as_ref()
+                        .map(specificity_from_selector_list)
+                        .unwrap_or_else(|_| estimate_specificity(selector_str));
 
-                            result.push(MatchedDeclaration {
-                                property: decl.property.clone(),
-                                specificity,
-                                origin,
-                                source_order,
-                            });
-                            source_order += 1;
-                        }
+                    for decl in &rule.declarations {
+                        let origin = if decl.important {
+                            Origin::AuthorImportant
+                        } else {
+                            Origin::Author
+                        };
+
+                        result.push(MatchedDeclaration {
+                            property: decl.property.clone(),
+                            specificity,
+                            origin,
+                            source_order,
+                        });
+                        source_order += 1;
                     }
                 }
             }
@@ -102,4 +119,28 @@ pub fn collect_inline_declarations(
         }
     }
     Vec::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::parse_stylesheet;
+    use vex_html::parse_html;
+
+    #[test]
+    fn media_filtered_rules_only_apply_when_matching_viewport() {
+        let doc = parse_html("<div class='mobile'></div>");
+        let arena = doc.arena();
+        let div = doc.get_elements_by_class_name("mobile")[0];
+
+        let css = parse_stylesheet(
+            "@media (max-width: 600px) { .mobile { color: red; } } .mobile { color: blue; }",
+        );
+
+        let wide = collect_matching_declarations(div, arena, std::slice::from_ref(&css), Size::new(1200.0, 800.0));
+        let narrow = collect_matching_declarations(div, arena, &[css], Size::new(500.0, 800.0));
+
+        // Narrow should include extra declaration from media rule.
+        assert!(narrow.len() > wide.len());
+    }
 }

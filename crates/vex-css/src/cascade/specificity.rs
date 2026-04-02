@@ -12,6 +12,8 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Specificity(pub u32, pub u32, pub u32);
 
+const SPECIFICITY_COMPONENT_MASK: u32 = (1 << 10) - 1;
+
 impl Specificity {
     /// Inline styles have the highest specificity.
     pub const INLINE: Self = Self(u32::MAX, 0, 0);
@@ -105,6 +107,34 @@ pub fn estimate_specificity(selector: &str) -> Specificity {
     Specificity(ids, classes, types)
 }
 
+/// Decode selectors-crate packed specificity (`a<<20 | b<<10 | c`) into
+/// our tuple representation.
+pub fn decode_packed_specificity(packed: u32) -> Specificity {
+    let a = (packed >> 20) & SPECIFICITY_COMPONENT_MASK;
+    let b = (packed >> 10) & SPECIFICITY_COMPONENT_MASK;
+    let c = packed & SPECIFICITY_COMPONENT_MASK;
+    Specificity(a, b, c)
+}
+
+/// Canonical specificity from a parsed selector list.
+pub fn specificity_from_selector_list(
+    selectors: &selectors::parser::SelectorList<vex_dom::selector_impl::VexSelectorImpl>,
+) -> Specificity {
+    selectors
+        .slice()
+        .iter()
+        .map(|s| decode_packed_specificity(s.specificity()))
+        .max()
+        .unwrap_or_default()
+}
+
+/// Canonical specificity for a selector string if it can be parsed by our
+/// selector engine.
+pub fn canonical_specificity(selector: &str) -> Option<Specificity> {
+    let parsed = vex_dom::selector_impl::parse_selector(selector).ok()?;
+    Some(specificity_from_selector_list(&parsed))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,5 +174,29 @@ mod tests {
         let c = Specificity(0, 0, 1);
         assert!(a > b);
         assert!(b > c);
+    }
+
+    #[test]
+    fn decode_packed_specificity_roundtrip() {
+        let packed = (2u32 << 20) | (5u32 << 10) | 7u32;
+        assert_eq!(decode_packed_specificity(packed), Specificity(2, 5, 7));
+    }
+
+    #[test]
+    fn canonical_specificity_respects_where_zeroing() {
+        // :where(...) contributes zero specificity.
+        assert_eq!(
+            canonical_specificity(":where(#id, .cls, div)"),
+            Some(Specificity(0, 0, 0))
+        );
+    }
+
+    #[test]
+    fn canonical_specificity_for_is_takes_most_specific_argument() {
+        // :is() takes max argument specificity.
+        assert_eq!(
+            canonical_specificity(":is(.a, #id, div)"),
+            Some(Specificity(1, 0, 0))
+        );
     }
 }

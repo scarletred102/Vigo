@@ -87,7 +87,7 @@ fn compute_recursive(
         let parent_font_size = parent_style.font_size;
 
         // 1. Collect all matching declarations
-        let mut matched = collect_matching_declarations(node_id, arena, stylesheets);
+        let mut matched = collect_matching_declarations(node_id, arena, stylesheets, viewport);
 
         // 2. Collect inline style declarations
         let inline = collect_inline_declarations(node_id, arena);
@@ -202,5 +202,20 @@ mod tests {
         if let Some(body_style) = bodies.first().and_then(|id| styles.get(id)) {
             assert_eq!(body_style.display, Display::Block);
         }
+    }
+
+    #[test]
+    fn media_query_rules_apply_only_when_matching_viewport() {
+        let doc = make_test_doc();
+        let css = parse_stylesheet(
+            "#main { display: block; } @media (max-width: 700px) { #main { display: none; } }",
+        );
+
+        let wide = compute_styles(&doc, std::slice::from_ref(&css), Size::new(1200.0, 800.0));
+        let narrow = compute_styles(&doc, &[css], Size::new(600.0, 800.0));
+
+        let main = doc.get_element_by_id("main").expect("main element");
+        assert_eq!(wide.get(&main).unwrap().display, Display::Block);
+        assert_eq!(narrow.get(&main).unwrap().display, Display::None);
     }
 }

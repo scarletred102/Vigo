@@ -106,6 +106,40 @@ While building the DOM, we parse stylesheets to determine how elements look.
   - Building the CSS Object Model (CSSOM).
   - Resolving the Cascade (processing inheritance, specifity, and computing absolute values like pixels).
 
+### Phase 3.5: Production Hardening Track (CSS Parser + Cascade Quality)
+Phase 3 is treated as production-critical style infrastructure, not just parser coverage.
+
+* **Goal:** Correct, media-aware, performance-conscious CSS parsing/cascade behavior suitable for real page workloads.
+* **Scope:** `crates/vex-css`, with selector-path optimization support in `crates/vex-dom`.
+* **Status:** ✅ Completed (2026-04-02)
+
+#### Workstream A — Parser Robustness
+- [x] Harden declaration tokenization to split by `;` safely across strings/comments/function arguments.
+- [x] Make `!important` parsing case-insensitive and resilient to trailing whitespace.
+- [x] Keep shorthand/longhand expansion behavior stable under improved declaration tokenization.
+
+#### Workstream B — Media Query Correctness
+- [x] Extend media condition parsing to support OR semantics (`or` keyword + comma-separated query lists).
+- [x] Enforce media-condition filtering during cascade matching (rules apply only when viewport/media matches).
+- [x] Add media-gating tests at matching and compute-style integration levels.
+
+#### Workstream C — Cascade Matching Performance
+- [x] Add direct element selector matching API (`vex_dom::matches_selector`) to avoid full-tree scans.
+- [x] Replace `query_selector_all(...).contains(element)` matching path with direct selector checks in CSS cascade matching.
+- [x] Remove fragile hard-coded document-root assumptions from CSS declaration matching.
+
+#### Workstream D — Specificity & Selector Semantics Correctness
+- [x] Add canonical specificity extraction from parsed selector structures (`selectors` packed specificity decoding).
+- [x] Use parsed-selector specificity in cascade matching with heuristic fallback only for parse-failure cases.
+- [x] Add regression tests for modern functional selector specificity semantics (`:where`, `:is`).
+
+#### Workstream E — Quality Gates
+- [x] `cargo test -p vex-css` passes.
+- [x] `cargo clippy -p vex-css --all-targets -- -D warnings` passes.
+- [x] Cross-phase regression gates pass:
+  - `cargo test -p vex-net -p vex-html -p vex-dom -p vex-css`
+  - `cargo clippy -p vex-net -p vex-html -p vex-dom -p vex-css --all-targets -- -D warnings`
+
 ## Phase 4: Layout & Geometry
 Combine the DOM and CSSOM to figure out the exact physical location of every element on the screen.
 * **Crate:** `crates/vex-layout`

@@ -38,7 +38,9 @@ pub use forms::{FormElementKind, FormStateMap, InputState, InputType};
 pub use mutation_observer::{MutationObserver, MutationObserverSet, MutationRecord, MutationType};
 pub use node::{Attribute, ElementData, ElementState, Namespace, Node, NodeData};
 pub use observers::{IntersectionObserver, ResizeObserver};
-pub use selector_element::{query_selector, query_selector_all, VexElement};
+pub use selector_element::{
+	matches_selector, matches_selector_list, query_selector, query_selector_all, VexElement,
+};
 pub use selector_impl::VexSelectorImpl;
 pub use selection::{BoundaryPoint, Range, Selection, SelectionDirection};
 pub use range::{Range as DomRange, StaticRange, BoundaryPoint as RangeBoundary, RangeComparison};

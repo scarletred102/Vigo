@@ -7,7 +7,7 @@
 use selectors::attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstraint};
 use selectors::bloom::BloomFilter;
 use selectors::context::MatchingContext;
-use selectors::matching::{matches_selector_list, ElementSelectorFlags};
+use selectors::matching::{matches_selector_list as selectors_matches_selector_list, ElementSelectorFlags};
 use selectors::OpaqueElement;
 
 use crate::arena::NodeArena;
@@ -367,6 +367,45 @@ use selectors::context::{
     MatchingForInvalidation, MatchingMode, NeedsSelectorFlags, QuirksMode, SelectorCaches,
 };
 
+fn build_matching_context<'a>(
+    caches: &'a mut SelectorCaches,
+) -> MatchingContext<'a, VexSelectorImpl> {
+    MatchingContext::new(
+        MatchingMode::Normal,
+        None,
+        caches,
+        QuirksMode::NoQuirks,
+        NeedsSelectorFlags::No,
+        MatchingForInvalidation::No,
+    )
+}
+
+/// Check whether a specific element matches a pre-parsed selector list.
+pub fn matches_selector_list(
+    arena: &NodeArena,
+    element_id: VexId,
+    selectors: &selectors::parser::SelectorList<VexSelectorImpl>,
+) -> bool {
+    let Some(el) = VexElement::try_new(arena, element_id) else {
+        return false;
+    };
+
+    let mut caches = SelectorCaches::default();
+    let mut ctx = build_matching_context(&mut caches);
+    selectors_matches_selector_list(selectors, &el, &mut ctx)
+}
+
+/// Check whether a specific element matches a selector string.
+pub fn matches_selector(
+    arena: &NodeArena,
+    element_id: VexId,
+    selector_str: &str,
+) -> Result<bool, String> {
+    let selectors = crate::selector_impl::parse_selector(selector_str)
+        .map_err(|()| format!("invalid selector: {selector_str}"))?;
+    Ok(matches_selector_list(arena, element_id, &selectors))
+}
+
 /// Match all elements under `root` that match `selector_str`.
 pub fn query_selector_all(
     arena: &NodeArena,
@@ -389,15 +428,8 @@ pub fn query_selector_all(
 
         // Only match element nodes (skip root itself if it's Document).
         if let Some(el) = VexElement::try_new(arena, nid) {
-            let mut ctx = MatchingContext::new(
-                MatchingMode::Normal,
-                None,
-                &mut caches,
-                QuirksMode::NoQuirks,
-                NeedsSelectorFlags::No,
-                MatchingForInvalidation::No,
-            );
-            if matches_selector_list(&selectors, &el, &mut ctx) {
+            let mut ctx = build_matching_context(&mut caches);
+            if selectors_matches_selector_list(&selectors, &el, &mut ctx) {
                 results.push(nid);
             }
         }
@@ -424,15 +456,8 @@ pub fn query_selector(
         stack.extend(children);
 
         if let Some(el) = VexElement::try_new(arena, nid) {
-            let mut ctx = MatchingContext::new(
-                MatchingMode::Normal,
-                None,
-                &mut caches,
-                QuirksMode::NoQuirks,
-                NeedsSelectorFlags::No,
-                MatchingForInvalidation::No,
-            );
-            if matches_selector_list(&selectors, &el, &mut ctx) {
+            let mut ctx = build_matching_context(&mut caches);
+            if selectors_matches_selector_list(&selectors, &el, &mut ctx) {
                 return Ok(Some(nid));
             }
         }
@@ -516,6 +541,22 @@ mod tests {
         if let NodeData::Element(ref e) = arena.get(el).data {
             assert_eq!(e.tag_name, "div");
         }
+    }
+
+    #[test]
+    fn matches_selector_single_element() {
+        let (arena, doc) = build_simple_tree();
+        let p = query_selector(&arena, doc, "p.intro").unwrap().unwrap();
+        assert!(matches_selector(&arena, p, "p.intro").unwrap());
+        assert!(!matches_selector(&arena, p, "div").unwrap());
+    }
+
+    #[test]
+    fn matches_parsed_selector_list_single_element() {
+        let (arena, doc) = build_simple_tree();
+        let p = query_selector(&arena, doc, "p.intro").unwrap().unwrap();
+        let selectors = crate::selector_impl::parse_selector("p.intro").unwrap();
+        assert!(matches_selector_list(&arena, p, &selectors));
     }
 
     #[test]

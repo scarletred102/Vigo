@@ -47,6 +47,22 @@ pub fn parse_media_condition(input: &str) -> Option<MediaCondition> {
         return Some(MediaCondition::All);
     }
 
+    // Comma-separated media queries act as OR.
+    if input.contains(',') {
+        let parts: Vec<MediaCondition> = input
+            .split(',')
+            .map(str::trim)
+            .filter_map(parse_media_condition)
+            .collect();
+        if parts.is_empty() {
+            return None;
+        }
+        if parts.len() == 1 {
+            return parts.into_iter().next();
+        }
+        return Some(MediaCondition::Or(parts));
+    }
+
     if input == "screen" {
         return Some(MediaCondition::Screen);
     }
@@ -69,6 +85,18 @@ pub fn parse_media_condition(input: &str) -> Option<MediaCondition> {
             .collect();
         if conditions.len() > 1 {
             return Some(MediaCondition::And(conditions));
+        }
+    }
+
+    // Explicit "or" keyword.
+    if input.contains(" or ") {
+        let parts: Vec<MediaCondition> = input
+            .split(" or ")
+            .map(str::trim)
+            .filter_map(parse_media_condition)
+            .collect();
+        if parts.len() > 1 {
+            return Some(MediaCondition::Or(parts));
         }
     }
 
@@ -147,6 +175,18 @@ mod tests {
     #[test]
     fn parse_and() {
         let c = parse_media_condition("(min-width: 600px) and (max-width: 1200px)").unwrap();
+        assert!(evaluate_media(&c, VP));
+    }
+
+    #[test]
+    fn parse_or_keyword() {
+        let c = parse_media_condition("(max-width: 600px) or (min-width: 1000px)").unwrap();
+        assert!(evaluate_media(&c, VP));
+    }
+
+    #[test]
+    fn parse_comma_query_list() {
+        let c = parse_media_condition("print, (min-width: 900px)").unwrap();
         assert!(evaluate_media(&c, VP));
     }
 }

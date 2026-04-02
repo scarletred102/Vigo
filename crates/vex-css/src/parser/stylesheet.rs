@@ -177,7 +177,7 @@ fn parse_rule(css: &str, pos: &mut usize) -> Option<CssRule> {
 fn parse_declarations(text: &str) -> Vec<Declaration> {
     let mut declarations = Vec::new();
 
-    for decl_str in text.split(';') {
+    for decl_str in split_declaration_blocks(text) {
         let decl_str = decl_str.trim();
         if decl_str.is_empty() {
             continue;
@@ -186,13 +186,8 @@ fn parse_declarations(text: &str) -> Vec<Declaration> {
         // Split on first ':'
         if let Some(colon) = decl_str.find(':') {
             let name = decl_str[..colon].trim();
-            let mut value = decl_str[colon + 1..].trim();
-            let mut important = false;
-
-            if let Some(stripped) = value.strip_suffix("!important") {
-                value = stripped.trim();
-                important = true;
-            }
+            let value_raw = decl_str[colon + 1..].trim();
+            let (value, important) = split_important(value_raw);
 
             let props = parse_declaration(name, value);
             for property in props {
@@ -205,6 +200,107 @@ fn parse_declarations(text: &str) -> Vec<Declaration> {
     }
 
     declarations
+}
+
+/// Split declaration list by semicolons while honoring strings, comments,
+/// and parenthesis/bracket nesting.
+fn split_declaration_blocks(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+
+    let mut quote: Option<char> = None;
+    let mut escape = false;
+    let mut paren_depth: i32 = 0;
+    let mut bracket_depth: i32 = 0;
+
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0usize;
+
+    while i < chars.len() {
+        let ch = chars[i];
+
+        // Skip comments outside strings.
+        if quote.is_none() && ch == '/' && i + 1 < chars.len() && chars[i + 1] == '*' {
+            i += 2;
+            while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
+                i += 1;
+            }
+            if i + 1 < chars.len() {
+                i += 2;
+            }
+            continue;
+        }
+
+        if let Some(q) = quote {
+            current.push(ch);
+            if escape {
+                escape = false;
+            } else if ch == '\\' {
+                escape = true;
+            } else if ch == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => {
+                quote = Some(ch);
+                current.push(ch);
+            }
+            '(' => {
+                paren_depth += 1;
+                current.push(ch);
+            }
+            ')' => {
+                paren_depth = (paren_depth - 1).max(0);
+                current.push(ch);
+            }
+            '[' => {
+                bracket_depth += 1;
+                current.push(ch);
+            }
+            ']' => {
+                bracket_depth = (bracket_depth - 1).max(0);
+                current.push(ch);
+            }
+            ';' if paren_depth == 0 && bracket_depth == 0 => {
+                let seg = current.trim();
+                if !seg.is_empty() {
+                    out.push(seg.to_string());
+                }
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+
+        i += 1;
+    }
+
+    let tail = current.trim();
+    if !tail.is_empty() {
+        out.push(tail.to_string());
+    }
+
+    out
+}
+
+/// Split a declaration value into `(value, important)` where `important`
+/// indicates a trailing `!important` (ASCII case-insensitive).
+fn split_important(value_raw: &str) -> (&str, bool) {
+    let trimmed = value_raw.trim_end();
+    const IMPORTANT: &str = "!important";
+
+    if trimmed.len() >= IMPORTANT.len() {
+        let tail = &trimmed[trimmed.len() - IMPORTANT.len()..];
+        if tail.eq_ignore_ascii_case(IMPORTANT) {
+            let head = trimmed[..trimmed.len() - IMPORTANT.len()].trim_end();
+            return (head, true);
+        }
+    }
+
+    (trimmed, false)
 }
 
 /// Parse a `@keyframes name { ... }` rule.
@@ -403,6 +499,32 @@ mod tests {
         let ss = parse_stylesheet(".override { color: red !important; }");
         assert_eq!(ss.rules[0].declarations.len(), 1);
         assert!(ss.rules[0].declarations[0].important);
+    }
+
+    #[test]
+    fn parse_important_case_insensitive() {
+        let ss = parse_stylesheet(".override { color: red !IMPORTANT; }");
+        assert_eq!(ss.rules[0].declarations.len(), 1);
+        assert!(ss.rules[0].declarations[0].important);
+    }
+
+    #[test]
+    fn split_declarations_respects_functions_and_strings() {
+        let blocks = split_declaration_blocks(
+            "color: red; transform: translate(10px, 20px); font-family: \"A;B\";",
+        );
+        assert_eq!(blocks.len(), 3);
+        assert_eq!(blocks[0], "color: red");
+        assert_eq!(blocks[1], "transform: translate(10px, 20px)");
+        assert_eq!(blocks[2], "font-family: \"A;B\"");
+    }
+
+    #[test]
+    fn split_declarations_ignores_comments() {
+        let blocks = split_declaration_blocks("color:red; /*x;y*/ font-size: 12px;");
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0], "color:red");
+        assert_eq!(blocks[1], "font-size: 12px");
     }
 
     #[test]
