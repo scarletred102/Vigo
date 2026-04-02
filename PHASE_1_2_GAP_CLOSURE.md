@@ -11,7 +11,10 @@ This document tracks the additional hardening work implemented to close the prev
 ### Protocol / transport parity
 - [x] Added **HTTP/3 protocol-selection surface** (`http3.rs`) with explicit preference + validation gates.
 - [x] Added **Alt-Svc parsing/cache** (`alt_svc.rs`) and runtime request/response integration hooks.
-- [x] Added **proxy policy path** (`proxy.rs`) with env + no_proxy support and request integration headers.
+- [x] Added **proxy policy path** (`proxy.rs`) with env + no_proxy support.
+- [x] Added **PAC execution support** (`FindProxyForURL`) using Boa JS engine (`proxy.rs`).
+- [x] Added **real proxy transport execution path** via reqwest fallback (HTTP/HTTPS proxy execution, including CONNECT behavior for HTTPS).
+- [x] Added **HTTP/3-capable alternate transport path** (reqwest HTTP/3 prior-knowledge branch + Alt-Svc h3 upgrade routing).
 
 ### Cache maturity
 - [x] Added **persistent disk cache** (`disk_cache.rs`) with JSON index + body files.
@@ -29,6 +32,9 @@ This document tracks the additional hardening work implemented to close the prev
 - [x] Added **encrypted cookie persistence** via `vex-crypto`:
   - `CookieJar::export_encrypted`
   - `CookieJar::import_encrypted`
+- [x] Integrated encrypted cookie persistence into `HttpClient` lifecycle:
+  - auto-load encrypted cookie store on startup
+  - best-effort encrypted persistence after `Set-Cookie` updates
 
 ### Security/network policy
 - [x] Added **HSTS policy store + auto-upgrade** (`hsts.rs`) integrated into request flow.
@@ -42,6 +48,7 @@ This document tracks the additional hardening work implemented to close the prev
   - JSONL request records
   - stats snapshot file
 - [x] Integrated persistence writes in client record pipeline.
+- [x] Added **waterfall timeline export** (`build_waterfall`, `WaterfallEntry`) and persisted `network-waterfall.json` output for DevTools-style visualization.
 
 ---
 
@@ -63,6 +70,7 @@ This document tracks the additional hardening work implemented to close the prev
 ### DOM spec depth hardening
 - [x] Improved MutationObserver with **namespace-aware attribute notifications**.
 - [x] Improved IntersectionObserver with **custom root element bounds support**.
+- [x] Improved selector engine attribute matching with **qualified-name namespace awareness** (`xlink:`, `xml:`, `xmlns:` prefixes).
 - [x] Added additional browser-like document API helpers (`document_element`, `head`, `body`).
 
 ### Parser/sink robustness
@@ -79,7 +87,15 @@ This document tracks the additional hardening work implemented to close the prev
 
 ## Validation
 
+- [x] `cargo test -p vex-net`
+- [x] `cargo clippy -p vex-net --all-targets -- -D warnings`
 - [x] `cargo test -p vex-net -p vex-html -p vex-dom`
 - [x] `cargo clippy -p vex-net -p vex-html -p vex-dom --all-targets -- -D warnings`
 
 Both passing after this sprint.
+
+---
+
+## Notes
+
+- HTTP/3 routing currently uses reqwest’s unstable HTTP/3 path; repository-level `.cargo/config.toml` now sets `--cfg reqwest_unstable` to keep this buildable in this workspace.

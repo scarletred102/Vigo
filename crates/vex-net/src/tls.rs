@@ -6,9 +6,18 @@
 //! Uses `rustls` with Mozilla root certificates and ALPN for HTTP/2 negotiation.
 
 use std::sync::Arc;
+use std::sync::Once;
 
 use rustls::ClientConfig;
 use vex_core::VexResult;
+
+static RUSTLS_PROVIDER_INIT: Once = Once::new();
+
+fn ensure_rustls_provider() {
+    RUSTLS_PROVIDER_INIT.call_once(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
 
 /// Build a root store with Mozilla roots plus platform-native roots.
 fn build_root_store() -> rustls::RootCertStore {
@@ -40,6 +49,8 @@ fn build_root_store() -> rustls::RootCertStore {
 /// - TLS 1.3 (default for rustls 0.23+)
 /// - ALPN: `h2`, `http/1.1`
 pub fn tls_config() -> VexResult<Arc<ClientConfig>> {
+    ensure_rustls_provider();
+
     let root_store = build_root_store();
 
     let config = ClientConfig::builder()

@@ -68,6 +68,7 @@ zeroize = { version = "1", features = ["derive"] }
 hyper = { version = "1", features = ["client", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "tokio"] }
 hyper-rustls = { version = "0.27", features = ["http2"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "deflate", "brotli", "zstd", "socks", "blocking", "http3"] }
 rustls = "0.23"
 rustls-native-certs = "0.8"
 webpki-roots = "0.26"

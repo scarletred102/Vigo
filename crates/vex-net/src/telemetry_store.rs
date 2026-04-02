@@ -9,12 +9,13 @@ use std::path::{Path, PathBuf};
 
 use vex_core::{VexError, VexResult};
 
-use crate::telemetry::{NetworkRecord, NetworkStats};
+use crate::telemetry::{build_waterfall, NetworkRecord, NetworkStats};
 
 #[derive(Debug, Clone)]
 pub struct TelemetryStore {
     records_path: PathBuf,
     stats_path: PathBuf,
+    waterfall_path: PathBuf,
 }
 
 impl TelemetryStore {
@@ -26,6 +27,7 @@ impl TelemetryStore {
         Ok(Self {
             records_path: base_dir.join("network-records.jsonl"),
             stats_path: base_dir.join("network-stats.json"),
+            waterfall_path: base_dir.join("network-waterfall.json"),
         })
     }
 
@@ -50,12 +52,24 @@ impl TelemetryStore {
             .map_err(|e| VexError::Storage(format!("write telemetry stats failed: {e}")))
     }
 
+    pub fn write_waterfall(&self, records: &[NetworkRecord]) -> VexResult<()> {
+        let waterfall = build_waterfall(records);
+        let bytes = serde_json::to_vec_pretty(&waterfall)
+            .map_err(|e| VexError::Storage(format!("serialize waterfall failed: {e}")))?;
+        fs::write(&self.waterfall_path, bytes)
+            .map_err(|e| VexError::Storage(format!("write waterfall failed: {e}")))
+    }
+
     pub fn records_path(&self) -> &Path {
         &self.records_path
     }
 
     pub fn stats_path(&self) -> &Path {
         &self.stats_path
+    }
+
+    pub fn waterfall_path(&self) -> &Path {
+        &self.waterfall_path
     }
 }
 
@@ -93,9 +107,13 @@ mod tests {
         store
             .write_stats(&NetworkStats::default())
             .expect("write stats");
+        store
+            .write_waterfall(std::slice::from_ref(&record))
+            .expect("write waterfall");
 
         assert!(store.records_path().exists());
         assert!(store.stats_path().exists());
+        assert!(store.waterfall_path().exists());
 
         let _ = fs::remove_dir_all(&temp);
     }

@@ -99,6 +99,23 @@ fn lang_matches(actual: &str, expected: &str) -> bool {
     false
 }
 
+fn split_attr_name(name: &str) -> (Option<&str>, &str) {
+    if let Some((prefix, local)) = name.split_once(':') {
+        (Some(prefix), local)
+    } else {
+        (None, name)
+    }
+}
+
+fn attribute_namespace_uri(prefix: Option<&str>) -> &'static str {
+    match prefix {
+        Some("xlink") => "http://www.w3.org/1999/xlink",
+        Some("xml") => "http://www.w3.org/XML/1998/namespace",
+        Some("xmlns") => "http://www.w3.org/2000/xmlns/",
+        _ => "",
+    }
+}
+
 // ── selectors::Element ──────────────────────────────────────────────
 
 impl<'a> selectors::Element for VexElement<'a> {
@@ -213,19 +230,21 @@ impl<'a> selectors::Element for VexElement<'a> {
     ) -> bool {
         let el = self.elem_data();
         el.attributes.iter().any(|attr| {
-            // Check attribute name.
-            if attr.name != local_name.0 {
+            let (prefix, local) = split_attr_name(&attr.name);
+            if local != local_name.0 {
                 return false;
             }
-            // Namespace constraint (simplified: attributes are unnamespaced).
+
+            let attr_ns = attribute_namespace_uri(prefix);
             match ns {
                 NamespaceConstraint::Any => {}
                 NamespaceConstraint::Specific(url) => {
-                    if !url.0.is_empty() {
-                        return false; // We don't store attribute namespaces.
+                    if attr_ns != url.0 {
+                        return false;
                     }
                 }
             }
+
             operation.eval_str(&attr.value)
         })
     }
@@ -552,6 +571,21 @@ mod tests {
     fn query_invalid_selector_returns_err() {
         let (arena, doc) = build_simple_tree();
         assert!(query_selector_all(&arena, doc, "!!!").is_err());
+    }
+
+    #[test]
+    fn split_attribute_name_handles_prefix() {
+        assert_eq!(split_attr_name("href"), (None, "href"));
+        assert_eq!(split_attr_name("xlink:href"), (Some("xlink"), "href"));
+    }
+
+    #[test]
+    fn attribute_namespace_mapping_known_prefixes() {
+        assert_eq!(
+            attribute_namespace_uri(Some("xlink")),
+            "http://www.w3.org/1999/xlink"
+        );
+        assert_eq!(attribute_namespace_uri(None), "");
     }
 
     // ── Pseudo-class matching tests ─────────────────────────────────

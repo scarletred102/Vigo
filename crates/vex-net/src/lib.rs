@@ -37,7 +37,9 @@ pub use alt_svc::{AltSvcCache, AltSvcEntry};
 pub use http3::{Http3Config, HttpVersionPreference};
 pub use proxy::ProxyConfig;
 pub use security_policy::TransportSecurityPolicy;
-pub use telemetry::{CacheOutcome, NetworkRecord, NetworkStats, NetworkTimings};
+pub use telemetry::{
+	build_waterfall, CacheOutcome, NetworkRecord, NetworkStats, NetworkTimings, WaterfallEntry,
+};
 pub use telemetry_store::TelemetryStore;
 pub use types::{Method, Request, Response};
 pub use websocket::{CloseFrame, ReadyState, WebSocket, WsConfig, WsError, WsMessage};

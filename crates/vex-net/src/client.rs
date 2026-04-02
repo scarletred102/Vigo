@@ -4,6 +4,7 @@
 //! HTTP client with TLS 1.3, connection pooling, redirect following, and decompression.
 
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -17,6 +18,7 @@ use http_body_util::{BodyExt, Full};
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
+use reqwest::Method as ReqwestMethod;
 use tracing::{debug, warn};
 use vex_core::{VexError, VexResult, VexUrl};
 
@@ -28,7 +30,7 @@ use crate::dns::{DnsMode, DnsResolver, HyperDnsResolver};
 use crate::hsts::HstsStore;
 use crate::alt_svc::AltSvcCache;
 use crate::http3::{validate_http3_attempt, Http3Config, HttpVersionPreference};
-use crate::proxy::ProxyConfig;
+use crate::proxy::{ProxyConfig, ProxyDirective};
 use crate::security_policy::TransportSecurityPolicy;
 use crate::telemetry::{CacheOutcome, NetworkRecord, NetworkStats, NetworkTimings};
 use crate::telemetry_store::TelemetryStore;
@@ -71,6 +73,8 @@ pub struct ClientConfig {
     pub telemetry_dir: Option<PathBuf>,
     pub disk_cache_dir: Option<PathBuf>,
     pub disk_cache_max_bytes: u64,
+    pub cookie_store_path: Option<PathBuf>,
+    pub cookie_store_password: Option<Vec<u8>>,
     pub strict_transport_evidence: bool,
     pub dns_mode: DnsMode,
 }
@@ -95,10 +99,18 @@ impl Default for ClientConfig {
             telemetry_dir: None,
             disk_cache_dir: None,
             disk_cache_max_bytes: DEFAULT_DISK_CACHE_MAX_BYTES,
+            cookie_store_path: None,
+            cookie_store_password: None,
             strict_transport_evidence: false,
             dns_mode: DnsMode::System,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct CookieStorePersistence {
+    path: PathBuf,
+    password: Vec<u8>,
 }
 
 /// The main HTTP client.
@@ -121,6 +133,7 @@ pub struct HttpClient {
     disk_cache: Option<Mutex<DiskCache>>,
     revalidation_jobs: Mutex<Vec<(VexUrl, HashMap<String, String>)>>,
     transport_security: Mutex<TransportSecurityPolicy>,
+    cookie_persistence: Option<CookieStorePersistence>,
 }
 
 impl HttpClient {
@@ -132,6 +145,24 @@ impl HttpClient {
     /// Create a new HTTP client with custom configuration.
     pub fn with_config(config: ClientConfig) -> VexResult<Self> {
         validate_http3_attempt(&config.http3, config.http_version_preference)?;
+
+        let cookies = CookieJar::new();
+        let cookie_persistence =
+            match (&config.cookie_store_path, &config.cookie_store_password) {
+                (Some(path), Some(password)) => Some(CookieStorePersistence {
+                    path: path.clone(),
+                    password: password.clone(),
+                }),
+                _ => None,
+            };
+
+        if let Some(persistence) = cookie_persistence.as_ref() {
+            if persistence.path.exists() {
+                if let Ok(bytes) = fs::read(&persistence.path) {
+                    let _ = cookies.import_encrypted(&persistence.password, &bytes);
+                }
+            }
+        }
 
         let tls = tls::tls_config()?;
         let dns_resolver = DnsResolver::new(config.dns_mode.clone())?;
@@ -172,7 +203,7 @@ impl HttpClient {
         Ok(Self {
             inner,
             config,
-            cookies: CookieJar::new(),
+            cookies,
             cache: Mutex::new(HttpCache::new()),
             request_counter: AtomicU64::new(0),
             network_records: Mutex::new(Vec::new()),
@@ -183,6 +214,7 @@ impl HttpClient {
             disk_cache,
             revalidation_jobs: Mutex::new(Vec::new()),
             transport_security: Mutex::new(TransportSecurityPolicy::new()),
+            cookie_persistence,
         })
     }
 
@@ -250,6 +282,20 @@ impl HttpClient {
         }
 
         count
+    }
+
+    fn persist_cookies_best_effort(&self) {
+        let Some(persistence) = self.cookie_persistence.as_ref() else {
+            return;
+        };
+
+        if let Some(parent) = persistence.path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        if let Ok(blob) = self.cookies.export_encrypted(&persistence.password) {
+            let _ = fs::write(&persistence.path, blob);
+        }
     }
 
     /// Fetch a URL, returning the response.
@@ -353,12 +399,6 @@ impl HttpClient {
         let mut current_headers = request.headers.clone();
         if let Some(site) = self.config.top_level_site.as_deref() {
             current_headers.insert(INTERNAL_PARTITION_HEADER.to_string(), site.to_string());
-        }
-
-        if let Some(proxy_url) = self.config.proxy.proxy_for(&current_url) {
-            current_headers
-                .entry("x-vigo-proxy".to_string())
-                .or_insert_with(|| proxy_url.to_string());
         }
 
         let mut current_body = request.body.clone();
@@ -488,6 +528,33 @@ impl HttpClient {
     ) -> VexResult<Response> {
         let started = Instant::now();
         let dns_ms: Option<u64> = None;
+
+        let proxy_directive = self.config.proxy.resolve_proxy(url);
+        let alt_svc_prefers_h3 = self.config.enable_alt_svc
+            && self
+                .alt_svc_cache
+                .lock()
+                .ok()
+                .and_then(|cache| cache.preferred(url, "h3").cloned())
+                .is_some();
+
+        let use_http3 = matches!(self.config.http_version_preference, HttpVersionPreference::Http3)
+            || (self.config.http3.alt_svc_upgrade && alt_svc_prefers_h3);
+        let use_reqwest_transport = should_use_reqwest_transport(&proxy_directive, use_http3);
+
+        if use_reqwest_transport {
+            return self
+                .do_fetch_via_reqwest(
+                    request_id,
+                    url,
+                    method,
+                    extra_headers,
+                    body,
+                    proxy_directive,
+                    use_http3,
+                )
+                .await;
+        }
 
         let requested_range = if method == Method::Get {
             parse_request_range(extra_headers)
@@ -807,6 +874,7 @@ impl HttpClient {
                     .insert_with_context(url, v, self.config.top_level_site.as_deref());
             }
         }
+        self.persist_cookies_best_effort();
 
         // Read body
         let body_started = Instant::now();
@@ -948,12 +1016,284 @@ impl HttpClient {
             if let Ok(store) = store.lock() {
                 let _ = store.append_record(&record);
                 let _ = store.write_stats(&self.network_stats());
+                let _ = store.write_waterfall(&self.network_records());
             }
         }
 
         if let Ok(mut records) = self.network_records.lock() {
             records.push(record);
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn do_fetch_via_reqwest(
+        &self,
+        request_id: u64,
+        url: &VexUrl,
+        method: Method,
+        extra_headers: &HashMap<String, String>,
+        body: &Option<Vec<u8>>,
+        proxy_directive: ProxyDirective,
+        use_http3: bool,
+    ) -> VexResult<Response> {
+        let started = Instant::now();
+        let dns_ms = None;
+
+        // Keep cache behavior consistent by delegating to normal cache checks before wire call.
+        if method == Method::Get {
+            if let Ok(cache) = self.cache.lock() {
+                if let Some(cached) = cache.get(url, extra_headers) {
+                    if cached.is_fresh() {
+                        self.push_network_record(NetworkRecord {
+                            request_id,
+                            method: method_name(method).to_string(),
+                            url: url.to_string(),
+                            status: Some(cached.status),
+                            cache_outcome: CacheOutcome::FreshHit,
+                            was_cached: true,
+                            timings: NetworkTimings {
+                                dns_ms,
+                                ttfb_ms: None,
+                                body_read_ms: None,
+                                total_ms: millis(started.elapsed()),
+                            },
+                            error: None,
+                        });
+                        return Ok(cached_to_response(url, cached));
+                    }
+                }
+            }
+        }
+
+        let mut builder = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(self.config.connect_timeout_secs));
+
+        if use_http3 {
+            builder = builder.http3_prior_knowledge();
+        }
+
+        if let ProxyDirective::Proxy(proxy_url) = proxy_directive {
+            let proxy = reqwest::Proxy::all(proxy_url.as_str())
+                .map_err(|e| VexError::Network(format!("invalid proxy config: {e}")))?;
+            builder = builder.proxy(proxy);
+        }
+
+        let client = builder
+            .build()
+            .map_err(|e| VexError::Network(format!("reqwest client build failed: {e}")))?;
+
+        let request_method = method;
+        let req_method = reqwest_method(request_method);
+        let mut req = client.request(req_method, url.inner().as_str());
+
+        req = req
+            .header("user-agent", &self.config.user_agent)
+            .header("accept", "*/*")
+            .header("accept-encoding", "gzip, deflate, br, zstd");
+
+        for (k, v) in extra_headers {
+            // Internal partition header should not be sent over the network.
+            if k.eq_ignore_ascii_case(INTERNAL_PARTITION_HEADER) {
+                continue;
+            }
+            req = req.header(k, v);
+        }
+
+        if let Some(cookie_header) = self.cookies.get_cookies_filtered_with_context(
+            url,
+            crate::cookies::CookieAccess::HttpRequest,
+            crate::cookies::NavigationKind::SameSite,
+            self.config.top_level_site.as_deref(),
+        ) {
+            req = req.header("cookie", cookie_header);
+        }
+
+        if let Some(ref b) = body {
+            req = req.body(b.clone());
+        }
+
+        if use_http3 {
+            req = req.version(reqwest::Version::HTTP_3);
+        }
+
+        let ttfb_started = Instant::now();
+        let resp = match tokio::time::timeout(
+            Duration::from_secs(self.config.first_byte_timeout_secs),
+            req.send(),
+        )
+        .await
+        {
+            Ok(Ok(resp)) => resp,
+            Ok(Err(e)) => {
+                let msg = format!("request via proxy/alt transport failed: {e}");
+                self.push_network_record(NetworkRecord {
+                    request_id,
+                    method: method_name(request_method).to_string(),
+                    url: url.to_string(),
+                    status: None,
+                    cache_outcome: CacheOutcome::Miss,
+                    was_cached: false,
+                    timings: NetworkTimings {
+                        dns_ms,
+                        ttfb_ms: Some(millis(ttfb_started.elapsed())),
+                        body_read_ms: None,
+                        total_ms: millis(started.elapsed()),
+                    },
+                    error: Some(msg.clone()),
+                });
+                return Err(VexError::Network(msg));
+            }
+            Err(_) => {
+                let msg = format!(
+                    "request timed out waiting for first byte after {}s",
+                    self.config.first_byte_timeout_secs
+                );
+                self.push_network_record(NetworkRecord {
+                    request_id,
+                    method: method_name(request_method).to_string(),
+                    url: url.to_string(),
+                    status: None,
+                    cache_outcome: CacheOutcome::Miss,
+                    was_cached: false,
+                    timings: NetworkTimings {
+                        dns_ms,
+                        ttfb_ms: Some(millis(ttfb_started.elapsed())),
+                        body_read_ms: None,
+                        total_ms: millis(started.elapsed()),
+                    },
+                    error: Some(msg.clone()),
+                });
+                return Err(VexError::Network(msg));
+            }
+        };
+        let ttfb_ms = Some(millis(ttfb_started.elapsed()));
+
+        let status = resp.status().as_u16();
+        let mut headers = HashMap::new();
+        for (k, v) in resp.headers() {
+            if let Ok(v) = v.to_str() {
+                headers.insert(k.to_string(), v.to_string());
+            }
+        }
+
+        for value in resp.headers().get_all("set-cookie") {
+            if let Ok(v) = value.to_str() {
+                self.cookies
+                    .insert_with_context(url, v, self.config.top_level_site.as_deref());
+            }
+        }
+        self.persist_cookies_best_effort();
+
+        if self.config.enable_hsts {
+            if let Ok(mut hsts) = self.hsts_store.lock() {
+                hsts.observe_response(url, &headers);
+            }
+        }
+        if let Ok(mut sec) = self.transport_security.lock() {
+            sec.observe_response(url, &headers);
+        }
+        if self.config.enable_alt_svc {
+            if let Ok(mut alt) = self.alt_svc_cache.lock() {
+                alt.observe_response(url, &headers);
+            }
+        }
+
+        let body_started = Instant::now();
+        let raw_body = match tokio::time::timeout(
+            Duration::from_secs(self.config.body_timeout_secs),
+            resp.bytes(),
+        )
+        .await
+        {
+            Ok(Ok(bytes)) => bytes.to_vec(),
+            Ok(Err(e)) => {
+                let msg = format!("failed to read body: {e}");
+                self.push_network_record(NetworkRecord {
+                    request_id,
+                    method: method_name(request_method).to_string(),
+                    url: url.to_string(),
+                    status: Some(status),
+                    cache_outcome: CacheOutcome::Miss,
+                    was_cached: false,
+                    timings: NetworkTimings {
+                        dns_ms,
+                        ttfb_ms,
+                        body_read_ms: Some(millis(body_started.elapsed())),
+                        total_ms: millis(started.elapsed()),
+                    },
+                    error: Some(msg.clone()),
+                });
+                return Err(VexError::Network(msg));
+            }
+            Err(_) => {
+                let msg = format!(
+                    "request body read timed out after {}s",
+                    self.config.body_timeout_secs
+                );
+                self.push_network_record(NetworkRecord {
+                    request_id,
+                    method: method_name(request_method).to_string(),
+                    url: url.to_string(),
+                    status: Some(status),
+                    cache_outcome: CacheOutcome::Miss,
+                    was_cached: false,
+                    timings: NetworkTimings {
+                        dns_ms,
+                        ttfb_ms,
+                        body_read_ms: Some(millis(body_started.elapsed())),
+                        total_ms: millis(started.elapsed()),
+                    },
+                    error: Some(msg.clone()),
+                });
+                return Err(VexError::Network(msg));
+            }
+        };
+        let body_read_ms = Some(millis(body_started.elapsed()));
+
+        let encoding = headers
+            .get("content-encoding")
+            .map(|s| s.as_str())
+            .unwrap_or("");
+        let body = if encoding.is_empty() || encoding == "identity" {
+            raw_body
+        } else {
+            decompress::decompress(encoding, &raw_body).unwrap_or(raw_body)
+        };
+
+        if request_method == Method::Get {
+            if let Ok(mut cache) = self.cache.lock() {
+                cache.store(url, extra_headers, status, &headers, &body);
+            }
+            if let Some(disk_cache) = self.disk_cache.as_ref() {
+                if let Ok(mut disk_cache) = disk_cache.lock() {
+                    let _ = disk_cache.store(url, extra_headers, status, &headers, &body);
+                }
+            }
+        }
+
+        self.push_network_record(NetworkRecord {
+            request_id,
+            method: method_name(request_method).to_string(),
+            url: url.to_string(),
+            status: Some(status),
+            cache_outcome: CacheOutcome::Miss,
+            was_cached: false,
+            timings: NetworkTimings {
+                dns_ms,
+                ttfb_ms,
+                body_read_ms,
+                total_ms: millis(started.elapsed()),
+            },
+            error: None,
+        });
+
+        Ok(Response {
+            status,
+            headers,
+            body,
+            url: url.clone(),
+            was_cached: false,
+        })
     }
 }
 
@@ -998,6 +1338,17 @@ fn method_name(method: Method) -> &'static str {
         Method::Delete => "DELETE",
         Method::Head => "HEAD",
         Method::Options => "OPTIONS",
+    }
+}
+
+fn reqwest_method(method: Method) -> ReqwestMethod {
+    match method {
+        Method::Get => ReqwestMethod::GET,
+        Method::Post => ReqwestMethod::POST,
+        Method::Put => ReqwestMethod::PUT,
+        Method::Delete => ReqwestMethod::DELETE,
+        Method::Head => ReqwestMethod::HEAD,
+        Method::Options => ReqwestMethod::OPTIONS,
     }
 }
 
@@ -1078,9 +1429,14 @@ fn is_https_downgrade(from: &VexUrl, to: &VexUrl) -> bool {
     from.is_https() && to.scheme() == "http"
 }
 
+fn should_use_reqwest_transport(proxy_directive: &ProxyDirective, use_http3: bool) -> bool {
+    !matches!(proxy_directive, ProxyDirective::Direct) || use_http3
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn default_config_uses_system_dns() {
@@ -1213,5 +1569,41 @@ mod tests {
         let cfg = ClientConfig::default();
         assert!(cfg.enable_hsts);
         assert!(cfg.enable_alt_svc);
+    }
+
+    #[test]
+    fn reqwest_transport_selected_for_proxy_or_http3() {
+        assert!(should_use_reqwest_transport(
+            &ProxyDirective::Proxy("http://proxy.local:8080".to_string()),
+            false
+        ));
+        assert!(should_use_reqwest_transport(&ProxyDirective::Direct, true));
+        assert!(!should_use_reqwest_transport(&ProxyDirective::Direct, false));
+    }
+
+    #[test]
+    fn client_loads_encrypted_cookie_store() {
+        let path = std::env::temp_dir().join(format!(
+            "vigo-cookie-store-{}.bin",
+            std::process::id()
+        ));
+
+        let seed_jar = CookieJar::new();
+        let url = VexUrl::parse("https://example.com/").unwrap();
+        seed_jar.insert(&url, "sid=abc; Path=/; Secure");
+        let blob = seed_jar.export_encrypted(b"pw").expect("export encrypted");
+        fs::write(&path, blob).expect("write store");
+
+        let cfg = ClientConfig {
+            cookie_store_path: Some(path.clone()),
+            cookie_store_password: Some(b"pw".to_vec()),
+            ..ClientConfig::default()
+        };
+        let client = HttpClient::with_config(cfg).expect("client with cookie store");
+
+        let cookies = client.cookie_jar().get_cookies(&url).unwrap_or_default();
+        assert!(cookies.contains("sid=abc"));
+
+        let _ = fs::remove_file(path);
     }
 }
