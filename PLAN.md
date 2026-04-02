@@ -67,6 +67,37 @@ Once we fetch the raw bytes, we need to convert them into a structured tree of n
   - Handle malformed HTML (tag balancing algorithms).
   - Run the lightweight preload scanner to fetch assets early via `vex-net`.
 
+### Phase 2.5: Production Hardening Track (Parser + DOM Quality)
+We treat Phase 2 as production infrastructure, not parser demos.
+
+* **Goal:** Robust, streaming-safe parsing and DOM APIs suitable for real browsing workloads.
+* **Scope:** `crates/vex-html`, `crates/vex-dom`.
+* **Status:** ✅ Completed (2026-04-02)
+
+#### Workstream A — Decoding & Streaming Robustness
+- [x] Add byte-oriented parser API with BOM-aware UTF-8/UTF-16 decoding (`parse_html_bytes`).
+- [x] Make incremental parser UTF-8 boundary-safe across chunk splits.
+- [x] Ensure invalid byte sequences are handled safely via replacement, not panics.
+
+#### Workstream B — Preload Discovery
+- [x] Add lightweight preload candidate extraction for scripts, styles, modulepreload, preload/prefetch links, and images.
+- [x] Add deterministic candidate priority ordering and deduplication.
+- [x] Support case-insensitive multi-token `rel` parsing.
+
+#### Workstream C — Parser/Sink Resilience
+- [x] Replace panic-prone sink paths with graceful fallbacks where possible.
+- [x] Preserve malformed-HTML tolerance while avoiding internal hard crashes.
+
+#### Workstream D — DOM API Ergonomics
+- [x] Add browser-like document helpers (`document_element`, `head`, `body`).
+- [x] Keep query/serialize/event APIs lint-clean under strict clippy.
+
+#### Workstream E — Coverage & Quality Gates
+- [x] Increase deep nesting parsing coverage (100-level nesting test).
+- [x] Add integration assertions for byte parser API.
+- [x] `cargo test -p vex-dom -p vex-html` passes.
+- [x] `cargo clippy -p vex-dom -p vex-html --all-targets -- -D warnings` passes.
+
 ## Phase 3: The CSS Engine
 While building the DOM, we parse stylesheets to determine how elements look.
 * **Crate:** `crates/vex-css`

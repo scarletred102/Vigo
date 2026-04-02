@@ -5,7 +5,7 @@
 
 use vex_dom::node::NodeData;
 use vex_dom::serialize;
-use vex_html::{parse_html, parse_html_fragment};
+use vex_html::{parse_html, parse_html_bytes, parse_html_fragment};
 
 // ── Basic document structure ─────────────────────────────────────────
 
@@ -211,15 +211,24 @@ fn fragment_parsing() {
 
 #[test]
 fn deeply_nested() {
-    // 50 levels of nesting
-    let open: String = (0..50).map(|_| "<div>").collect();
+    // 100 levels of nesting
+    let open: String = (0..100).map(|_| "<div>").collect();
     let text = "leaf";
-    let close: String = (0..50).map(|_| "</div>").collect();
+    let close: String = (0..100).map(|_| "</div>").collect();
     let html = format!("{}{}{}", open, text, close);
 
     let doc = parse_html(&html);
     let divs = doc.get_elements_by_tag_name("div");
-    assert_eq!(divs.len(), 50);
+    assert_eq!(divs.len(), 100);
     // The innermost div has the text
-    assert_eq!(doc.text_content(divs[49]), "leaf");
+    assert_eq!(doc.text_content(divs[99]), "leaf");
+}
+
+#[test]
+fn parse_html_bytes_integration() {
+    let bytes = b"\xEF\xBB\xBF<html><body><h1>Byte API</h1></body></html>";
+    let doc = parse_html_bytes(bytes);
+    let h1 = doc.get_elements_by_tag_name("h1");
+    assert_eq!(h1.len(), 1);
+    assert_eq!(doc.text_content(h1[0]), "Byte API");
 }

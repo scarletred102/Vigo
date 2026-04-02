@@ -123,14 +123,31 @@ impl TreeSink for VexSink {
     }
 
     fn elem_name<'a>(&'a self, target: &'a VexId) -> VexElemName {
-        let names = self.names.borrow();
-        let qn = match names.get(&target.index()) {
-            Some(qn) => qn,
-            None => panic!("elem_name called on a node without a recorded QualName"),
-        };
+        if let Some(qn) = self.names.borrow().get(&target.index()) {
+            return VexElemName {
+                local: qn.local.clone(),
+                ns: qn.ns.clone(),
+            };
+        }
+
+        // Fallback path: reconstruct from DOM node data if possible.
+        let doc = self.doc.borrow();
+        if let NodeData::Element(ref el) = doc.arena().get(*target).data {
+            let ns = match el.namespace {
+                Namespace::Html => ns!(html),
+                Namespace::Svg => ns!(svg),
+                Namespace::MathMl => ns!(mathml),
+            };
+            return VexElemName {
+                local: LocalName::from(el.tag_name.as_str()),
+                ns,
+            };
+        }
+
+        // Final fallback: harmless HTML div identifier.
         VexElemName {
-            local: qn.local.clone(),
-            ns: qn.ns.clone(),
+            local: LocalName::from("div"),
+            ns: ns!(html),
         }
     }
 
@@ -215,15 +232,21 @@ impl TreeSink for VexSink {
     }
 
     fn get_template_contents(&self, target: &VexId) -> VexId {
-        let doc = self.doc.borrow();
+        let mut doc = self.doc.borrow_mut();
         if let NodeData::Element(ref el) = doc.arena().get(*target).data {
-            match el.template_contents {
-                Some(contents) => contents,
-                None => panic!("get_template_contents on non-template element"),
+            if let Some(contents) = el.template_contents {
+                return contents;
             }
-        } else {
-            panic!("get_template_contents called on a non-element node");
+
+            let frag = doc.arena_mut().alloc(NodeData::Document);
+            if let NodeData::Element(ref mut el2) = doc.arena_mut().get_mut(*target).data {
+                el2.template_contents = Some(frag);
+            }
+            return frag;
         }
+
+        // Graceful fallback for malformed/internal misuse.
+        doc.root()
     }
 
     fn same_node(&self, x: &VexId, y: &VexId) -> bool {
@@ -236,10 +259,7 @@ impl TreeSink for VexSink {
 
     fn append_before_sibling(&self, sibling: &VexId, new_node: NodeOrText<VexId>) {
         let mut doc = self.doc.borrow_mut();
-        let parent = match doc.arena().get(*sibling).parent {
-            Some(parent) => parent,
-            None => panic!("append_before_sibling: sibling has no parent"),
-        };
+        let parent = doc.arena().get(*sibling).parent.unwrap_or_else(|| doc.root());
 
         match new_node {
             NodeOrText::AppendNode(id) => {

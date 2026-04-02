@@ -4,6 +4,7 @@
 //! HTTP client with TLS 1.3, connection pooling, redirect following, and decompression.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -19,11 +20,18 @@ use hyper_util::rt::TokioExecutor;
 use tracing::{debug, warn};
 use vex_core::{VexError, VexResult, VexUrl};
 
-use crate::cache::HttpCache;
+use crate::cache::{HttpCache, INTERNAL_PARTITION_HEADER};
 use crate::cookies::CookieJar;
 use crate::decompress;
+use crate::disk_cache::{DiskCache, DiskCacheConfig};
 use crate::dns::{DnsMode, DnsResolver, HyperDnsResolver};
+use crate::hsts::HstsStore;
+use crate::alt_svc::AltSvcCache;
+use crate::http3::{validate_http3_attempt, Http3Config, HttpVersionPreference};
+use crate::proxy::ProxyConfig;
+use crate::security_policy::TransportSecurityPolicy;
 use crate::telemetry::{CacheOutcome, NetworkRecord, NetworkStats, NetworkTimings};
+use crate::telemetry_store::TelemetryStore;
 use crate::tls;
 use crate::types::{Method, Request, Response};
 
@@ -40,6 +48,8 @@ const DEFAULT_BODY_TIMEOUT_SECS: u64 = 30;
 const DEFAULT_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
 /// Default max idle connections per host.
 const DEFAULT_POOL_MAX_IDLE_PER_HOST: usize = 32;
+/// Default max persistent disk cache size.
+const DEFAULT_DISK_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Configuration for building an `HttpClient`.
 #[derive(Debug, Clone)]
@@ -52,6 +62,16 @@ pub struct ClientConfig {
     pub body_timeout_secs: u64,
     pub pool_idle_timeout_secs: u64,
     pub pool_max_idle_per_host: usize,
+    pub top_level_site: Option<String>,
+    pub proxy: ProxyConfig,
+    pub enable_hsts: bool,
+    pub enable_alt_svc: bool,
+    pub http_version_preference: HttpVersionPreference,
+    pub http3: Http3Config,
+    pub telemetry_dir: Option<PathBuf>,
+    pub disk_cache_dir: Option<PathBuf>,
+    pub disk_cache_max_bytes: u64,
+    pub strict_transport_evidence: bool,
     pub dns_mode: DnsMode,
 }
 
@@ -66,6 +86,16 @@ impl Default for ClientConfig {
             body_timeout_secs: DEFAULT_BODY_TIMEOUT_SECS,
             pool_idle_timeout_secs: DEFAULT_POOL_IDLE_TIMEOUT_SECS,
             pool_max_idle_per_host: DEFAULT_POOL_MAX_IDLE_PER_HOST,
+            top_level_site: None,
+            proxy: ProxyConfig::from_env(),
+            enable_hsts: true,
+            enable_alt_svc: true,
+            http_version_preference: HttpVersionPreference::Auto,
+            http3: Http3Config::default(),
+            telemetry_dir: None,
+            disk_cache_dir: None,
+            disk_cache_max_bytes: DEFAULT_DISK_CACHE_MAX_BYTES,
+            strict_transport_evidence: false,
             dns_mode: DnsMode::System,
         }
     }
@@ -85,6 +115,12 @@ pub struct HttpClient {
     request_counter: AtomicU64,
     network_records: Mutex<Vec<NetworkRecord>>,
     network_stats: Mutex<NetworkStats>,
+    hsts_store: Mutex<HstsStore>,
+    alt_svc_cache: Mutex<AltSvcCache>,
+    telemetry_store: Option<Mutex<TelemetryStore>>,
+    disk_cache: Option<Mutex<DiskCache>>,
+    revalidation_jobs: Mutex<Vec<(VexUrl, HashMap<String, String>)>>,
+    transport_security: Mutex<TransportSecurityPolicy>,
 }
 
 impl HttpClient {
@@ -95,6 +131,8 @@ impl HttpClient {
 
     /// Create a new HTTP client with custom configuration.
     pub fn with_config(config: ClientConfig) -> VexResult<Self> {
+        validate_http3_attempt(&config.http3, config.http_version_preference)?;
+
         let tls = tls::tls_config()?;
         let dns_resolver = DnsResolver::new(config.dns_mode.clone())?;
         let hyper_dns = HyperDnsResolver::new(dns_resolver);
@@ -118,6 +156,19 @@ impl HttpClient {
         client_builder.pool_max_idle_per_host(config.pool_max_idle_per_host);
         let inner = client_builder.build(https);
 
+        let telemetry_store = match config.telemetry_dir.as_ref() {
+            Some(dir) => Some(Mutex::new(TelemetryStore::new(dir)?)),
+            None => None,
+        };
+
+        let disk_cache = match config.disk_cache_dir.as_ref() {
+            Some(dir) => Some(Mutex::new(DiskCache::new(DiskCacheConfig {
+                dir: dir.clone(),
+                max_bytes: config.disk_cache_max_bytes,
+            })?)),
+            None => None,
+        };
+
         Ok(Self {
             inner,
             config,
@@ -126,6 +177,12 @@ impl HttpClient {
             request_counter: AtomicU64::new(0),
             network_records: Mutex::new(Vec::new()),
             network_stats: Mutex::new(NetworkStats::default()),
+            hsts_store: Mutex::new(HstsStore::new()),
+            alt_svc_cache: Mutex::new(AltSvcCache::new()),
+            telemetry_store,
+            disk_cache,
+            revalidation_jobs: Mutex::new(Vec::new()),
+            transport_security: Mutex::new(TransportSecurityPolicy::new()),
         })
     }
 
@@ -170,6 +227,29 @@ impl HttpClient {
             .lock()
             .map(|stats| stats.clone())
             .unwrap_or_default()
+    }
+
+    /// Drain pending stale-while-revalidate jobs.
+    pub fn take_revalidation_jobs(&self) -> Vec<(VexUrl, HashMap<String, String>)> {
+        self.revalidation_jobs
+            .lock()
+            .map(|mut jobs| std::mem::take(&mut *jobs))
+            .unwrap_or_default()
+    }
+
+    /// Execute all queued stale-while-revalidate jobs.
+    pub async fn run_pending_revalidations(&self) -> usize {
+        let jobs = self.take_revalidation_jobs();
+        let count = jobs.len();
+
+        for (url, headers) in jobs {
+            let request_id = self.request_counter.fetch_add(1, Ordering::Relaxed) + 1;
+            let _ = self
+                .do_fetch(request_id, &url, Method::Get, &headers, &None)
+                .await;
+        }
+
+        count
     }
 
     /// Fetch a URL, returning the response.
@@ -271,10 +351,28 @@ impl HttpClient {
         let mut current_url = request.url.clone();
         let mut current_method = request.method;
         let mut current_headers = request.headers.clone();
+        if let Some(site) = self.config.top_level_site.as_deref() {
+            current_headers.insert(INTERNAL_PARTITION_HEADER.to_string(), site.to_string());
+        }
+
+        if let Some(proxy_url) = self.config.proxy.proxy_for(&current_url) {
+            current_headers
+                .entry("x-vigo-proxy".to_string())
+                .or_insert_with(|| proxy_url.to_string());
+        }
+
         let mut current_body = request.body.clone();
         let mut redirects = 0u8;
 
         loop {
+            if self.config.enable_hsts {
+                if let Ok(store) = self.hsts_store.lock() {
+                    if let Some(upgraded) = store.upgrade_url(&current_url) {
+                        current_url = upgraded;
+                    }
+                }
+            }
+
             let resp = match self
                 .do_fetch(
                     request_id,
@@ -391,6 +489,42 @@ impl HttpClient {
         let started = Instant::now();
         let dns_ms: Option<u64> = None;
 
+        let requested_range = if method == Method::Get {
+            parse_request_range(extra_headers)
+        } else {
+            None
+        };
+
+        if let Some((start, end)) = requested_range {
+            if let Ok(cache) = self.cache.lock() {
+                if let Some(range_hit) = cache.get_range(url, extra_headers, start, end) {
+                    self.push_network_record(NetworkRecord {
+                        request_id,
+                        method: method_name(method).to_string(),
+                        url: url.to_string(),
+                        status: Some(range_hit.status),
+                        cache_outcome: CacheOutcome::FreshHit,
+                        was_cached: true,
+                        timings: NetworkTimings {
+                            dns_ms,
+                            ttfb_ms: None,
+                            body_read_ms: None,
+                            total_ms: millis(started.elapsed()),
+                        },
+                        error: None,
+                    });
+
+                    return Ok(Response {
+                        status: range_hit.status,
+                        headers: range_hit.headers.clone(),
+                        body: range_hit.body.clone(),
+                        url: url.clone(),
+                        was_cached: true,
+                    });
+                }
+            }
+        }
+
         // ── Cache lookup (GET only) ──────────────────────────────────
         if method == Method::Get {
             if let Ok(cache) = self.cache.lock() {
@@ -417,6 +551,9 @@ impl HttpClient {
 
                     if cached.can_serve_while_revalidating() {
                         debug!(url = %url, "cache hit (stale-while-revalidate)");
+                        if let Ok(mut jobs) = self.revalidation_jobs.lock() {
+                            jobs.push((url.clone(), extra_headers.clone()));
+                        }
                         self.push_network_record(NetworkRecord {
                             request_id,
                             method: method_name(method).to_string(),
@@ -433,6 +570,42 @@ impl HttpClient {
                             error: None,
                         });
                         return Ok(cached_to_response(url, cached));
+                    }
+                }
+            }
+
+            if let Some(disk_cache) = self.disk_cache.as_ref() {
+                if let Ok(mut disk_cache) = disk_cache.lock() {
+                    if let Some(cached) = disk_cache.get(url, extra_headers) {
+                        debug!(url = %url, "disk cache hit (fresh)");
+
+                        // Hydrate memory cache with disk hit for faster follow-up access.
+                        if let Ok(mut mem_cache) = self.cache.lock() {
+                            mem_cache.store(
+                                url,
+                                extra_headers,
+                                cached.status,
+                                &cached.headers,
+                                &cached.body,
+                            );
+                        }
+
+                        self.push_network_record(NetworkRecord {
+                            request_id,
+                            method: method_name(method).to_string(),
+                            url: url.to_string(),
+                            status: Some(cached.status),
+                            cache_outcome: CacheOutcome::FreshHit,
+                            was_cached: true,
+                            timings: NetworkTimings {
+                                dns_ms,
+                                ttfb_ms: None,
+                                body_read_ms: None,
+                                total_ms: millis(started.elapsed()),
+                            },
+                            error: None,
+                        });
+                        return Ok(cached_to_response(url, &cached));
                     }
                 }
             }
@@ -465,6 +638,14 @@ impl HttpClient {
             .header("accept", "*/*")
             .header("accept-encoding", "gzip, deflate, br, zstd");
 
+        if self.config.enable_alt_svc {
+            if let Ok(alt_svc) = self.alt_svc_cache.lock() {
+                if let Some(alt) = alt_svc.preferred(url, "h3") {
+                    builder = builder.header("alt-used", alt.authority.as_str());
+                }
+            }
+        }
+
         // Conditional headers for cache revalidation
         if let Some(ref etag) = cached_etag {
             builder = builder.header("if-none-match", etag.as_str());
@@ -474,7 +655,12 @@ impl HttpClient {
         }
 
         // Add cookies
-        if let Some(cookie_header) = self.cookies.get_cookies(url) {
+        if let Some(cookie_header) = self.cookies.get_cookies_filtered_with_context(
+            url,
+            crate::cookies::CookieAccess::HttpRequest,
+            crate::cookies::NavigationKind::SameSite,
+            self.config.top_level_site.as_deref(),
+        ) {
             builder = builder.header("cookie", cookie_header);
         }
 
@@ -555,6 +741,33 @@ impl HttpClient {
             }
         }
 
+        if self.config.enable_hsts {
+            if let Ok(mut hsts) = self.hsts_store.lock() {
+                hsts.observe_response(url, &headers);
+            }
+        }
+        if let Ok(mut sec) = self.transport_security.lock() {
+            sec.observe_response(url, &headers);
+        }
+        if self.config.enable_alt_svc {
+            if let Ok(mut alt) = self.alt_svc_cache.lock() {
+                alt.observe_response(url, &headers);
+            }
+        }
+
+        if url.is_https() {
+            if let Some(host) = url.host() {
+                if let Ok(sec) = self.transport_security.lock() {
+                    sec.evaluate_tls_evidence(
+                        host,
+                        false, // future: wire SCT evidence from TLS stack
+                        false, // future: wire OCSP evidence from TLS stack
+                        self.config.strict_transport_evidence,
+                    )?;
+                }
+            }
+        }
+
         // Handle 304 Not Modified — reuse cached body
         if status == 304 && method == Method::Get {
             if let Ok(mut cache) = self.cache.lock() {
@@ -579,12 +792,19 @@ impl HttpClient {
                     return Ok(cached_to_response(url, cached));
                 }
             }
+
+            if let Some(disk_cache) = self.disk_cache.as_ref() {
+                if let Ok(mut disk_cache) = disk_cache.lock() {
+                    let _ = disk_cache.refresh_from_not_modified(url, extra_headers, &headers);
+                }
+            }
         }
 
         // Store cookies from Set-Cookie headers
         for value in hyper_resp.headers().get_all("set-cookie") {
             if let Ok(v) = value.to_str() {
-                self.cookies.insert(url, v);
+                self.cookies
+                    .insert_with_context(url, v, self.config.top_level_site.as_deref());
             }
         }
 
@@ -662,6 +882,17 @@ impl HttpClient {
         if method == Method::Get {
             if let Ok(mut cache) = self.cache.lock() {
                 cache.store(url, extra_headers, status, &headers, &body);
+                if status == 206 {
+                    if let Some((start, end)) = parse_content_range(&headers) {
+                        cache.store_range(url, extra_headers, start, end, status, &headers, &body);
+                    }
+                }
+            }
+
+            if let Some(disk_cache) = self.disk_cache.as_ref() {
+                if let Ok(mut disk_cache) = disk_cache.lock() {
+                    let _ = disk_cache.store(url, extra_headers, status, &headers, &body);
+                }
             }
         }
 
@@ -713,6 +944,13 @@ impl HttpClient {
             }
         }
 
+        if let Some(store) = self.telemetry_store.as_ref() {
+            if let Ok(store) = store.lock() {
+                let _ = store.append_record(&record);
+                let _ = store.write_stats(&self.network_stats());
+            }
+        }
+
         if let Ok(mut records) = self.network_records.lock() {
             records.push(record);
         }
@@ -761,6 +999,40 @@ fn method_name(method: Method) -> &'static str {
         Method::Head => "HEAD",
         Method::Options => "OPTIONS",
     }
+}
+
+fn parse_request_range(headers: &HashMap<String, String>) -> Option<(u64, u64)> {
+    let value = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("range"))
+        .map(|(_, v)| v.as_str())?;
+
+    let bytes = value.strip_prefix("bytes=")?;
+    let (start, end) = bytes.split_once('-')?;
+    let start = start.trim().parse::<u64>().ok()?;
+    let end = end.trim().parse::<u64>().ok()?;
+    if end < start {
+        return None;
+    }
+    Some((start, end))
+}
+
+fn parse_content_range(headers: &HashMap<String, String>) -> Option<(u64, u64)> {
+    let value = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("content-range"))
+        .map(|(_, v)| v.as_str())?;
+
+    // bytes START-END/TOTAL
+    let value = value.strip_prefix("bytes ")?;
+    let (range, _) = value.split_once('/')?;
+    let (start, end) = range.split_once('-')?;
+    let start = start.trim().parse::<u64>().ok()?;
+    let end = end.trim().parse::<u64>().ok()?;
+    if end < start {
+        return None;
+    }
+    Some((start, end))
 }
 
 fn cached_to_response(url: &VexUrl, cached: &crate::cache::CachedResponse) -> Response {
@@ -934,5 +1206,12 @@ mod tests {
         let stats = client.network_stats();
         assert_eq!(stats.total_requests, 0);
         assert_eq!(stats.errors, 0);
+    }
+
+    #[test]
+    fn default_config_enables_hsts_and_alt_svc() {
+        let cfg = ClientConfig::default();
+        assert!(cfg.enable_hsts);
+        assert!(cfg.enable_alt_svc);
     }
 }

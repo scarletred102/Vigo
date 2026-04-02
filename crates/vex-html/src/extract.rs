@@ -54,10 +54,11 @@ pub fn extract_scripts(doc: &Document) -> Vec<ScriptInfo> {
 
                 let inline_content = if src.is_none() {
                     let text = doc.text_content(nid);
-                    if text.is_empty() {
+                    let trimmed = text.trim().to_string();
+                    if trimmed.is_empty() {
                         None
                     } else {
-                        Some(text)
+                        Some(trimmed)
                     }
                 } else {
                     None
@@ -98,7 +99,7 @@ pub fn extract_styles(doc: &Document) -> Vec<StyleInfo> {
                 "link" => {
                     let rel = get_attribute(arena, nid, "rel");
                     let href = get_attribute(arena, nid, "href");
-                    if rel == Some("stylesheet") {
+                    if rel.is_some_and(|v| has_rel_token(v, "stylesheet")) {
                         if let Some(href) = href {
                             styles.push(StyleInfo::External {
                                 node_id: nid,
@@ -114,6 +115,11 @@ pub fn extract_styles(doc: &Document) -> Vec<StyleInfo> {
     }
 
     styles
+}
+
+fn has_rel_token(rel: &str, token: &str) -> bool {
+    rel.split_ascii_whitespace()
+        .any(|part| part.eq_ignore_ascii_case(token))
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -190,6 +196,21 @@ mod tests {
         let doc = parse_html(r#"<link rel="icon" href="/favicon.ico">"#);
         let styles = extract_styles(&doc);
         assert!(styles.is_empty());
+    }
+
+    #[test]
+    fn rel_token_parsing_for_stylesheet_is_case_insensitive() {
+        let doc = parse_html(r#"<link rel="preload STYLESHEET" href="/x.css">"#);
+        let styles = extract_styles(&doc);
+        assert_eq!(styles.len(), 1);
+    }
+
+    #[test]
+    fn inline_script_content_is_trimmed() {
+        let doc = parse_html("<script>\n  console.log('x')\n</script>");
+        let scripts = extract_scripts(&doc);
+        assert_eq!(scripts.len(), 1);
+        assert_eq!(scripts[0].inline_content.as_deref(), Some("console.log('x')"));
     }
 
     #[test]

@@ -8,6 +8,7 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
+use vex_crypto::{decrypt, derive_key, encrypt, generate_salt};
 use vex_core::VexUrl;
 use vex_core::{VexError, VexResult};
 
@@ -22,6 +23,10 @@ struct Cookie {
     secure: bool,
     http_only: bool,
     same_site: SameSite,
+    partitioned: bool,
+    partition_key: Option<String>,
+    same_party: bool,
+    priority: CookiePriority,
     expires: Option<SystemTime>,
 }
 
@@ -34,6 +39,15 @@ pub enum SameSite {
     Lax,
     /// Only sent on same-site requests.
     Strict,
+}
+
+/// Cookie eviction/sending priority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum CookiePriority {
+    Low,
+    #[default]
+    Medium,
+    High,
 }
 
 /// Context for cookie access, controlling HttpOnly and SameSite filtering.
@@ -71,7 +85,17 @@ impl CookieJar {
 
     /// Insert a cookie from a `Set-Cookie` header value for the given URL.
     pub fn insert(&self, url: &VexUrl, set_cookie: &str) {
-        let Some(cookie) = parse_set_cookie(url, set_cookie) else {
+        self.insert_with_context(url, set_cookie, None);
+    }
+
+    /// Insert a cookie with top-level site context (for partitioned cookies).
+    pub fn insert_with_context(
+        &self,
+        url: &VexUrl,
+        set_cookie: &str,
+        top_level_site: Option<&str>,
+    ) {
+        let Some(cookie) = parse_set_cookie(url, set_cookie, top_level_site) else {
             return;
         };
         let key = format!("{}:{}:{}", cookie.domain, cookie.path, cookie.name);
@@ -86,7 +110,12 @@ impl CookieJar {
     ///
     /// This is the simple API — includes all matching cookies (HTTP request context).
     pub fn get_cookies(&self, url: &VexUrl) -> Option<String> {
-        self.get_cookies_filtered(url, CookieAccess::HttpRequest, NavigationKind::SameSite)
+        self.get_cookies_filtered_with_context(
+            url,
+            CookieAccess::HttpRequest,
+            NavigationKind::SameSite,
+            None,
+        )
     }
 
     /// Build the `Cookie` header value with full access/SameSite filtering.
@@ -98,6 +127,17 @@ impl CookieJar {
         url: &VexUrl,
         access: CookieAccess,
         nav: NavigationKind,
+    ) -> Option<String> {
+        self.get_cookies_filtered_with_context(url, access, nav, None)
+    }
+
+    /// Build cookie header value with full filtering and optional top-level site context.
+    pub fn get_cookies_filtered_with_context(
+        &self,
+        url: &VexUrl,
+        access: CookieAccess,
+        nav: NavigationKind,
+        top_level_site: Option<&str>,
     ) -> Option<String> {
         let host = url.host().unwrap_or("");
         let path = url.path();
@@ -117,6 +157,10 @@ impl CookieJar {
                     && path.starts_with(&c.path)
                     && (!c.secure || secure)
                     && c.expires.map_or(true, |exp| exp > now)
+                    && (!c.partitioned
+                        || top_level_site
+                            .map(|tls| c.partition_key.as_deref() == Some(tls))
+                            .unwrap_or(false))
             })
             .filter(|c| {
                 // HttpOnly enforcement: JS cannot see HttpOnly cookies
@@ -148,9 +192,13 @@ impl CookieJar {
             .collect();
 
         cookies.sort_by(|a, b| {
-            b.path
+            priority_rank(b.priority)
+                .cmp(&priority_rank(a.priority))
+                .then_with(|| {
+                    b.path
                 .len()
                 .cmp(&a.path.len())
+                })
                 .then_with(|| a.name.cmp(&b.name))
         });
 
@@ -205,6 +253,44 @@ impl CookieJar {
         *store = new_store;
         Ok(())
     }
+
+    /// Export cookies encrypted with a password-derived key.
+    ///
+    /// Output format: `salt[16] || ciphertext`.
+    pub fn export_encrypted(&self, password: &[u8]) -> VexResult<Vec<u8>> {
+        let salt = generate_salt();
+        let key = derive_key(password, &salt)
+            .map_err(|e| VexError::Storage(format!("cookie key derivation failed: {e}")))?;
+        let plaintext = self.export_json()?.into_bytes();
+        let ciphertext = encrypt(&key, &plaintext)
+            .map_err(|e| VexError::Storage(format!("cookie encryption failed: {e}")))?;
+
+        let mut out = Vec::with_capacity(16 + ciphertext.len());
+        out.extend_from_slice(&salt);
+        out.extend_from_slice(&ciphertext);
+        Ok(out)
+    }
+
+    /// Import cookies from encrypted bytes produced by [`Self::export_encrypted`].
+    pub fn import_encrypted(&self, password: &[u8], data: &[u8]) -> VexResult<()> {
+        if data.len() < 16 {
+            return Err(VexError::Storage(
+                "encrypted cookie payload too short".to_string(),
+            ));
+        }
+
+        let mut salt = [0u8; 16];
+        salt.copy_from_slice(&data[..16]);
+        let ciphertext = &data[16..];
+
+        let key = derive_key(password, &salt)
+            .map_err(|e| VexError::Storage(format!("cookie key derivation failed: {e}")))?;
+        let plaintext = decrypt(&key, ciphertext)
+            .map_err(|e| VexError::Storage(format!("cookie decryption failed: {e}")))?;
+        let json = String::from_utf8(plaintext)
+            .map_err(|e| VexError::Storage(format!("cookie UTF-8 decode failed: {e}")))?;
+        self.import_json(&json)
+    }
 }
 
 impl Default for CookieJar {
@@ -227,8 +313,33 @@ fn domain_matches(host: &str, domain: &str, host_only: bool) -> bool {
         .ends_with(&format!(".{}", domain.to_ascii_lowercase()))
 }
 
+fn is_public_suffix(domain: &str) -> bool {
+    // Minimal embedded suffix set for safety; can be replaced by full PSL data.
+    const COMMON_SUFFIXES: &[&str] = &[
+        "com", "org", "net", "edu", "gov", "mil", "io", "app", "dev", "co", "uk",
+        "co.uk", "ac.uk", "de", "fr", "jp", "cn", "ru", "br", "au", "ca",
+    ];
+
+    let d = domain.trim().to_ascii_lowercase();
+    if d.is_empty() {
+        return true;
+    }
+    if !d.contains('.') {
+        return true;
+    }
+    COMMON_SUFFIXES.contains(&d.as_str())
+}
+
+fn priority_rank(p: CookiePriority) -> u8 {
+    match p {
+        CookiePriority::High => 3,
+        CookiePriority::Medium => 2,
+        CookiePriority::Low => 1,
+    }
+}
+
 /// Parse a `Set-Cookie` header into a `Cookie` struct.
-fn parse_set_cookie(url: &VexUrl, header: &str) -> Option<Cookie> {
+fn parse_set_cookie(url: &VexUrl, header: &str, top_level_site: Option<&str>) -> Option<Cookie> {
     let mut parts = header.split(';');
     let name_value = parts.next()?.trim();
     let (name, value) = name_value.split_once('=')?;
@@ -256,6 +367,10 @@ fn parse_set_cookie(url: &VexUrl, header: &str) -> Option<Cookie> {
     let mut secure = false;
     let mut http_only = false;
     let mut same_site = SameSite::Lax;
+    let mut partitioned = false;
+    let mut partition_key: Option<String> = None;
+    let mut same_party = false;
+    let mut priority = CookiePriority::Medium;
     let mut expires: Option<SystemTime> = None;
 
     for attr in parts {
@@ -267,6 +382,9 @@ fn parse_set_cookie(url: &VexUrl, header: &str) -> Option<Cookie> {
             let candidate = d.to_ascii_lowercase();
             // Reject invalid Domain attributes that don't match request host.
             if !domain_matches(&origin_host, &candidate, false) {
+                return None;
+            }
+            if is_public_suffix(&candidate) {
                 return None;
             }
             domain = candidate;
@@ -287,6 +405,16 @@ fn parse_set_cookie(url: &VexUrl, header: &str) -> Option<Cookie> {
             if let Ok(secs) = attr[8..].trim().parse::<u64>() {
                 expires = Some(SystemTime::now() + Duration::from_secs(secs));
             }
+        } else if lower == "partitioned" {
+            partitioned = true;
+        } else if lower == "sameparty" {
+            same_party = true;
+        } else if let Some(value) = lower.strip_prefix("priority=") {
+            priority = match value.trim() {
+                "high" => CookiePriority::High,
+                "low" => CookiePriority::Low,
+                _ => CookiePriority::Medium,
+            };
         }
     }
 
@@ -303,6 +431,14 @@ fn parse_set_cookie(url: &VexUrl, header: &str) -> Option<Cookie> {
         return None;
     }
 
+    if partitioned {
+        if !secure {
+            return None;
+        }
+        partition_key = top_level_site.map(|s| s.to_string());
+        partition_key.as_ref()?;
+    }
+
     Some(Cookie {
         name,
         value,
@@ -312,6 +448,10 @@ fn parse_set_cookie(url: &VexUrl, header: &str) -> Option<Cookie> {
         secure,
         http_only,
         same_site,
+        partitioned,
+        partition_key,
+        same_party,
+        priority,
         expires,
     })
 }
@@ -416,6 +556,57 @@ mod tests {
         let url = test_url("https://example.com/");
         jar.insert(&url, "none_tok=1; SameSite=None");
         assert!(jar.get_cookies(&url).is_none());
+    }
+
+    #[test]
+    fn partitioned_cookie_requires_top_level_site_context() {
+        let jar = CookieJar::new();
+        let url = test_url("https://cdn.example/");
+
+        jar.insert(&url, "chip=1; Secure; Partitioned");
+        assert!(jar.get_cookies(&url).is_none());
+
+        jar.insert_with_context(&url, "chip=1; Secure; Partitioned", Some("news.example"));
+        let none_ctx = jar.get_cookies_filtered_with_context(
+            &url,
+            CookieAccess::HttpRequest,
+            NavigationKind::SameSite,
+            None,
+        );
+        assert!(none_ctx.is_none());
+
+        let with_ctx = jar.get_cookies_filtered_with_context(
+            &url,
+            CookieAccess::HttpRequest,
+            NavigationKind::SameSite,
+            Some("news.example"),
+        );
+        assert!(with_ctx.is_some());
+    }
+
+    #[test]
+    fn public_suffix_domain_rejected() {
+        let jar = CookieJar::new();
+        let url = test_url("https://example.com/");
+        jar.insert(&url, "a=1; Domain=com");
+        assert!(jar.get_cookies(&url).is_none());
+    }
+
+    #[test]
+    fn encrypted_cookie_roundtrip() {
+        let jar = CookieJar::new();
+        let url = test_url("https://example.com/");
+        jar.insert(&url, "s=1; Path=/");
+
+        let blob = jar.export_encrypted(b"password").expect("encrypt export");
+
+        let restored = CookieJar::new();
+        restored
+            .import_encrypted(b"password", &blob)
+            .expect("decrypt import");
+
+        let cookies = restored.get_cookies(&url).unwrap();
+        assert!(cookies.contains("s=1"));
     }
 
     #[test]

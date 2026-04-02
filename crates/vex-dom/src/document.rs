@@ -43,6 +43,33 @@ impl Document {
             .find(|&id| matches!(self.arena.get(id).data, NodeData::Element(_)))
     }
 
+    /// Alias for [`Self::root_element`], matching browser terminology.
+    pub fn document_element(&self) -> Option<VexId> {
+        self.root_element()
+    }
+
+    /// The `<head>` element if present.
+    pub fn head(&self) -> Option<VexId> {
+        let html = self.root_element()?;
+        Children::new(&self.arena, html).find(|&id| {
+            matches!(
+                &self.arena.get(id).data,
+                NodeData::Element(el) if el.tag_name == "head"
+            )
+        })
+    }
+
+    /// The `<body>` element if present.
+    pub fn body(&self) -> Option<VexId> {
+        let html = self.root_element()?;
+        Children::new(&self.arena, html).find(|&id| {
+            matches!(
+                &self.arena.get(id).data,
+                NodeData::Element(el) if el.tag_name == "body"
+            )
+        })
+    }
+
     /// Borrow the node arena.
     pub fn arena(&self) -> &NodeArena {
         &self.arena
@@ -249,5 +276,23 @@ mod tests {
         doc.append_child(span, t2);
 
         assert_eq!(doc.text_content(p), "Hello world");
+    }
+
+    #[test]
+    fn head_and_body_helpers() {
+        let mut doc = Document::new();
+        let root = doc.root();
+
+        let html = doc.create_element("html", Namespace::Html);
+        let head = doc.create_element("head", Namespace::Html);
+        let body = doc.create_element("body", Namespace::Html);
+
+        doc.append_child(root, html);
+        doc.append_child(html, head);
+        doc.append_child(html, body);
+
+        assert_eq!(doc.document_element(), Some(html));
+        assert_eq!(doc.head(), Some(head));
+        assert_eq!(doc.body(), Some(body));
     }
 }

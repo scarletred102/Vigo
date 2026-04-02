@@ -6,10 +6,15 @@
 use std::collections::HashMap;
 use std::time::{Instant, SystemTime};
 
+use serde::{Deserialize, Serialize};
 use vex_core::VexUrl;
 
+/// Internal synthetic request header used to partition cache entries by
+/// top-level site/origin context.
+pub const INTERNAL_PARTITION_HEADER: &str = "x-vigo-partition-key";
+
 /// Parsed Cache-Control directives.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CacheDirectives {
     /// `max-age=N` — freshness lifetime in seconds.
     pub max_age: Option<u64>,
@@ -67,6 +72,18 @@ pub struct CachedResponse {
     pub freshness_lifetime_secs: Option<u64>,
     pub vary_on: Vec<String>,
     pub vary_values: HashMap<String, String>,
+    pub stored_at: Instant,
+}
+
+/// A cached byte-range response (206 Partial Content).
+#[derive(Debug, Clone)]
+pub struct CachedRangeResponse {
+    pub start: u64,
+    pub end: u64,
+    pub body: Vec<u8>,
+    pub headers: HashMap<String, String>,
+    pub status: u16,
+    pub freshness_lifetime_secs: Option<u64>,
     pub stored_at: Instant,
 }
 
@@ -189,12 +206,14 @@ fn freshness_lifetime_secs(
 /// Simple in-memory HTTP cache keyed by URL.
 pub struct HttpCache {
     entries: HashMap<String, Vec<CachedResponse>>,
+    range_entries: HashMap<String, Vec<CachedRangeResponse>>,
 }
 
 impl HttpCache {
     pub fn new() -> Self {
         Self {
             entries: HashMap::new(),
+            range_entries: HashMap::new(),
         }
     }
 
@@ -243,7 +262,7 @@ impl HttpCache {
 
         let variants = self
             .entries
-            .entry(url.inner().as_str().to_string())
+            .entry(cache_key(url, request_headers))
             .or_default();
 
         if let Some(existing) = variants.iter_mut().find(|v| {
@@ -261,7 +280,9 @@ impl HttpCache {
         url: &VexUrl,
         request_headers: &HashMap<String, String>,
     ) -> Option<&CachedResponse> {
-        self.entries.get(url.inner().as_str()).and_then(|variants| {
+        self.entries
+            .get(&cache_key(url, request_headers))
+            .and_then(|variants| {
             variants
                 .iter()
                 .filter(|entry| request_matches_variant(request_headers, entry))
@@ -275,7 +296,9 @@ impl HttpCache {
         url: &VexUrl,
         request_headers: &HashMap<String, String>,
     ) -> Option<&CachedResponse> {
-        self.entries.get(url.inner().as_str()).and_then(|variants| {
+        self.entries
+            .get(&cache_key(url, request_headers))
+            .and_then(|variants| {
             variants
                 .iter()
                 .filter(|entry| request_matches_variant(request_headers, entry))
@@ -283,9 +306,68 @@ impl HttpCache {
         })
     }
 
+    /// Store a partial byte-range response.
+    #[allow(clippy::too_many_arguments)]
+    pub fn store_range(
+        &mut self,
+        url: &VexUrl,
+        request_headers: &HashMap<String, String>,
+        start: u64,
+        end: u64,
+        status: u16,
+        headers: &HashMap<String, String>,
+        body: &[u8],
+    ) {
+        let cc = headers
+            .get("cache-control")
+            .map(|h| parse_cache_control(h))
+            .unwrap_or_default();
+        if cc.no_store {
+            return;
+        }
+
+        let entry = CachedRangeResponse {
+            start,
+            end,
+            body: body.to_vec(),
+            headers: headers.clone(),
+            status,
+            freshness_lifetime_secs: freshness_lifetime_secs(headers, &cc),
+            stored_at: Instant::now(),
+        };
+
+        self.range_entries
+            .entry(cache_key(url, request_headers))
+            .or_default()
+            .push(entry);
+    }
+
+    /// Get an exact-matching cached byte range for this request.
+    pub fn get_range(
+        &self,
+        url: &VexUrl,
+        request_headers: &HashMap<String, String>,
+        start: u64,
+        end: u64,
+    ) -> Option<&CachedRangeResponse> {
+        self.range_entries
+            .get(&cache_key(url, request_headers))
+            .and_then(|ranges| {
+                ranges.iter().find(|r| {
+                    r.start == start
+                        && r.end == end
+                        && r.freshness_lifetime_secs
+                            .map(|ttl| r.stored_at.elapsed().as_secs() < ttl)
+                            .unwrap_or(false)
+                })
+            })
+    }
+
     /// Remove a cached response.
     pub fn remove(&mut self, url: &VexUrl) {
-        self.entries.remove(url.inner().as_str());
+        let prefix = format!("{}\u{001f}", url.inner().as_str());
+        self.entries.retain(|k, _| !k.starts_with(&prefix));
+        self.range_entries.retain(|k, _| !k.starts_with(&prefix));
     }
 
     /// Refresh an existing cached entry from a `304 Not Modified` response.
@@ -298,7 +380,7 @@ impl HttpCache {
         request_headers: &HashMap<String, String>,
         response_headers: &HashMap<String, String>,
     ) -> bool {
-        let Some(variants) = self.entries.get_mut(url.inner().as_str()) else {
+        let Some(variants) = self.entries.get_mut(&cache_key(url, request_headers)) else {
             return false;
         };
 
@@ -342,6 +424,13 @@ impl HttpCache {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+}
+
+fn cache_key(url: &VexUrl, request_headers: &HashMap<String, String>) -> String {
+    let partition = header_get_ci(request_headers, INTERNAL_PARTITION_HEADER)
+        .cloned()
+        .unwrap_or_default();
+    format!("{}\u{001f}{}", url.inner().as_str(), partition)
 }
 
 impl Default for HttpCache {
@@ -555,6 +644,35 @@ mod tests {
     }
 
     #[test]
+    fn cache_is_partitioned_by_internal_header() {
+        let mut cache = HttpCache::new();
+        let url = test_url("https://example.com/p");
+        let headers = test_headers(&[("cache-control", "max-age=60")]);
+
+        let req_a = req_headers(&[(INTERNAL_PARTITION_HEADER, "site-a")]);
+        let req_b = req_headers(&[(INTERNAL_PARTITION_HEADER, "site-b")]);
+
+        cache.store(&url, &req_a, 200, &headers, b"A");
+        cache.store(&url, &req_b, 200, &headers, b"B");
+
+        assert_eq!(cache.get(&url, &req_a).unwrap().body, b"A");
+        assert_eq!(cache.get(&url, &req_b).unwrap().body, b"B");
+    }
+
+    #[test]
+    fn range_store_and_get_exact_match() {
+        let mut cache = HttpCache::new();
+        let url = test_url("https://example.com/video");
+        let req = req_headers(&[]);
+        let headers = test_headers(&[("cache-control", "max-age=60")]);
+
+        cache.store_range(&url, &req, 0, 99, 206, &headers, b"chunk");
+        let hit = cache.get_range(&url, &req, 0, 99).unwrap();
+        assert_eq!(hit.status, 206);
+        assert_eq!(hit.body, b"chunk");
+    }
+
+    #[test]
     fn vary_star_is_not_cached() {
         let mut cache = HttpCache::new();
         let url = test_url("https://example.com/vary-star");
@@ -575,7 +693,7 @@ mod tests {
         cache.store(&url, &req, 200, &headers, b"data");
         let entry = cache
             .entries
-            .get_mut(url.inner().as_str())
+            .get_mut(&cache_key(&url, &req))
             .and_then(|v| v.first_mut())
             .unwrap();
         entry.stored_at = Instant::now() - std::time::Duration::from_secs(5);

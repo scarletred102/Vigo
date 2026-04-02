@@ -3,8 +3,10 @@
 
 //! Structured network telemetry records for diagnostics and DevTools.
 
+use serde::{Deserialize, Serialize};
+
 /// Cache outcome for a network request attempt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum CacheOutcome {
     FreshHit,
     StaleWhileRevalidateHit,
@@ -15,7 +17,7 @@ pub enum CacheOutcome {
 }
 
 /// Timing breakdown captured during request processing.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NetworkTimings {
     pub dns_ms: Option<u64>,
     pub ttfb_ms: Option<u64>,
@@ -24,7 +26,7 @@ pub struct NetworkTimings {
 }
 
 /// One telemetry record per completed request attempt.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkRecord {
     pub request_id: u64,
     pub method: String,
@@ -37,7 +39,7 @@ pub struct NetworkRecord {
 }
 
 /// Aggregated network metrics.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NetworkStats {
     pub total_requests: u64,
     pub cache_hits: u64,

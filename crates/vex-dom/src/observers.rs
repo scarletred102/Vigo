@@ -113,7 +113,13 @@ impl IntersectionObserver {
         element_rects: &HashMap<VexId, Rect>,
         time: f64,
     ) {
-        let root_bounds = apply_root_margin(viewport, &self.options.root_margin);
+        let root_viewport = if let Some(root_id) = self.options.root {
+            element_rects.get(&root_id).copied().unwrap_or(viewport)
+        } else {
+            viewport
+        };
+
+        let root_bounds = apply_root_margin(root_viewport, &self.options.root_margin);
 
         for (target, state) in self.targets.iter_mut() {
             let target_rect = match element_rects.get(target) {
@@ -410,6 +416,28 @@ mod tests {
         let entries = obs.take_entries();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].is_intersecting);
+    }
+
+    #[test]
+    fn intersection_uses_custom_root() {
+        let root_id = VexId::new(50);
+        let mut obs = IntersectionObserver::new(IntersectionObserverInit {
+            root: Some(root_id),
+            ..Default::default()
+        });
+
+        let target = VexId::new(1);
+        obs.observe(target);
+
+        let mut rects = HashMap::new();
+        rects.insert(root_id, make_rect(100.0, 100.0, 120.0, 120.0));
+        rects.insert(target, make_rect(110.0, 110.0, 50.0, 50.0));
+
+        obs.check(viewport(), &rects, 0.0);
+        let entries = obs.take_entries();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].is_intersecting);
+        assert!((entries[0].intersection_ratio - 1.0).abs() < 0.001);
     }
 
     #[test]

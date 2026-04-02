@@ -273,6 +273,18 @@ impl MutationObserverSet {
         attr_name: &str,
         old_value: Option<String>,
     ) {
+        self.notify_attribute_ns(target, ancestors, attr_name, None, old_value)
+    }
+
+    /// Notify observers of an attribute change with optional namespace.
+    pub fn notify_attribute_ns(
+        &mut self,
+        target: VexId,
+        ancestors: &[VexId],
+        attr_name: &str,
+        attr_namespace: Option<&str>,
+        old_value: Option<String>,
+    ) {
         for observer in self.observers.values_mut() {
             for obs in &observer.observations {
                 let is_match = if obs.target == target {
@@ -295,9 +307,9 @@ impl MutationObserverSet {
                         None
                     };
 
-                    observer
-                        .records
-                        .push(MutationRecord::attributes(target, attr_name, old));
+                    let mut record = MutationRecord::attributes(target, attr_name, old);
+                    record.attribute_namespace = attr_namespace.map(ToString::to_string);
+                    observer.records.push(record);
                 }
             }
         }
@@ -418,6 +430,24 @@ mod tests {
     }
 
     #[test]
+    fn attribute_notification_with_namespace() {
+        let mut set = MutationObserverSet::new();
+        let id = set.create_observer();
+
+        let target = VexId::new(1);
+        set.observer_mut(id)
+            .unwrap()
+            .observe(target, MutationObserverInit::attributes());
+
+        set.notify_attribute_ns(target, &[target], "href", Some("xlink"), None);
+
+        let records = set.observer_mut(id).unwrap().take_records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].attribute_name.as_deref(), Some("href"));
+        assert_eq!(records[0].attribute_namespace.as_deref(), Some("xlink"));
+    }
+
+    #[test]
     fn attribute_old_value() {
         let mut set = MutationObserverSet::new();
         let id = set.create_observer();
@@ -481,9 +511,11 @@ mod tests {
         let id = set.create_observer();
 
         let target = VexId::new(5);
-        let mut opts = MutationObserverInit::default();
-        opts.character_data = true;
-        opts.character_data_old_value = true;
+        let opts = MutationObserverInit {
+            character_data: true,
+            character_data_old_value: true,
+            ..MutationObserverInit::default()
+        };
         set.observer_mut(id).unwrap().observe(target, opts);
 
         set.notify_character_data(target, &[target], Some("old text".into()));
@@ -500,8 +532,7 @@ mod tests {
         let id = set.create_observer();
 
         let root = VexId::new(0);
-        let mut opts = MutationObserverInit::all();
-        opts.subtree = true;
+        let opts = MutationObserverInit::all();
         set.observer_mut(id).unwrap().observe(root, opts);
 
         // Mutation on a descendant should be caught.

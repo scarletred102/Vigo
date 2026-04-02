@@ -9,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 vex-core = { path = "../vex-core" }
+vex-crypto = { path = "../vex-crypto" }
 hyper.workspace = true
 hyper-util.workspace = true
 hyper-rustls.workspace = true
