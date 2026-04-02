@@ -41,8 +41,11 @@ fn apply_positions_recursive(
         Position::Fixed => {
             apply_fixed(layout_box, style, viewport);
         }
-        Position::Static | Position::Sticky => {
-            // Static: no offset. Sticky: behaves like relative for now.
+        Position::Sticky => {
+            apply_sticky(layout_box, style, containing_block, viewport);
+        }
+        Position::Static => {
+            // Static: no offset.
         }
     }
 
@@ -146,6 +149,50 @@ fn apply_fixed(layout_box: &mut LayoutBox, style: Option<&ComputedStyle>, viewpo
     apply_absolute(layout_box, style, viewport);
 }
 
+/// Sticky positioning: clamp relative movement to viewport thresholds while
+/// staying within the containing block bounds.
+fn apply_sticky(
+    layout_box: &mut LayoutBox,
+    style: Option<&ComputedStyle>,
+    containing: Rect,
+    viewport: Rect,
+) {
+    let Some(style) = style else {
+        return;
+    };
+
+    let mut x = layout_box.dimensions.content.origin.x;
+    let mut y = layout_box.dimensions.content.origin.y;
+    let w = layout_box.dimensions.content.size.width;
+    let h = layout_box.dimensions.content.size.height;
+
+    if !style.top.is_nan() {
+        let sticky_top = viewport.origin.y + style.top;
+        y = y.max(sticky_top);
+    }
+    if !style.bottom.is_nan() {
+        let sticky_bottom = viewport.origin.y + viewport.size.height - style.bottom - h;
+        y = y.min(sticky_bottom);
+    }
+    if !style.left.is_nan() {
+        let sticky_left = viewport.origin.x + style.left;
+        x = x.max(sticky_left);
+    }
+    if !style.right.is_nan() {
+        let sticky_right = viewport.origin.x + viewport.size.width - style.right - w;
+        x = x.min(sticky_right);
+    }
+
+    // Sticky box should remain inside its containing block.
+    let max_x = containing.origin.x + containing.size.width - w;
+    let max_y = containing.origin.y + containing.size.height - h;
+    x = x.clamp(containing.origin.x, max_x.max(containing.origin.x));
+    y = y.clamp(containing.origin.y, max_y.max(containing.origin.y));
+
+    layout_box.dimensions.content.origin.x = x;
+    layout_box.dimensions.content.origin.y = y;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,5 +290,26 @@ mod tests {
 
         assert_eq!(b.dimensions.content.origin.x, 85.0); // 100 - 15
         assert_eq!(b.dimensions.content.origin.y, 75.0); // 100 - 25
+    }
+
+    #[test]
+    fn sticky_top_clamps_to_viewport_threshold() {
+        let id = VexId::new(1);
+        let s = ComputedStyle {
+            position: Position::Sticky,
+            top: 10.0,
+            ..Default::default()
+        };
+        let mut styles = HashMap::new();
+        styles.insert(id, s);
+
+        let mut b = LayoutBox::new(Some(id), BoxType::Block);
+        b.dimensions.content = Rect::new(0.0, 20.0, 100.0, 40.0);
+
+        // Simulate scrolled viewport by moving viewport origin.
+        let viewport = Rect::new(0.0, 100.0, 1280.0, 720.0);
+        apply_positions(&mut b, &styles, viewport);
+
+        assert_eq!(b.dimensions.content.origin.y, 110.0);
     }
 }

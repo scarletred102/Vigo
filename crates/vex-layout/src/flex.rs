@@ -12,15 +12,19 @@ use vex_core::{Insets, VexId};
 use vex_css::values::box_model::BoxSizing;
 use vex_css::values::flex::{AlignItems, AlignSelf, FlexDirection, FlexWrap, JustifyContent};
 use vex_css::ComputedStyle;
+use vex_dom::NodeArena;
 
 use crate::block::{layout_block, ContainingBlock};
 use crate::box_model::{BoxType, LayoutBox};
+use crate::text::TextEngine;
 
 /// Perform flex layout on a flex container and its children.
 pub fn layout_flex(
     layout_box: &mut LayoutBox,
     containing: ContainingBlock,
     styles: &HashMap<VexId, ComputedStyle>,
+    arena: &NodeArena,
+    text_engine: &mut TextEngine,
 ) {
     resolve_flex_container_size(layout_box, containing, styles);
 
@@ -243,7 +247,7 @@ pub fn layout_flex(
                 };
                 for grandchild in &mut child.children {
                     if matches!(grandchild.box_type, BoxType::Block | BoxType::Flex | BoxType::Grid) {
-                        layout_block(grandchild, child_containing, styles);
+                        layout_block(grandchild, child_containing, styles, arena, text_engine);
                     }
                 }
             }
@@ -531,6 +535,9 @@ mod tests {
         let mut container = make_flex_container(600.0);
         container.children = vec![child1, child2];
 
+        let arena = vex_dom::NodeArena::default();
+        let mut text_engine = TextEngine::new();
+
         layout_flex(
             &mut container,
             ContainingBlock {
@@ -538,6 +545,8 @@ mod tests {
                 height: 400.0,
             },
             &styles,
+            &arena,
+            &mut text_engine,
         );
 
         // 400 free space: child1 gets +100, child2 gets +300
@@ -558,6 +567,9 @@ mod tests {
         let mut container = make_flex_container(600.0);
         container.children = vec![child1, child2];
 
+        let arena = vex_dom::NodeArena::default();
+        let mut text_engine = TextEngine::new();
+
         layout_flex(
             &mut container,
             ContainingBlock {
@@ -565,6 +577,8 @@ mod tests {
                 height: 400.0,
             },
             &styles,
+            &arena,
+            &mut text_engine,
         );
 
         let w1 = container.children[0].dimensions.content.size.width;

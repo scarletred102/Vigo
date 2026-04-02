@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 
 use vex_core::{Rect, VexId};
-use vex_css::values::text::TextAlign;
+use vex_css::values::text::{TextAlign, WhiteSpace};
 use vex_css::ComputedStyle;
 use vex_dom::{NodeArena, NodeData};
 
@@ -166,29 +166,133 @@ fn measure_inline_child(
         NodeData::Text(text) => {
             let style = styles.get(&node_id);
             // Walk up to parent for font info if the text node doesn't have its own style
-            let (font_size, line_height) = if let Some(s) = style {
-                (s.font_size, s.line_height)
+            let (font_size, line_height, white_space) = if let Some(s) = style {
+                (s.font_size, s.line_height, s.white_space)
             } else {
                 // Use the parent's style as fallback
                 let parent_style = node.parent.and_then(|pid| styles.get(&pid));
                 match parent_style {
-                    Some(ps) => (ps.font_size, ps.line_height),
-                    None => (16.0, 19.2),
+                    Some(ps) => (ps.font_size, ps.line_height, ps.white_space),
+                    None => (16.0, 19.2, WhiteSpace::Normal),
                 }
             };
-            text_engine.measure(text.trim(), font_size, line_height, available_width)
+
+            let normalized = normalize_text_for_layout(text, white_space);
+            if normalized.is_empty() {
+                return (0.0, 0.0);
+            }
+
+            let wrap_width = if matches!(white_space, WhiteSpace::NoWrap | WhiteSpace::Pre) {
+                f32::MAX / 4.0
+            } else {
+                available_width
+            };
+
+            text_engine.measure(&normalized, font_size, line_height, wrap_width)
         }
-        _ => {
+        NodeData::Element(_) => {
             // Element — use its explicit width/height or default
             let style = styles.get(&node_id);
             let w = style.map(|s| s.width).unwrap_or(f32::NAN);
             let h = style.map(|s| s.height).unwrap_or(f32::NAN);
+
+            if !w.is_nan() && !h.is_nan() {
+                return (w, h);
+            }
+
+            let (font_size, line_height, white_space) = style
+                .map(|s| (s.font_size, s.line_height, s.white_space))
+                .or_else(|| {
+                    node.parent
+                        .and_then(|pid| styles.get(&pid))
+                        .map(|s| (s.font_size, s.line_height, s.white_space))
+                })
+                .unwrap_or((16.0, 19.2, WhiteSpace::Normal));
+
+            let mut text = String::new();
+            collect_text_content(arena, node_id, &mut text);
+            let normalized = normalize_text_for_layout(&text, white_space);
+            let (measured_w, measured_h) = if normalized.is_empty() {
+                (0.0, 0.0)
+            } else {
+                let wrap_width = if matches!(white_space, WhiteSpace::NoWrap | WhiteSpace::Pre) {
+                    f32::MAX / 4.0
+                } else {
+                    available_width
+                };
+                text_engine.measure(&normalized, font_size, line_height, wrap_width)
+            };
+
             (
-                if w.is_nan() { 0.0 } else { w },
-                if h.is_nan() { 0.0 } else { h },
+                if w.is_nan() { measured_w } else { w },
+                if h.is_nan() { measured_h } else { h },
             )
         }
+        _ => (0.0, 0.0),
     }
+}
+
+fn collect_text_content(arena: &NodeArena, node_id: VexId, out: &mut String) {
+    let node = arena.get(node_id);
+    match &node.data {
+        NodeData::Text(t) => out.push_str(t),
+        _ => {
+            let mut child = node.first_child;
+            while let Some(cid) = child {
+                collect_text_content(arena, cid, out);
+                child = arena.get(cid).next_sibling;
+            }
+        }
+    }
+}
+
+fn normalize_text_for_layout(text: &str, white_space: WhiteSpace) -> String {
+    match white_space {
+        WhiteSpace::Pre | WhiteSpace::PreWrap => text.to_string(),
+        WhiteSpace::PreLine => collapse_whitespace_preserve_newlines(text),
+        WhiteSpace::Normal | WhiteSpace::NoWrap => collapse_whitespace(text),
+    }
+}
+
+fn collapse_whitespace(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_ws = false;
+
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            if !in_ws {
+                out.push(' ');
+                in_ws = true;
+            }
+        } else {
+            out.push(ch);
+            in_ws = false;
+        }
+    }
+
+    out
+}
+
+fn collapse_whitespace_preserve_newlines(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_ws = false;
+
+    for ch in text.chars() {
+        if ch == '\n' || ch == '\r' {
+            out.push('\n');
+            in_ws = false;
+        } else if ch.is_whitespace() {
+            if !in_ws {
+                out.push(' ');
+                in_ws = true;
+            }
+        } else {
+            out.push(ch);
+            in_ws = false;
+        }
+    }
+
+    out
 }
 
 /// Compute the x offset for line alignment.
@@ -326,5 +430,17 @@ mod tests {
         apply_justify(&mut line, 500.0, true);
         // Last line: should not change.
         assert_eq!(line.fragments[1].x, original_x1);
+    }
+
+    #[test]
+    fn collapse_whitespace_preserves_single_space_runs() {
+        assert_eq!(collapse_whitespace("a   b\t\t c"), "a b c");
+        assert_eq!(collapse_whitespace("   "), " ");
+    }
+
+    #[test]
+    fn pre_mode_keeps_whitespace() {
+        let s = normalize_text_for_layout(" a\n  b ", WhiteSpace::Pre);
+        assert_eq!(s, " a\n  b ");
     }
 }

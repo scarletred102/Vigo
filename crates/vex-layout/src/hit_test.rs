@@ -38,8 +38,13 @@ fn hit_test_recursive(layout_box: &LayoutBox, point: Point) -> Option<VexId> {
     }
 
     // Traverse children in reverse order (last painted = topmost layer).
+    let child_point = Point::new(
+        point.x + layout_box.scroll_offset.x,
+        point.y + layout_box.scroll_offset.y,
+    );
+
     for child in layout_box.children.iter().rev() {
-        if let Some(hit) = hit_test_recursive(child, point) {
+        if let Some(hit) = hit_test_recursive(child, child_point) {
             return Some(hit);
         }
     }
@@ -136,5 +141,17 @@ mod tests {
         assert_eq!(hit_test(&root, 20.0, 20.0), Some(VexId::new(2)));
         // Inside anon but outside child → returns None from anon, falls through to root
         assert_eq!(hit_test(&root, 80.0, 80.0), Some(VexId::new(1)));
+    }
+
+    #[test]
+    fn hit_test_accounts_for_scroll_offset() {
+        // Child is laid out lower (y=120), but parent scrolled down by 50px,
+        // so visually it appears around y=70 and should be hittable there.
+        let child = make_box(Some(VexId::new(2)), 10.0, 120.0, 80.0, 30.0);
+        let mut root = make_box(Some(VexId::new(1)), 0.0, 0.0, 200.0, 200.0);
+        root.scroll_offset = Point::new(0.0, 50.0);
+        root.children.push(child);
+
+        assert_eq!(hit_test(&root, 20.0, 75.0), Some(VexId::new(2)));
     }
 }

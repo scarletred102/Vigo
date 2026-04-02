@@ -11,8 +11,10 @@ use vex_core::{Insets, VexId};
 use vex_css::values::box_model::BoxSizing;
 use vex_css::values::Overflow;
 use vex_css::ComputedStyle;
+use vex_dom::NodeArena;
 
 use crate::box_model::{BoxType, LayoutBox};
+use crate::text::TextEngine;
 
 /// Containing block = the available area a box can lay out inside.
 #[derive(Debug, Clone, Copy)]
@@ -26,11 +28,13 @@ pub fn layout_block(
     layout_box: &mut LayoutBox,
     containing: ContainingBlock,
     styles: &HashMap<VexId, ComputedStyle>,
+    arena: &NodeArena,
+    text_engine: &mut TextEngine,
 ) {
     // 1. Resolve width + horizontal margins
     calculate_block_width(layout_box, containing.width, styles);
     // 2. Position + layout children
-    layout_block_children(layout_box, styles);
+    layout_block_children(layout_box, styles, arena, text_engine);
     // 3. Resolve height
     calculate_block_height(layout_box, styles);
     // 4. Apply overflow clip
@@ -136,10 +140,26 @@ fn calculate_block_width(
 ///
 /// If any child has `float` or `clear` set, delegates to the float-aware
 /// layout path in [`crate::float`].
-fn layout_block_children(layout_box: &mut LayoutBox, styles: &HashMap<VexId, ComputedStyle>) {
+fn layout_block_children(
+    layout_box: &mut LayoutBox,
+    styles: &HashMap<VexId, ComputedStyle>,
+    arena: &NodeArena,
+    text_engine: &mut TextEngine,
+) {
     // Check if any child uses floats or clears — if so, use the float layout path.
     if crate::float::has_floats_or_clears(layout_box, styles) {
-        crate::float::layout_block_children_with_floats(layout_box, styles);
+        crate::float::layout_block_children_with_floats(layout_box, styles, arena, text_engine);
+        return;
+    }
+
+    // Inline formatting context: block/anonymous box with only inline-level children.
+    let all_inline_children = !layout_box.children.is_empty()
+        && layout_box
+            .children
+            .iter()
+            .all(|c| matches!(c.box_type, BoxType::Inline | BoxType::InlineBlock));
+    if all_inline_children {
+        let _ = crate::inline::layout_inline_children(layout_box, arena, styles, text_engine);
         return;
     }
 
@@ -160,7 +180,7 @@ fn layout_block_children(layout_box: &mut LayoutBox, styles: &HashMap<VexId, Com
         match child.box_type {
             BoxType::Block | BoxType::Anonymous | BoxType::Flex | BoxType::Grid => {
                 // Recursively layout the child
-                layout_block(child, containing, styles);
+                layout_block(child, containing, styles, arena, text_engine);
 
                 // Margin collapsing: overlap adjacent margins
                 let child_margin_top = child.dimensions.margin.top;
@@ -215,12 +235,15 @@ fn calculate_block_height(layout_box: &mut LayoutBox, styles: &HashMap<VexId, Co
         h = clamp_dimension(h, min_h, max_h);
         layout_box.dimensions.content.size.height = h;
     } else {
-        // Auto height: sum of children's margin boxes
-        let auto_height = layout_box
-            .children
-            .iter()
-            .map(|c| c.dimensions.margin_box().size.height)
-            .sum::<f32>();
+        // Auto height: derive from the furthest laid-out child margin-box bottom.
+        // This handles inline formatting contexts and positioned descendants more
+        // accurately than naive height summation.
+        let mut auto_height = layout_box.dimensions.content.size.height.max(0.0);
+        let content_top = layout_box.dimensions.content.origin.y;
+        for child in &layout_box.children {
+            let mb = child.dimensions.margin_box();
+            auto_height = auto_height.max((mb.origin.y + mb.size.height) - content_top);
+        }
         let min_h = style.map(|s| s.min_height).unwrap_or(0.0);
         let max_h = style.map(|s| s.max_height).unwrap_or(f32::INFINITY);
         layout_box.dimensions.content.size.height = clamp_dimension(auto_height, min_h, max_h);
@@ -364,11 +387,14 @@ mod tests {
     fn auto_height_sums_children() {
         let styles = HashMap::new();
         let mut parent = LayoutBox::new(None, BoxType::Block);
+        parent.dimensions.content.origin.y = 0.0;
 
         // Add two children with known heights
         let mut c1 = LayoutBox::new(None, BoxType::Block);
+        c1.dimensions.content.origin.y = 0.0;
         c1.dimensions.content.size.height = 50.0;
         let mut c2 = LayoutBox::new(None, BoxType::Block);
+        c2.dimensions.content.origin.y = 50.0;
         c2.dimensions.content.size.height = 70.0;
 
         parent.children = vec![c1, c2];

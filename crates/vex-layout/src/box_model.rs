@@ -59,7 +59,7 @@ fn expand(r: Rect, i: Insets) -> Rect {
 }
 
 /// A node in the layout tree.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LayoutBox {
     /// The DOM node this box corresponds to (`None` for anonymous boxes).
     pub node_id: Option<VexId>,

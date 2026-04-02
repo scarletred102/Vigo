@@ -14,15 +14,19 @@ use vex_core::{Insets, VexId};
 use vex_css::values::box_model::BoxSizing;
 use vex_css::values::grid::{GridAutoFlow, GridLine, TrackSize};
 use vex_css::ComputedStyle;
+use vex_dom::NodeArena;
 
 use crate::block::{layout_block, ContainingBlock};
 use crate::box_model::LayoutBox;
+use crate::text::TextEngine;
 
 /// Perform grid layout on a grid container and its children.
 pub fn layout_grid(
     layout_box: &mut LayoutBox,
     containing: ContainingBlock,
     styles: &HashMap<VexId, ComputedStyle>,
+    arena: &NodeArena,
+    text_engine: &mut TextEngine,
 ) {
     resolve_grid_container_size(layout_box, containing, styles);
 
@@ -210,7 +214,7 @@ pub fn layout_grid(
             height: content_h,
         };
         for grandchild in &mut child.children {
-            layout_block(grandchild, child_containing, styles);
+            layout_block(grandchild, child_containing, styles, arena, text_engine);
         }
     }
 
@@ -559,8 +563,19 @@ fn resolve_edges(style: Option<&ComputedStyle>) -> (Insets, Insets, Insets) {
 mod tests {
     use super::*;
     use crate::box_model::BoxType;
+    use crate::text::TextEngine;
     use vex_core::{Point, VexId};
     use vex_css::values::grid::TrackList;
+
+    fn run_layout_grid(
+        container: &mut LayoutBox,
+        containing: ContainingBlock,
+        styles: &HashMap<VexId, ComputedStyle>,
+    ) {
+        let arena = vex_dom::NodeArena::default();
+        let mut text_engine = TextEngine::new();
+        layout_grid(container, containing, styles, &arena, &mut text_engine);
+    }
 
     fn make_grid_container(
         cols: &str,
@@ -571,9 +586,11 @@ mod tests {
         let mut container = LayoutBox::new(Some(container_id), BoxType::Grid);
 
         let mut styles = HashMap::new();
-        let mut container_style = ComputedStyle::default();
-        container_style.grid_template_columns = TrackList::parse(cols);
-        container_style.grid_template_rows = TrackList::parse(rows);
+        let container_style = ComputedStyle {
+            grid_template_columns: TrackList::parse(cols),
+            grid_template_rows: TrackList::parse(rows),
+            ..Default::default()
+        };
         styles.insert(container_id, container_style);
 
         for i in 0..child_count {
@@ -594,7 +611,7 @@ mod tests {
             height: 600.0,
         };
         container.dimensions.content.origin = Point::default();
-        layout_grid(&mut container, containing, &styles);
+        run_layout_grid(&mut container, containing, &styles);
 
         assert_eq!(container.children.len(), 6);
         // First row: 3 items, each ~100px wide.
@@ -618,7 +635,7 @@ mod tests {
             height: 400.0,
         };
         container.dimensions.content.origin = Point::default();
-        layout_grid(&mut container, containing, &styles);
+        run_layout_grid(&mut container, containing, &styles);
 
         let c0 = &container.children[0];
         assert!((c0.dimensions.content.size.width - 200.0).abs() < 1.0);
@@ -634,7 +651,7 @@ mod tests {
             height: 300.0,
         };
         container.dimensions.content.origin = Point::default();
-        layout_grid(&mut container, containing, &styles);
+        run_layout_grid(&mut container, containing, &styles);
 
         // Row 1 items should have height ~100px, row 2 ~200px.
         let c0 = &container.children[0];
@@ -653,7 +670,7 @@ mod tests {
             height: 100.0,
         };
         container.dimensions.content.origin = Point::default();
-        layout_grid(&mut container, containing, &styles);
+        run_layout_grid(&mut container, containing, &styles);
 
         // With 20px gap between 2 cols in 220px: each col = (220-20)/2 = 100px.
         let c0 = &container.children[0];
@@ -673,7 +690,7 @@ mod tests {
             height: 200.0,
         };
         container.dimensions.content.origin = Point::default();
-        layout_grid(&mut container, containing, &styles);
+        run_layout_grid(&mut container, containing, &styles);
 
         let c1 = &container.children[1];
         // Row 2 starts at 50 + 10 = 60.
@@ -688,16 +705,20 @@ mod tests {
         let mut container = LayoutBox::new(Some(container_id), BoxType::Grid);
         let mut styles = HashMap::new();
 
-        let mut container_style = ComputedStyle::default();
-        container_style.grid_template_columns = TrackList::parse("100px 100px 100px");
-        container_style.grid_template_rows = TrackList::parse("50px 50px");
+        let container_style = ComputedStyle {
+            grid_template_columns: TrackList::parse("100px 100px 100px"),
+            grid_template_rows: TrackList::parse("50px 50px"),
+            ..Default::default()
+        };
         styles.insert(container_id, container_style);
 
-        let mut child_style = ComputedStyle::default();
-        child_style.grid_column_start = GridLine::Line(2);
-        child_style.grid_column_end = GridLine::Line(4);
-        child_style.grid_row_start = GridLine::Line(1);
-        child_style.grid_row_end = GridLine::Line(2);
+        let child_style = ComputedStyle {
+            grid_column_start: GridLine::Line(2),
+            grid_column_end: GridLine::Line(4),
+            grid_row_start: GridLine::Line(1),
+            grid_row_end: GridLine::Line(2),
+            ..Default::default()
+        };
         styles.insert(child_id, child_style);
 
         container
@@ -709,7 +730,7 @@ mod tests {
             height: 100.0,
         };
         container.dimensions.content.origin = Point::default();
-        layout_grid(&mut container, containing, &styles);
+        run_layout_grid(&mut container, containing, &styles);
 
         let c = &container.children[0];
         // Should span columns 2-3 (index 1-2), starting at x=100.
@@ -726,13 +747,17 @@ mod tests {
         let mut container = LayoutBox::new(Some(container_id), BoxType::Grid);
         let mut styles = HashMap::new();
 
-        let mut container_style = ComputedStyle::default();
-        container_style.grid_template_columns = TrackList::parse("100px 100px 100px");
+        let container_style = ComputedStyle {
+            grid_template_columns: TrackList::parse("100px 100px 100px"),
+            ..Default::default()
+        };
         styles.insert(container_id, container_style);
 
-        let mut child_style = ComputedStyle::default();
-        child_style.grid_column_start = GridLine::Line(1);
-        child_style.grid_column_end = GridLine::Span(2);
+        let child_style = ComputedStyle {
+            grid_column_start: GridLine::Line(1),
+            grid_column_end: GridLine::Span(2),
+            ..Default::default()
+        };
         styles.insert(child_id, child_style);
 
         container
@@ -744,7 +769,7 @@ mod tests {
             height: 100.0,
         };
         container.dimensions.content.origin = Point::default();
-        layout_grid(&mut container, containing, &styles);
+        run_layout_grid(&mut container, containing, &styles);
 
         let c = &container.children[0];
         assert!((c.dimensions.content.size.width - 200.0).abs() < 1.0);
@@ -758,7 +783,7 @@ mod tests {
             height: 600.0,
         };
         container.dimensions.content.origin = Point::default();
-        layout_grid(&mut container, containing, &styles);
+        run_layout_grid(&mut container, containing, &styles);
 
         assert!((container.dimensions.content.size.height - 160.0).abs() < 1.0);
     }
@@ -771,7 +796,7 @@ mod tests {
             height: 300.0,
         };
         container.dimensions.content.origin = Point::default();
-        layout_grid(&mut container, containing, &styles);
+        run_layout_grid(&mut container, containing, &styles);
         assert_eq!(container.children.len(), 0);
     }
 
@@ -783,7 +808,7 @@ mod tests {
             height: 200.0,
         };
         container.dimensions.content.origin = Point::default();
-        layout_grid(&mut container, containing, &styles);
+        run_layout_grid(&mut container, containing, &styles);
         // Should not crash and item should get some space.
         assert_eq!(container.children.len(), 1);
     }
@@ -818,7 +843,7 @@ mod tests {
             height: 200.0,
         };
         container.dimensions.content.origin = Point::default();
-        layout_grid(&mut container, containing, &styles);
+        run_layout_grid(&mut container, containing, &styles);
 
         // 4 columns of 100px each.
         for (i, child) in container.children.iter().enumerate() {

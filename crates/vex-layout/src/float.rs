@@ -16,9 +16,11 @@ use std::collections::HashMap;
 use vex_core::VexId;
 use vex_css::values::box_model::{Clear, Float};
 use vex_css::ComputedStyle;
+use vex_dom::NodeArena;
 
 use crate::block::{layout_block, ContainingBlock};
 use crate::box_model::LayoutBox;
+use crate::text::TextEngine;
 
 /// A placed float — records the occupied region.
 #[derive(Debug, Clone, Copy)]
@@ -169,6 +171,8 @@ impl FloatContext {
 pub fn layout_block_children_with_floats(
     layout_box: &mut LayoutBox,
     styles: &HashMap<VexId, ComputedStyle>,
+    arena: &NodeArena,
+    text_engine: &mut TextEngine,
 ) {
     let content_x = layout_box.dimensions.content.origin.x;
     let content_y = layout_box.dimensions.content.origin.y;
@@ -201,7 +205,7 @@ pub fn layout_block_children_with_floats(
 
         if float_side != Float::None {
             // ── Float layout ─────────────────────────────────────
-            layout_block(child, containing, styles);
+            layout_block(child, containing, styles, arena, text_engine);
 
             let float_width = child.dimensions.margin_box().size.width;
             let float_height = child.dimensions.margin_box().size.height;
@@ -243,7 +247,7 @@ pub fn layout_block_children_with_floats(
             });
         } else {
             // ── Normal flow (respecting floats) ──────────────────
-            layout_block(child, containing, styles);
+            layout_block(child, containing, styles, arena, text_engine);
 
             // Margin collapsing.
             let child_margin_top = child.dimensions.margin.top;

@@ -150,6 +150,39 @@ Combine the DOM and CSSOM to figure out the exact physical location of every ele
   - Text layout logic (wrapping, kerning, utilizing HarfBuzz).
   - Reflow engine (fast invalidation when JS modifies styles).
 
+### Phase 4.5: Production Hardening Track (Layout/Geometry Quality)
+Phase 4 is treated as browser-core infrastructure, not a demo geometry pass.
+
+* **Goal:** Browser-grade layout behavior with reliable inline flow, positioning, hit-testing, and pragmatic reflow invalidation hooks.
+* **Scope:** `crates/vex-layout` (+ selector/layout-tree integration from earlier phases).
+* **Status:** ✅ Completed (2026-04-02)
+
+#### Workstream A — Render Tree Fidelity
+- [x] Keep `display: none` exclusion stable in layout tree generation.
+- [x] Add `display: contents` flattening behavior (children participate without wrapper box generation).
+- [x] Preserve non-empty whitespace text nodes for inline formatting participation.
+
+#### Workstream B — Flow Formatting & Text Layout
+- [x] Wire inline formatting context into block layout for inline-only block/anonymous containers.
+- [x] Activate `TextEngine` in runtime pipeline (not just standalone module/tests).
+- [x] Improve auto-height computation from laid-out extents (max child bottom) instead of naive sum-only behavior.
+- [x] Improve inline measurement for whitespace handling and inline element text-content sizing.
+
+#### Workstream C — Positioning & Interaction Fidelity
+- [x] Add baseline sticky positioning behavior (`position: sticky`) with viewport threshold clamping.
+- [x] Make hit-testing scroll-offset aware so scrollable containers map input to visible children correctly.
+
+#### Workstream D — Reflow / Invalidation Hooks
+- [x] Add incremental reflow planning API (`ReflowPlan`) with dirty-node tracking.
+- [x] Add no-dirty fast path reuse (`reflow_document(..., previous, plan)`) for cheap no-op updates.
+
+#### Workstream E — Phase 4 Quality Gates
+- [x] `cargo test -p vex-layout` passes.
+- [x] `cargo clippy -p vex-layout --all-targets -- -D warnings` passes.
+- [x] Cross-phase regression gates pass:
+  - `cargo test -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout`
+  - `cargo clippy -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout --all-targets -- -D warnings`
+
 ## Phase 5: Graphics, Paint & Compositing
 Translate layout rectangles into hardware-accelerated pixels.
 * **Crates:** `crates/vex-render`, `zig/compositor`, `zig/alloc`

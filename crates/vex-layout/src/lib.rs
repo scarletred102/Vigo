@@ -24,6 +24,7 @@ pub mod grid;
 pub mod hit_test;
 pub mod inline;
 pub mod positioned;
+pub mod reflow;
 pub mod stacking;
 pub mod text;
 pub mod tree_builder;
@@ -32,6 +33,7 @@ pub mod tree_builder;
 pub use block::ContainingBlock;
 pub use box_model::{BoxType, Dimensions, LayoutBox};
 pub use hit_test::hit_test;
+pub use reflow::{reflow_document, ReflowPlan};
 pub use stacking::{build_stacking_order, StackingEntry};
 pub use text::TextEngine;
 pub use tree_builder::build_layout_tree;
@@ -41,7 +43,7 @@ use std::fmt::Write;
 
 use vex_core::{Rect, Size, VexId};
 use vex_css::ComputedStyle;
-use vex_dom::Document;
+use vex_dom::{Document, NodeArena};
 
 /// Perform full layout on a document.
 ///
@@ -65,11 +67,19 @@ pub fn layout_document(
         height: viewport.height,
     };
 
+    let mut text_engine = TextEngine::new();
+
     root.dimensions.content.origin.x = 0.0;
     root.dimensions.content.origin.y = 0.0;
 
     // Step 3: Layout pass — dispatch by box type
-    layout_recursive(&mut root, containing, styles);
+    layout_recursive(
+        &mut root,
+        containing,
+        styles,
+        document.arena(),
+        &mut text_engine,
+    );
 
     // Step 4: Position pass — apply relative/absolute/fixed offsets
     let viewport_rect = Rect::new(0.0, 0.0, viewport.width, viewport.height);
@@ -83,21 +93,23 @@ fn layout_recursive(
     layout_box: &mut LayoutBox,
     containing: ContainingBlock,
     styles: &HashMap<VexId, ComputedStyle>,
+    arena: &NodeArena,
+    text_engine: &mut TextEngine,
 ) {
     match layout_box.box_type {
         BoxType::Block | BoxType::Anonymous | BoxType::InlineBlock => {
-            block::layout_block(layout_box, containing, styles);
+            block::layout_block(layout_box, containing, styles, arena, text_engine);
         }
         BoxType::Flex => {
-            flex::layout_flex(layout_box, containing, styles);
+            flex::layout_flex(layout_box, containing, styles, arena, text_engine);
         }
         BoxType::Grid => {
-            grid::layout_grid(layout_box, containing, styles);
+            grid::layout_grid(layout_box, containing, styles, arena, text_engine);
         }
         BoxType::Inline => {
             // Inline boxes are sized during inline formatting context.
             // If standalone, just layout children in block mode as fallback.
-            block::layout_block(layout_box, containing, styles);
+            block::layout_block(layout_box, containing, styles, arena, text_engine);
         }
     }
 }
@@ -130,5 +142,27 @@ fn dump_recursive(layout_box: &LayoutBox, depth: usize, output: &mut String) {
 
     for child in &layout_box.children {
         dump_recursive(child, depth + 1, output);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::box_model::BoxType;
+
+    fn any_inline_with_width(root: &LayoutBox) -> bool {
+        if root.box_type == BoxType::Inline && root.dimensions.content.size.width > 0.0 {
+            return true;
+        }
+        root.children.iter().any(any_inline_with_width)
+    }
+
+    #[test]
+    fn layout_document_measures_inline_text_runs() {
+        let doc = vex_html::parse_html("<html><body><p>Hello Vigo layout engine</p></body></html>");
+        let styles = vex_css::compute_styles(&doc, &[], Size::new(800.0, 600.0));
+
+        let tree = layout_document(&doc, &styles, Size::new(800.0, 600.0));
+        assert!(any_inline_with_width(&tree));
     }
 }

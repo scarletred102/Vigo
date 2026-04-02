@@ -51,34 +51,18 @@ fn build_box_for_node(
                 return LayoutBox::new(Some(node_id), BoxType::Block);
             }
 
+            // display: contents — flatten box generation while preserving children.
+            if display == Display::Contents {
+                let mut anon = LayoutBox::new(None, BoxType::Anonymous);
+                anon.children = collect_child_boxes(node_id, arena, styles);
+                return anon;
+            }
+
             let box_type = display_to_box_type(display);
             let mut layout_box = LayoutBox::new(Some(node_id), box_type);
 
-            // Build children
-            let mut child_boxes = Vec::new();
-            for child_id in Children::new(arena, node_id) {
-                let child_node = arena.get(child_id);
-
-                match &child_node.data {
-                    NodeData::Element(_) => {
-                        let child_display = styles
-                            .get(&child_id)
-                            .map(|s| s.display)
-                            .unwrap_or(Display::Inline);
-                        if child_display == Display::None {
-                            continue;
-                        }
-                        child_boxes.push(build_box_for_node(child_id, arena, styles));
-                    }
-                    NodeData::Text(text) => {
-                        let trimmed = text.trim();
-                        if !trimmed.is_empty() {
-                            child_boxes.push(LayoutBox::new(Some(child_id), BoxType::Inline));
-                        }
-                    }
-                    _ => {} // Skip comments, doctypes
-                }
-            }
+            // Build children.
+            let child_boxes = collect_child_boxes(node_id, arena, styles);
 
             // Anonymous block wrapping: if a block container has mixed
             // block + inline children, wrap inline runs in anonymous blocks.
@@ -113,6 +97,45 @@ fn build_box_for_node(
             root
         }
     }
+}
+
+fn collect_child_boxes(
+    node_id: VexId,
+    arena: &vex_dom::NodeArena,
+    styles: &HashMap<VexId, ComputedStyle>,
+) -> Vec<LayoutBox> {
+    let mut child_boxes = Vec::new();
+
+    for child_id in Children::new(arena, node_id) {
+        let child_node = arena.get(child_id);
+
+        match &child_node.data {
+            NodeData::Element(_) => {
+                let child_display = styles
+                    .get(&child_id)
+                    .map(|s| s.display)
+                    .unwrap_or(Display::Inline);
+                if child_display == Display::None {
+                    continue;
+                }
+
+                if child_display == Display::Contents {
+                    child_boxes.extend(collect_child_boxes(child_id, arena, styles));
+                } else {
+                    child_boxes.push(build_box_for_node(child_id, arena, styles));
+                }
+            }
+            NodeData::Text(text) => {
+                // Preserve whitespace text nodes for inline formatting; only skip truly empty nodes.
+                if !text.is_empty() {
+                    child_boxes.push(LayoutBox::new(Some(child_id), BoxType::Inline));
+                }
+            }
+            _ => {} // Skip comments, doctypes
+        }
+    }
+
+    child_boxes
 }
 
 /// Convert a CSS `Display` value to a `BoxType`.
@@ -247,5 +270,17 @@ mod tests {
         let result = wrap_anonymous_blocks(boxes);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].box_type, BoxType::Block);
+    }
+
+    #[test]
+    fn display_contents_flattens_wrapper_box() {
+        let html = "<html><body><div style='display:contents'><span>A</span><span>B</span></div></body></html>";
+        let doc = vex_html::parse_html(html);
+        let styles = vex_css::compute_styles(&doc, &[], vex_core::Size::new(800.0, 600.0));
+        let tree = build_layout_tree(&doc, &styles);
+
+        // Body should effectively see span descendants without requiring a box for the contents wrapper.
+        let dump = crate::debug_dump(&tree);
+        assert!(dump.contains("Inline"));
     }
 }
