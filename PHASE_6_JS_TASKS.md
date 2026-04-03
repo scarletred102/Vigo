@@ -1,6 +1,6 @@
 # Phase 6 — JavaScript Execution (Kickoff + Hardening)
 
-Status: ✅ **Started and materially hardened**
+Status: ✅ **Completed**
 Date: 2026-04-03
 Scope: `crates/vex-js`, runtime integration via `crates/vex-browser` + `crates/vex-app`
 
@@ -40,6 +40,12 @@ Scope: `crates/vex-js`, runtime integration via `crates/vex-browser` + `crates/v
   - relayout,
   - content-size refresh,
   - subsequent display-list/render/compositor update.
+
+### 5) Memory/GC bindings integration
+- `JsRuntime` now owns and exposes a DOM `GcRootSet`.
+- Document registration now resets/initializes roots for new page contexts.
+- Element proxy creation paths root DOM node IDs in the runtime GC root set.
+- Added runtime test coverage to verify JS-created proxies become rooted.
 
 ---
 

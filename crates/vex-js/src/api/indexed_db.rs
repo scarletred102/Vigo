@@ -54,6 +54,70 @@ pub fn build_indexed_db(context: &mut Context) -> JsValue {
         .into()
 }
 
+/// Build a persistent `indexedDB` object scoped to `origin` under `base_dir`.
+///
+/// Databases are materialized as SQLite files in `base_dir` using
+/// `origin + db_name` file naming.
+pub fn build_indexed_db_with_dir(base_dir: &str, origin: &str, context: &mut Context) -> JsValue {
+    let base_dir = base_dir.to_owned();
+    let origin = origin.to_owned();
+
+    // SAFETY: Closure captures owned Strings; runs on single JS thread.
+    let open_fn = unsafe {
+        NativeFunction::from_closure(move |_this, args, ctx| {
+            let name = args
+                .first()
+                .ok_or_else(|| {
+                    JsNativeError::typ().with_message("indexedDB.open requires a name")
+                })?
+                .to_string(ctx)?
+                .to_std_string_escaped();
+            let version = args.get(1).and_then(|v| v.as_number()).unwrap_or(1.0) as u32;
+
+            if let Err(e) = std::fs::create_dir_all(&base_dir) {
+                return Err(JsNativeError::typ()
+                    .with_message(format!("failed to create IndexedDB dir: {e}"))
+                    .into());
+            }
+
+            let db_path = format!(
+                "{}/{}_{}.sqlite3",
+                base_dir,
+                sanitize_component(&origin),
+                sanitize_component(&name)
+            );
+
+            match IdbDatabase::open(&db_path, &name, version) {
+                Ok(db) => {
+                    let shared: SharedIdb = Rc::new(RefCell::new(db));
+                    let obj = build_db_object(&shared, ctx);
+                    Ok(obj)
+                }
+                Err(e) => Err(JsNativeError::typ()
+                    .with_message(format!("indexedDB.open failed: {e}"))
+                    .into()),
+            }
+        })
+    };
+
+    ObjectInitializer::new(context)
+        .function(open_fn, js_string!("open"), 2)
+        .build()
+        .into()
+}
+
+fn sanitize_component(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 /// Build a database object with methods for object store management and CRUD.
 fn build_db_object(db: &SharedIdb, context: &mut Context) -> JsValue {
     let db_ref = db.borrow();

@@ -138,6 +138,9 @@ fn register_inner(
     if let Ok(v) = global.get(js_string!("cancelAnimationFrame"), context) {
         let _ = window.set(js_string!("cancelAnimationFrame"), v, false, context);
     }
+    if let Ok(v) = global.get(js_string!("queueMicrotask"), context) {
+        let _ = window.set(js_string!("queueMicrotask"), v, false, context);
+    }
     if let Ok(v) = global.get(js_string!("fetch"), context) {
         let _ = window.set(js_string!("fetch"), v, false, context);
     }
@@ -674,6 +677,11 @@ mod tests {
             .eval(boa_engine::Source::from_bytes("typeof window.fetch"))
             .unwrap();
         assert_eq!(fetch.as_string().unwrap().to_std_string_escaped(), "function");
+
+        let micro = ctx
+            .eval(boa_engine::Source::from_bytes("typeof window.queueMicrotask"))
+            .unwrap();
+        assert_eq!(micro.as_string().unwrap().to_std_string_escaped(), "function");
     }
 
     #[test]

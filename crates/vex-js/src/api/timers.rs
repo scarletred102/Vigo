@@ -64,6 +64,14 @@ pub fn register(context: &mut Context) {
     ) {
         tracing::error!(target: "vex_js::timers", "failed to register cancelAnimationFrame: {error}");
     }
+
+    if let Err(error) = context.register_global_callable(
+        js_string!("queueMicrotask"),
+        1,
+        NativeFunction::from_fn_ptr(queue_microtask),
+    ) {
+        tracing::error!(target: "vex_js::timers", "failed to register queueMicrotask: {error}");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +108,30 @@ fn request_animation_frame(
 
 fn cancel_animation_frame(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
     clear_timeout(&JsValue::undefined(), args, context)
+}
+
+fn queue_microtask(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    let callback = args
+        .first()
+        .and_then(|v| v.as_callable())
+        .ok_or_else(|| {
+            boa_engine::JsNativeError::typ().with_message("first argument must be a function")
+        })?
+        .clone();
+
+    let key = js_string!("__vex_microtasks");
+    let global = context.global_object();
+    let tasks_val = global.get(key.clone(), context)?;
+    let tasks_array = if tasks_val.is_undefined() || tasks_val.is_null() {
+        let arr = boa_engine::object::builtins::JsArray::new(context);
+        global.set(key.clone(), JsValue::from(arr.clone()), false, context)?;
+        arr
+    } else {
+        boa_engine::object::builtins::JsArray::from_object(tasks_val.to_object(context)?)?
+    };
+
+    tasks_array.push(JsValue::from(callback), context)?;
+    Ok(JsValue::undefined())
 }
 
 fn clear_timeout(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
@@ -299,5 +331,14 @@ mod tests {
             "var id = requestAnimationFrame(function(ts) {}); cancelAnimationFrame(id);",
         );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn queue_microtask_registered() {
+        let mut rt = JsRuntime::new();
+        register(rt.context_mut());
+
+        let result = rt.eval("typeof queueMicrotask").unwrap();
+        assert_eq!(result.as_string().unwrap().to_std_string_escaped(), "function");
     }
 }

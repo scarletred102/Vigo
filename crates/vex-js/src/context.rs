@@ -6,10 +6,11 @@
 //! Provides [`JsRuntime`] — the primary entry point for executing JavaScript
 //! within a browser document context.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use boa_engine::object::builtins::JsFunction;
+use boa_engine::property::Attribute;
 use boa_engine::{js_string, Context, JsValue, Source};
 use vex_core::{VexError, VexId, VexResult};
 
@@ -32,6 +33,7 @@ struct PendingTimer {
 pub struct JsRuntime {
     context: Context,
     timer_queue: BTreeMap<Instant, Vec<PendingTimer>>,
+    microtask_queue: VecDeque<JsFunction>,
     /// Shared request queue for JS → browser communication.
     request_queue: RequestQueue,
     /// Event bridge (callbacks, listener map, registry).
@@ -73,6 +75,7 @@ impl JsRuntime {
         Self {
             context,
             timer_queue: BTreeMap::new(),
+            microtask_queue: VecDeque::new(),
             request_queue: queue,
             event_bridge: EventBridge::new(),
             tokio_handle: handle,
@@ -122,6 +125,128 @@ impl JsRuntime {
         );
     }
 
+    /// Register storage/media-related web APIs for the active page context.
+    ///
+    /// This wires `localStorage`, `sessionStorage`, `indexedDB`, and
+    /// `document.cookie` with persistent backing stores under `target/vigo/storage`.
+    pub fn register_page_storage_apis(
+        &mut self,
+        page_url: &str,
+        tab_id: u64,
+        session_store: Option<crate::api::session_storage::SharedSessionStorage>,
+    ) {
+        self.register_page_storage_apis_with_root(
+            page_url,
+            tab_id,
+            session_store,
+            "target/vigo/storage",
+        );
+    }
+
+    fn register_page_storage_apis_with_root(
+        &mut self,
+        page_url: &str,
+        tab_id: u64,
+        session_store: Option<crate::api::session_storage::SharedSessionStorage>,
+        storage_root: &str,
+    ) {
+        if let Err(e) = std::fs::create_dir_all(storage_root) {
+            tracing::warn!(
+                target: "vex_js::runtime",
+                root = storage_root,
+                error = %e,
+                "failed to create storage root; falling back to in-memory where possible"
+            );
+        }
+
+        let (origin, cookie_domain, cookie_path) = page_origin_components(page_url);
+
+        // localStorage (origin-scoped persistent storage)
+        let local_db = format!("{storage_root}/local_storage.sqlite3");
+        let local_store = crate::api::local_storage::shared_local_storage(&local_db)
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    target: "vex_js::runtime",
+                    error = %e,
+                    "failed to open localStorage DB; using in-memory fallback"
+                );
+                crate::api::local_storage::shared_local_storage_in_memory()
+            });
+        let local_storage =
+            crate::api::local_storage::build_local_storage(&local_store, &origin, &mut self.context);
+        self.register_global_and_window_property("localStorage", local_storage);
+
+        // sessionStorage (origin + tab scoped in-memory storage)
+        let session_store =
+            session_store.unwrap_or_else(crate::api::session_storage::shared_session_storage);
+        let session_storage = crate::api::session_storage::build_session_storage(
+            &session_store,
+            &origin,
+            tab_id,
+            &mut self.context,
+        );
+        self.register_global_and_window_property("sessionStorage", session_storage);
+
+        // indexedDB (origin-scoped persistent DB directory)
+        let indexed_db_dir = format!("{storage_root}/indexeddb");
+        let indexed_db = crate::api::indexed_db::build_indexed_db_with_dir(
+            &indexed_db_dir,
+            &origin,
+            &mut self.context,
+        );
+        self.register_global_and_window_property("indexedDB", indexed_db);
+
+        // document.cookie
+        let cookie_db = format!("{storage_root}/cookies.sqlite3");
+        let cookie_store = crate::api::document::shared_cookie_store(&cookie_db)
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    target: "vex_js::runtime",
+                    error = %e,
+                    "failed to open cookie DB; using in-memory fallback"
+                );
+                crate::api::document::shared_cookie_store_in_memory()
+            });
+        crate::api::document::register_document_cookie(
+            &cookie_store,
+            &cookie_domain,
+            &cookie_path,
+            &mut self.context,
+        );
+    }
+
+    fn register_global_and_window_property(&mut self, name: &str, value: JsValue) {
+        let key = js_string!(name);
+        if let Err(error) = self.context.register_global_property(
+            key.clone(),
+            value.clone(),
+            Attribute::WRITABLE | Attribute::CONFIGURABLE,
+        ) {
+            tracing::warn!(
+                target: "vex_js::runtime",
+                name,
+                error = %error,
+                "failed to register global property"
+            );
+        }
+
+        let global = self.context.global_object();
+        let Ok(window_val) = global.get(js_string!("window"), &mut self.context) else {
+            return;
+        };
+        let Ok(window_obj) = window_val.to_object(&mut self.context) else {
+            return;
+        };
+        if let Err(error) = window_obj.set(key, value, false, &mut self.context) {
+            tracing::warn!(
+                target: "vex_js::runtime",
+                name,
+                error = %error,
+                "failed to mirror property onto window"
+            );
+        }
+    }
+
     /// Dispatch a DOM event through the JS event system.
     ///
     /// Walks the DOM capture → target → bubble path, invoking registered
@@ -131,13 +256,15 @@ impl JsRuntime {
         doc: &SharedDocument,
         event: &mut vex_dom::events::Event,
     ) -> bool {
-        crate::api::events::dispatch_js_event(
+        let prevented = crate::api::events::dispatch_js_event(
             doc,
             &self.event_bridge.listeners,
             &self.event_bridge.callbacks,
             event,
             &mut self.context,
-        )
+        );
+        self.run_pending_microtasks();
+        prevented
     }
 
     /// Fire the `DOMContentLoaded` lifecycle event.
@@ -145,12 +272,14 @@ impl JsRuntime {
     /// Call after the DOM tree is fully built and all blocking + deferred
     /// scripts have executed. Returns `true` if `preventDefault()` was called.
     pub fn fire_dom_content_loaded(&mut self, doc: &SharedDocument) -> bool {
-        crate::lifecycle::fire_dom_content_loaded(
+        let prevented = crate::lifecycle::fire_dom_content_loaded(
             doc,
             &self.event_bridge.listeners,
             &self.event_bridge.callbacks,
             &mut self.context,
-        )
+        );
+        self.run_pending_microtasks();
+        prevented
     }
 
     /// Fire the `load` lifecycle event.
@@ -158,12 +287,14 @@ impl JsRuntime {
     /// Call after all sub-resources (images, stylesheets, async scripts)
     /// have finished loading. Returns `true` if `preventDefault()` was called.
     pub fn fire_load(&mut self, doc: &SharedDocument) -> bool {
-        crate::lifecycle::fire_load(
+        let prevented = crate::lifecycle::fire_load(
             doc,
             &self.event_bridge.listeners,
             &self.event_bridge.callbacks,
             &mut self.context,
-        )
+        );
+        self.run_pending_microtasks();
+        prevented
     }
 
     /// Execute a JavaScript source string for its side effects.
@@ -176,6 +307,7 @@ impl JsRuntime {
             .eval(source)
             .map_err(|e| VexError::Js(format!("{e}")))?;
         self.drain_js_timers();
+        self.run_pending_microtasks();
         Ok(())
     }
 
@@ -196,6 +328,7 @@ impl JsRuntime {
             .eval(source)
             .map_err(|e| VexError::Js(format!("{e}")))?;
         self.drain_js_timers();
+        self.run_pending_microtasks();
         Ok(result)
     }
 
@@ -226,6 +359,7 @@ impl JsRuntime {
                             .call(&JsValue::undefined(), &[], &mut self.context);
                     }
                     fired += 1;
+                    self.run_pending_microtasks();
 
                     if let Some(interval) = entry.interval {
                         reschedule.push((
@@ -257,6 +391,34 @@ impl JsRuntime {
     /// Drain JS-reported dirty DOM nodes and clear the JS-side queue.
     pub fn take_dom_dirty_nodes(&mut self) -> Vec<VexId> {
         crate::api::dom_dirty::take_dom_dirty_nodes(&mut self.context)
+    }
+
+    /// Run pending JS microtasks, including newly queued nested microtasks.
+    fn run_pending_microtasks(&mut self) -> u32 {
+        let mut ran = 0u32;
+        const MICROTASK_LIMIT: u32 = 10_000;
+
+        loop {
+            self.drain_js_microtasks();
+            if self.microtask_queue.is_empty() {
+                break;
+            }
+
+            while let Some(task) = self.microtask_queue.pop_front() {
+                let _ = task.call(&JsValue::undefined(), &[], &mut self.context);
+                ran += 1;
+                if ran >= MICROTASK_LIMIT {
+                    tracing::warn!(
+                        target: "vex_js::runtime",
+                        "microtask limit reached; dropping remaining tasks"
+                    );
+                    self.microtask_queue.clear();
+                    return ran;
+                }
+            }
+        }
+
+        ran
     }
 
     /// Cancel a timer by ID.
@@ -374,6 +536,57 @@ impl JsRuntime {
             &mut self.context,
         );
     }
+
+    fn drain_js_microtasks(&mut self) {
+        let global = self.context.global_object();
+        let key = js_string!("__vex_microtasks");
+
+        let Ok(tasks_val) = global.get(key.clone(), &mut self.context) else {
+            return;
+        };
+        if tasks_val.is_undefined() || tasks_val.is_null() {
+            return;
+        }
+
+        let Ok(tasks_obj) = tasks_val.to_object(&mut self.context) else {
+            return;
+        };
+        let Ok(len_val) = tasks_obj.get(js_string!("length"), &mut self.context) else {
+            return;
+        };
+        let Ok(len) = len_val.to_u32(&mut self.context) else {
+            return;
+        };
+
+        for i in 0..len {
+            let Ok(task_val) = tasks_obj.get(i, &mut self.context) else {
+                continue;
+            };
+            let Some(task_obj) = task_val.as_callable() else {
+                continue;
+            };
+            if let Some(func) = JsFunction::from_object(task_obj.clone()) {
+                self.microtask_queue.push_back(func);
+            }
+        }
+
+        let empty = boa_engine::object::builtins::JsArray::new(&mut self.context);
+        let _ = global.set(key, JsValue::from(empty), false, &mut self.context);
+    }
+}
+
+fn page_origin_components(page_url: &str) -> (String, String, String) {
+    if let Ok(parsed) = url::Url::parse(page_url) {
+        let origin = parsed.origin().ascii_serialization();
+        let domain = parsed.host_str().unwrap_or("localhost").to_owned();
+        let mut path = parsed.path().to_owned();
+        if path.is_empty() {
+            path = "/".to_owned();
+        }
+        (origin, domain, path)
+    } else {
+        ("null".to_owned(), "localhost".to_owned(), "/".to_owned())
+    }
 }
 
 impl Default for JsRuntime {
@@ -396,7 +609,31 @@ impl Drop for JsRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use vex_dom::{attributes, Document, Namespace};
+
+    fn test_storage_root(label: &str) -> String {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic")
+            .as_nanos();
+        format!(
+            "target/tmp/{label}_{}_{}",
+            std::process::id(),
+            stamp
+        )
+    }
+
+    fn make_min_doc() -> SharedDocument {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let html = doc.create_element("html", Namespace::Html);
+        let body = doc.create_element("body", Namespace::Html);
+        doc.append_child(root, html);
+        doc.append_child(html, body);
+        crate::dom_bridge::shared_document(doc)
+    }
 
     #[test]
     fn test_arithmetic_evaluation() {
@@ -471,5 +708,88 @@ mod tests {
 
         assert!(rt.gc_roots().is_rooted(shared.borrow().root()));
         assert!(rt.gc_roots().is_rooted(div));
+    }
+
+    #[test]
+    fn queue_microtask_runs_after_sync_script() {
+        let mut rt = JsRuntime::new();
+        rt.execute("var order = []; order.push('sync'); queueMicrotask(() => order.push('micro'));")
+            .unwrap();
+
+        let result = rt.eval("order.join(',')").unwrap();
+        assert_eq!(result.as_string().unwrap().to_std_string_escaped(), "sync,micro");
+    }
+
+    #[test]
+    fn nested_microtasks_are_fully_drained() {
+        let mut rt = JsRuntime::new();
+        rt.execute(
+            "var x = 0; queueMicrotask(() => { x = 1; queueMicrotask(() => { x = 2; }); });",
+        )
+        .unwrap();
+
+        let result = rt.eval("x").unwrap();
+        assert_eq!(result.as_number().unwrap() as i32, 2);
+    }
+
+    #[test]
+    fn timer_callback_flushes_microtasks() {
+        let mut rt = JsRuntime::new();
+        rt.execute(
+            "var out = []; setTimeout(() => { out.push('timer'); queueMicrotask(() => out.push('micro')); }, 0);",
+        )
+        .unwrap();
+
+        rt.run_pending_timers();
+        let result = rt.eval("out.join(',')").unwrap();
+        assert_eq!(result.as_string().unwrap().to_std_string_escaped(), "timer,micro");
+    }
+
+    #[test]
+    fn register_page_storage_apis_exposes_globals() {
+        let shared = make_min_doc();
+        let mut rt = JsRuntime::new();
+        rt.register_document(&shared);
+
+        let root = test_storage_root("phase8_storage_globals");
+        rt.register_page_storage_apis_with_root("https://example.com/page", 7, None, &root);
+
+        let has_local = rt.eval("typeof localStorage").unwrap();
+        assert_eq!(has_local.as_string().unwrap().to_std_string_escaped(), "object");
+
+        let has_session = rt.eval("typeof sessionStorage").unwrap();
+        assert_eq!(has_session.as_string().unwrap().to_std_string_escaped(), "object");
+
+        let has_indexed = rt.eval("typeof indexedDB").unwrap();
+        assert_eq!(has_indexed.as_string().unwrap().to_std_string_escaped(), "object");
+
+        let has_cookie = rt.eval("typeof document.cookie").unwrap();
+        assert_eq!(has_cookie.as_string().unwrap().to_std_string_escaped(), "string");
+    }
+
+    #[test]
+    fn local_storage_persists_between_runtimes() {
+        let root = test_storage_root("phase8_local_persist");
+
+        {
+            let shared = make_min_doc();
+            let mut rt = JsRuntime::new();
+            rt.register_document(&shared);
+            rt.register_page_storage_apis_with_root("https://example.com/", 1, None, &root);
+            rt.execute("localStorage.setItem('persist_key', 'persist_val');")
+                .unwrap();
+        }
+
+        {
+            let shared = make_min_doc();
+            let mut rt = JsRuntime::new();
+            rt.register_document(&shared);
+            rt.register_page_storage_apis_with_root("https://example.com/", 1, None, &root);
+            let val = rt.eval("localStorage.getItem('persist_key')").unwrap();
+            assert_eq!(
+                val.as_string().unwrap().to_std_string_escaped(),
+                "persist_val"
+            );
+        }
     }
 }

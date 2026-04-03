@@ -13,8 +13,12 @@ use vex_dom::Document;
 use vex_js::script_runner::ScriptEntry;
 use vex_js::{ExecutionPlan, JsRuntime, RequestQueue, SharedDocument};
 use vex_layout::{LayoutBox, ReflowPlan};
+use vex_media::media_element::{MediaElement, MediaType};
+use vex_media::media_loading::MediaFormat;
 use vex_render::display_list::{DisplayList, ImageId};
 use vex_render::scroll::ScrollState;
+
+type SharedSessionStorage = vex_js::api::session_storage::SharedSessionStorage;
 
 /// Create a guaranteed-valid `about:blank` URL.
 ///
@@ -73,6 +77,8 @@ pub struct Tab {
     pub runtime: Option<JsRuntime>,
     /// Request queue shared between JS runtime and browser loop.
     pub request_queue: RequestQueue,
+    /// Per-tab sessionStorage backing store (persisted across navigations in tab).
+    pub session_storage: SharedSessionStorage,
     /// Computed CSS styles for each DOM node.
     pub styles: Option<HashMap<VexId, ComputedStyle>>,
     /// Parsed stylesheets used to compute the current style tree.
@@ -87,6 +93,10 @@ pub struct Tab {
     pub favicon: Option<ImageId>,
     /// Mapping from DOM node to uploaded render-image ID.
     pub image_bindings: HashMap<VexId, ImageId>,
+    /// Phase-8 media model state per `<video>`/`<audio>` node.
+    pub media_elements: HashMap<VexId, MediaElement>,
+    /// Detected container format per media node.
+    pub media_formats: HashMap<VexId, MediaFormat>,
     /// Current loading state.
     pub loading: LoadingState,
     /// Whether this tab's page content needs a re-render.
@@ -107,6 +117,7 @@ impl Tab {
             shared_doc: None,
             runtime: None,
             request_queue: vex_js::new_request_queue(),
+            session_storage: vex_js::api::session_storage::shared_session_storage(),
             styles: None,
             stylesheets: Vec::new(),
             layout: None,
@@ -114,6 +125,8 @@ impl Tab {
             scroll: ScrollState::new(1280.0, 720.0),
             favicon: None,
             image_bindings: HashMap::new(),
+            media_elements: HashMap::new(),
+            media_formats: HashMap::new(),
             loading: LoadingState::Idle,
             dirty: true,
             reflow_plan: ReflowPlan::default(),
@@ -187,6 +200,11 @@ impl Tab {
         let mut runtime = JsRuntime::with_request_queue(self.request_queue.clone());
         runtime.register_document(&shared_doc);
         vex_js::api::window::update_location(self.url.as_ref(), runtime.context_mut());
+        runtime.register_page_storage_apis(
+            self.url.as_ref(),
+            u64::from(self.id.0),
+            Some(self.session_storage.clone()),
+        );
 
         // Build the fetch closure that looks up pre-fetched resources.
         let mut fetch_fn = |url: &str| -> Result<String, VexError> {
@@ -234,7 +252,7 @@ impl Tab {
         // CSS pipeline: extract <style> and <link rel="stylesheet">,
         // compute cascade, layout, display list.
         let image_bindings = self.image_bindings.clone();
-        let (stylesheets, styles, layout_root, dl, title) = {
+        let (stylesheets, styles, layout_root, dl, title, media_elements, media_formats) = {
             let doc = shared_doc.borrow();
 
             // Inline <style> elements.
@@ -302,7 +320,17 @@ impl Tab {
                 .map(|&tid| doc.text_content(tid))
                 .filter(|t| !t.is_empty());
 
-            (stylesheets, styles, layout_root, dl, title)
+            let (media_elements, media_formats) = discover_media_nodes(&doc, &self.url);
+
+            (
+                stylesheets,
+                styles,
+                layout_root,
+                dl,
+                title,
+                media_elements,
+                media_formats,
+            )
         };
 
         if let Some(title_text) = title {
@@ -372,6 +400,8 @@ impl Tab {
         self.stylesheets = stylesheets;
         self.layout = Some(layout_root);
         self.display_list = Some(dl);
+        self.media_elements = media_elements;
+        self.media_formats = media_formats;
         self.loading = LoadingState::Complete;
         self.reflow_plan.clear();
         self.dirty = true;
@@ -428,6 +458,16 @@ impl Tab {
         self.shared_doc.is_some()
     }
 
+    /// Number of media elements discovered in the current document.
+    pub fn media_element_count(&self) -> usize {
+        self.media_elements.len()
+    }
+
+    /// Detected media format for a DOM media node.
+    pub fn media_format(&self, node_id: VexId) -> Option<MediaFormat> {
+        self.media_formats.get(&node_id).copied()
+    }
+
     /// Run expired JS timers for this tab.
     ///
     /// Returns the number of timer callbacks fired. Call this once per
@@ -457,11 +497,14 @@ impl Tab {
         self.loading = LoadingState::Connecting;
         self.shared_doc = None;
         self.runtime = None;
+        // Keep session_storage: tab-scoped lifetime persists across navigations.
         self.styles = None;
         self.stylesheets.clear();
         self.layout = None;
         self.display_list = None;
         self.image_bindings.clear();
+        self.media_elements.clear();
+        self.media_formats.clear();
         self.reflow_plan.clear();
         self.injected_extensions.clear();
         self.dirty = true;
@@ -522,6 +565,7 @@ impl Tab {
                     self.load_error_page("Page Error", &msg, viewport);
                     return;
                 }
+                persist_response_cookies(&self.url, &response.headers);
                 self.loading = LoadingState::Loading { progress: 0.3 };
                 let html = String::from_utf8_lossy(&response.body).into_owned();
 
@@ -728,6 +772,157 @@ fn resolve_resource_url(base: &VexUrl, url: &str) -> String {
         Ok(resolved) => resolved.as_ref().to_string(),
         Err(_) => url.to_string(),
     }
+}
+
+fn persist_response_cookies(url: &VexUrl, headers: &HashMap<String, String>) {
+    let Some(raw_cookie) = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("set-cookie"))
+        .map(|(_, v)| v.as_str())
+    else {
+        return;
+    };
+
+    let domain = url.host().unwrap_or("localhost");
+    let path = if url.path().is_empty() { "/" } else { url.path() };
+
+    let storage_root = "target/vigo/storage";
+    if let Err(e) = std::fs::create_dir_all(storage_root) {
+        tracing::warn!(target: "vex_browser::tab", error = %e, "failed to create storage root for cookies");
+        return;
+    }
+
+    let cookie_db = format!("{storage_root}/cookies.sqlite3");
+    let store = match vex_storage::CookieStore::open(&cookie_db) {
+        Ok(store) => store,
+        Err(e) => {
+            tracing::warn!(target: "vex_browser::tab", error = %e, "failed to open cookie store");
+            return;
+        }
+    };
+
+    if let Some(cookie) = parse_set_cookie_header(raw_cookie, domain, path) {
+        if let Err(e) = store.save(&cookie) {
+            tracing::warn!(target: "vex_browser::tab", error = %e, "failed to persist set-cookie");
+        }
+    }
+}
+
+fn parse_set_cookie_header(raw: &str, default_domain: &str, default_path: &str) -> Option<vex_storage::PersistentCookie> {
+    let parts: Vec<&str> = raw.split(';').collect();
+    let name_value = parts.first()?;
+    let (name, value) = name_value.split_once('=')?;
+    let name = name.trim();
+    let value = value.trim();
+    if name.is_empty() {
+        return None;
+    }
+
+    let mut cookie = vex_storage::PersistentCookie {
+        domain: default_domain.to_owned(),
+        path: default_path.to_owned(),
+        name: name.to_owned(),
+        value: value.to_owned(),
+        secure: false,
+        http_only: false,
+        same_site: "Lax".to_owned(),
+        expires: None,
+    };
+
+    for attr in parts.iter().skip(1) {
+        let attr = attr.trim();
+        let lower = attr.to_ascii_lowercase();
+        if lower == "secure" {
+            cookie.secure = true;
+        } else if lower == "httponly" {
+            cookie.http_only = true;
+        } else if let Some(val) = lower.strip_prefix("path=") {
+            cookie.path = val.trim().to_owned();
+        } else if let Some(val) = lower.strip_prefix("domain=") {
+            cookie.domain = val.trim().to_owned();
+        } else if let Some(val) = lower.strip_prefix("samesite=") {
+            cookie.same_site = val.trim().to_owned();
+        }
+    }
+
+    Some(cookie)
+}
+
+fn discover_media_nodes(
+    doc: &Document,
+    base_url: &VexUrl,
+) -> (HashMap<VexId, MediaElement>, HashMap<VexId, MediaFormat>) {
+    let mut elements = HashMap::new();
+    let mut formats = HashMap::new();
+
+    for (tag, media_type) in [
+        ("video", MediaType::Video),
+        ("audio", MediaType::Audio),
+    ] {
+        for node_id in doc.get_elements_by_tag_name(tag) {
+            let src = media_src_for_node(doc, node_id)
+                .map(|raw| resolve_resource_url(base_url, &raw))
+                .unwrap_or_default();
+
+            let mut element = MediaElement::new(media_type, &src);
+            if !src.is_empty() {
+                element.set_src(&src);
+            }
+
+            let format = if src.is_empty() {
+                MediaFormat::Unknown
+            } else {
+                MediaFormat::from_extension(&src)
+            };
+
+            elements.insert(node_id, element);
+            formats.insert(node_id, format);
+        }
+    }
+
+    (elements, formats)
+}
+
+fn media_src_for_node(doc: &Document, node_id: VexId) -> Option<String> {
+    let arena = doc.arena();
+    let node = arena.get(node_id);
+    let vex_dom::NodeData::Element(ref el) = node.data else {
+        return None;
+    };
+
+    if let Some(src) = el
+        .attributes
+        .iter()
+        .find(|a| a.name.eq_ignore_ascii_case("src"))
+        .map(|a| a.value.clone())
+    {
+        if !src.is_empty() {
+            return Some(src);
+        }
+    }
+
+    // Fallback: first <source src="..."> child.
+    let mut child = node.first_child;
+    while let Some(cid) = child {
+        let cnode = arena.get(cid);
+        if let vex_dom::NodeData::Element(ref cel) = cnode.data {
+            if cel.tag_name.eq_ignore_ascii_case("source") {
+                if let Some(src) = cel
+                    .attributes
+                    .iter()
+                    .find(|a| a.name.eq_ignore_ascii_case("src"))
+                    .map(|a| a.value.clone())
+                {
+                    if !src.is_empty() {
+                        return Some(src);
+                    }
+                }
+            }
+        }
+        child = cnode.next_sibling;
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -990,5 +1185,69 @@ mod tests {
         let runtime = tab.runtime.as_mut().unwrap();
         let val = runtime.eval("asyncFromResource").unwrap();
         assert_eq!(val.as_number().unwrap() as i32, 99);
+    }
+
+    #[test]
+    fn load_html_registers_storage_apis() {
+        let url = VexUrl::parse("https://example.com/page").unwrap();
+        let mut tab = Tab::new(TabId::new(1), url);
+        tab.load_html("<html><body></body></html>", Size::new(800.0, 600.0));
+
+        let runtime = tab.runtime.as_mut().unwrap();
+        let ls = runtime.eval("typeof localStorage").unwrap();
+        assert_eq!(ls.as_string().unwrap().to_std_string_escaped(), "object");
+
+        let ss = runtime.eval("typeof sessionStorage").unwrap();
+        assert_eq!(ss.as_string().unwrap().to_std_string_escaped(), "object");
+
+        let idb = runtime.eval("typeof indexedDB").unwrap();
+        assert_eq!(idb.as_string().unwrap().to_std_string_escaped(), "object");
+    }
+
+    #[test]
+    fn session_storage_persists_across_same_tab_navigation() {
+        let mut tab = Tab::new(TabId::new(1), VexUrl::parse("https://example.com/a").unwrap());
+        tab.load_html("<html><body></body></html>", Size::new(800.0, 600.0));
+        tab.runtime
+            .as_mut()
+            .unwrap()
+            .execute("sessionStorage.setItem('phase8_sess_key','phase8_sess_val');")
+            .unwrap();
+
+        tab.start_load(VexUrl::parse("https://example.com/b").unwrap());
+        tab.load_html("<html><body></body></html>", Size::new(800.0, 600.0));
+
+        let val = tab
+            .runtime
+            .as_mut()
+            .unwrap()
+            .eval("sessionStorage.getItem('phase8_sess_key')")
+            .unwrap();
+        assert_eq!(
+            val.as_string().unwrap().to_std_string_escaped(),
+            "phase8_sess_val"
+        );
+    }
+
+    #[test]
+    fn load_html_discovers_media_nodes_and_formats() {
+        let url = VexUrl::parse("https://example.com/page").unwrap();
+        let mut tab = Tab::new(TabId::new(1), url);
+
+        let html = r#"<html><body>
+            <video id="v" src="movie.mp4"></video>
+            <audio id="a"><source src="song.mp3"></audio>
+        </body></html>"#;
+
+        tab.load_html(html, Size::new(800.0, 600.0));
+        assert_eq!(tab.media_element_count(), 2);
+
+        let doc = tab.borrow_document().unwrap();
+        let video_id = doc.get_element_by_id("v").unwrap();
+        let audio_id = doc.get_element_by_id("a").unwrap();
+        drop(doc);
+
+        assert_eq!(tab.media_format(video_id), Some(MediaFormat::Mp4));
+        assert_eq!(tab.media_format(audio_id), Some(MediaFormat::Mp3));
     }
 }

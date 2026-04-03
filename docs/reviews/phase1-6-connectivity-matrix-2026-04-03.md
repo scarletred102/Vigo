@@ -9,6 +9,7 @@ This matrix verifies intended connections between network/parser/style/layout/re
 | Phase 6 -> Phase 3 | JS DOM/style mutations trigger style recompute | ✅ runtime dirty-node drain + relayout style recomputation path |
 | Phase 6 -> Phase 4 | JS changes invalidate layout and trigger reflow | ✅ dirty nodes mark reflow plan and relayout in app loop |
 | Phase 6 -> Phase 5 | Updated layout regenerates display list and render input | ✅ relayout -> display list -> renderer/compositor diagnostics |
+| Phase 6 memory bindings | JS proxy references tracked against DOM roots | ✅ runtime-owned `GcRootSet` roots nodes during proxy creation |
 | Phase 6 API Surface | Browser-like frame/timer APIs available | ✅ rAF/cancelAnimationFrame added; `window.*` parity improved |
 | Script lifecycle | async/defer/blocking behavior reasonably sequenced | ✅ deferred -> DOMContentLoaded -> async -> load sequencing implemented |
 

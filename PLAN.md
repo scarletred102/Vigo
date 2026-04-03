@@ -271,7 +271,7 @@ Phase 6 is treated as a browser-runtime foundation, not just script eval.
 
 * **Goal:** Robust JS execution with realistic browser runtime APIs and reliable mutation-to-render connectivity.
 * **Scope:** `crates/vex-js`, `crates/vex-browser`, `crates/vex-app`.
-* **Status:** ✅ In Progress (started 2026-04-03, major baseline completed)
+* **Status:** ✅ Completed (2026-04-03)
 
 #### Workstream A — Runtime API Surface Improvements
 - [x] Added `requestAnimationFrame` / `cancelAnimationFrame` APIs.
@@ -291,6 +291,11 @@ Phase 6 is treated as a browser-runtime foundation, not just script eval.
 - [x] App loop drains runtime dirty-node queue each frame.
 - [x] Dirty nodes now feed layout invalidation + relayout + content-size refresh.
 - [x] Resulting display list and render/compositor diagnostics update in the same frame loop.
+
+#### Workstream E — Memory/GC Root Integration
+- [x] JS runtime now owns a DOM `GcRootSet` and clears/reseeds roots per document registration.
+- [x] Element/document proxy creation paths root referenced DOM nodes for lifetime safety accounting.
+- [x] Added runtime regression coverage for proxy-rooted node tracking.
 
 ### Cross-Phase 1/2/3/4/5/6 Connectivity Pass (2026-04-03)
 This pass validated intended phase boundaries and data flow:
@@ -312,6 +317,32 @@ Connect the JS Engine to the Rendering Engine and OS interactions.
   - Implement WebIDL & DOM Bindings (allowing JS to call `document.createElement`).
   - Build the core Event Loop (handling clicks, timers, microtasks, `requestAnimationFrame`).
 
+### Phase 7.5: Production Hardening Track (Bridge/Event Loop Integration)
+Phase 7 is treated as runtime glue infrastructure with browser-loop behavior requirements.
+
+* **Goal:** Robust JS↔DOM↔layout/render interactivity with event-loop semantics suitable for real-page scripts.
+* **Scope:** `crates/vex-js`, `crates/vex-browser`, `crates/vex-app` (+ downstream style/layout/render effects).
+* **Status:** ✅ Completed (2026-04-03)
+
+#### Workstream A — DOM Binding Surface
+- [x] Document/element binding paths support `createElement`, queries, attribute mutation, tree mutation, events.
+- [x] Proxy creation is now tied to runtime GC-root accounting via `GcRootSet`.
+
+#### Workstream B — Event Loop Semantics
+- [x] Timers integrated in runtime tick path (`setTimeout` / `setInterval`).
+- [x] `requestAnimationFrame` / `cancelAnimationFrame` implemented with high-resolution timestamp callback argument.
+- [x] Implemented `queueMicrotask` bridge and runtime microtask queue draining.
+- [x] Microtasks are flushed after script eval, event dispatch, lifecycle events, and timer callbacks.
+
+#### Workstream C — Bridge-to-Render Connectivity (1→7)
+- [x] JS DOM/style mutations are propagated to app-loop relayout invalidation.
+- [x] Relayout updates feed Phase-5 display-list/render/compositor frame path.
+- [x] End-to-end event input (click/key/scroll) remains connected through JS callbacks to render updates.
+
+#### Workstream D — Phase 1-7 Quality Gates
+- [x] `cargo test -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render -p vex-js -p vex-browser -p vex-app` passes.
+- [x] `cargo clippy -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render -p vex-js -p vex-browser -p vex-app --all-targets -- -D warnings` passes.
+
 ## Phase 8: Web APIs, Storage, & Media
 Provide standard browser APIs to the isolated web page.
 * **Crates:** `crates/vex-storage`, `crates/vex-media`, `zig/media`
@@ -319,6 +350,45 @@ Provide standard browser APIs to the isolated web page.
   - Implement `localStorage`, `sessionStorage`, and persistent Cookies using embedded SQLite.
   - Hook into OS hardware for Audio/Video decoding (HTML5 `<video>`).
   - Advanced Web APIs (WebSockets via `vex-net`, WebRTC, etc.).
+
+### Phase 8.5: Production Hardening Track (Storage + Media + API Wiring)
+Phase 8 is treated as a runtime feature-completeness and persistence/connectivity layer.
+
+* **Goal:** Ensure browser-grade persistence/media APIs are actually wired into live page runtimes.
+* **Scope:** `crates/vex-storage`, `crates/vex-media`, `crates/vex-js`, `crates/vex-browser`, `crates/vex-app`.
+* **Status:** ✅ Completed (2026-04-03)
+
+#### Subtask Group A — Storage API Wiring (one-by-one)
+- [x] **A1**: Wire `window.localStorage` into runtime for every loaded page.
+- [x] **A2**: Wire `window.sessionStorage` with tab-scoped persistence across navigations.
+- [x] **A3**: Wire `window.indexedDB` in runtime (origin-scoped backing store).
+- [x] **A4**: Wire `document.cookie` getter/setter with persistent cookie store.
+- [x] **A5**: Mirror storage APIs onto `window.*` and global scope consistency.
+
+#### Subtask Group B — Persistence Hardening
+- [x] **B1**: Added persistent cookie store constructor in JS API layer.
+- [x] **B2**: Added origin/file-backed IndexedDB builder (`build_indexed_db_with_dir`).
+- [x] **B3**: Added runtime storage root setup + in-memory fallback behavior on IO failure.
+- [x] **B4**: Added regression tests for storage API exposure and localStorage persistence.
+
+#### Subtask Group C — Network↔Storage Connectivity
+- [x] **C1**: Persist `Set-Cookie` response header from phase-1 network fetch pipeline.
+- [x] **C2**: Ensure cookies persisted via network are available to phase-8 `document.cookie` path.
+
+#### Subtask Group D — Media Runtime Integration
+- [x] **D1**: Added phase-8 media model tracking on tab state (`media_elements`, `media_formats`).
+- [x] **D2**: Discover `<video>` / `<audio>` nodes at load-time and map to `vex-media` element models.
+- [x] **D3**: Resolve media `src` and `<source>` fallback, detect media formats (`mp4`, `mp3`, etc.).
+- [x] **D4**: Added tab-level media discovery/format tests.
+
+#### Subtask Group E — Phase 1-8 Connectivity Validation
+- [x] **E1**: Verified phase1→8 runtime flow: network fetch -> cookie persistence -> JS cookie/storage APIs.
+- [x] **E2**: Verified DOM phase2→8 flow: media tags map to phase-8 media state models.
+- [x] **E3**: Verified phase6/7 event loop remains stable with phase8 APIs wired.
+
+#### Phase 1-8 Quality Gates
+- [x] `cargo test -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render -p vex-js -p vex-browser -p vex-app -p vex-storage -p vex-media` passes.
+- [x] `cargo clippy -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render -p vex-js -p vex-browser -p vex-app -p vex-storage -p vex-media --all-targets -- -D warnings` passes.
 
 ## Phase 9: Multi-Process Architecture & Security
 Ensure heavy isolation to protect users against malicious scripts.

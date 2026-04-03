@@ -503,6 +503,11 @@ pub fn shared_cookie_store_in_memory() -> SharedCookieStore {
     ))
 }
 
+/// Create a shared file-backed cookie store.
+pub fn shared_cookie_store(path: &str) -> Result<SharedCookieStore, vex_storage::StorageError> {
+    Ok(Rc::new(RefCell::new(CookieStore::open(path)?)))
+}
+
 /// Attach a `cookie` getter/setter property to the existing `document` global.
 ///
 /// - **Getter**: reads non-HttpOnly cookies for `domain`/`path`,
