@@ -233,6 +233,31 @@ Phase 5 is treated as a browser-grade rendering stack, not a basic draw pass.
   - `cargo test -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render`
   - `cargo clippy -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render --all-targets -- -D warnings`
 
+### Cross-Phase 3/4/5 Integration Pass (2026-04-03)
+This pass verified that CSS state, layout invalidation/reflow, and render/compositor behavior are connected in the live runtime — not just implemented in isolated crates.
+
+* **Status:** ✅ Completed
+
+#### Integration Workstream A — Dynamic Style + Reflow Wiring
+- [x] `Tab` now stores parsed stylesheets and recomputes styles during relayout.
+- [x] Relayout now routes through `reflow_document` with dirty-node/full-reflow planning support.
+
+#### Integration Workstream B — DOM Interaction State Propagation
+- [x] Click/focus handling now updates `ElementState` flags (`:focus`, `:focus-within`, `:checked`) to align selector state with user interaction.
+- [x] Default checkbox/radio click behavior now mutates form state and emits input/change events.
+
+#### Integration Workstream C — Runtime Pipeline Connections
+- [x] App event loop now uses smooth scrolling path (`scroll_by_smooth`) and frame ticking.
+- [x] App frame loop now executes damage diffing (`compute_damage`), tile dirty marking (`TileGrid`), and layer diagnostics (`build_layers` + occlusion cull).
+- [x] Browser relayout trigger paths now mark dirty nodes and refresh content bounds after stateful edits/clicks.
+
+#### Integration Workstream D — End-to-End Gates
+- [x] `cargo test -p vex-browser -p vex-app -p vex-css -p vex-layout -p vex-render` passes.
+- [x] `cargo clippy -p vex-browser -p vex-app -p vex-css -p vex-layout -p vex-render --all-targets -- -D warnings` passes.
+- [x] Expanded stack validation passes:
+  - `cargo test -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render -p vex-browser -p vex-app`
+  - `cargo clippy -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render -p vex-browser -p vex-app --all-targets -- -D warnings`
+
 ## Phase 6: JavaScript Execution
 Embed a high-performance engine to parse and execute JS.
 * **Crate:** `crates/vex-js`
@@ -240,6 +265,45 @@ Embed a high-performance engine to parse and execute JS.
   - Integrate a JS engine (e.g., V8 or SpiderMonkey, or build interpreter bindings).
   - Memory isolation & Garbage Collection bindings.
   - Prepare execution contexts and global objects.
+
+### Phase 6.5: Production Hardening Track (JS Runtime + Runtime Integration)
+Phase 6 is treated as a browser-runtime foundation, not just script eval.
+
+* **Goal:** Robust JS execution with realistic browser runtime APIs and reliable mutation-to-render connectivity.
+* **Scope:** `crates/vex-js`, `crates/vex-browser`, `crates/vex-app`.
+* **Status:** ✅ In Progress (started 2026-04-03, major baseline completed)
+
+#### Workstream A — Runtime API Surface Improvements
+- [x] Added `requestAnimationFrame` / `cancelAnimationFrame` APIs.
+- [x] Added high-resolution timestamp delivery for rAF callbacks.
+- [x] Mirrored timer/fetch globals onto `window.*` surface for browser-like parity.
+
+#### Workstream B — JS DOM Mutation Invalidation Bridge
+- [x] Added JS-side dirty-node queue (`__vex_dom_dirty_nodes`) and runtime drain API (`take_dom_dirty_nodes`).
+- [x] Wired element mutation APIs (`setAttribute`, `removeAttribute`, `appendChild`, `removeChild`, `insertBefore`) to mark dirty nodes.
+- [x] Wired `element.style` mutation APIs to mark dirty nodes.
+
+#### Workstream C — Script Lifecycle Fidelity
+- [x] Executed async external scripts in tab load pipeline.
+- [x] Improved lifecycle sequencing: `DOMContentLoaded` before async script execution, `load` after async/resources.
+
+#### Workstream D — App-Loop Integration (Phase 6 → 3/4/5)
+- [x] App loop drains runtime dirty-node queue each frame.
+- [x] Dirty nodes now feed layout invalidation + relayout + content-size refresh.
+- [x] Resulting display list and render/compositor diagnostics update in the same frame loop.
+
+### Cross-Phase 1/2/3/4/5/6 Connectivity Pass (2026-04-03)
+This pass validated intended phase boundaries and data flow:
+
+- [x] **Phase 1 → 6**: network stack (`vex-net`) feeds JS `fetch()` and external/async script retrieval.
+- [x] **Phase 2 → 6**: DOM tree (`vex-html` + `vex-dom`) is mutable from JS APIs and event callbacks.
+- [x] **Phase 6 → 3**: JS DOM/style mutations trigger style recomputation from stored stylesheets.
+- [x] **Phase 6 → 4**: JS-driven dirty nodes trigger reflow planning + relayout.
+- [x] **Phase 6 → 5**: relayout regenerates display lists and feeds compositor diagnostics/renderer.
+
+#### Cross-Phase 1-6 Quality Gates
+- [x] `cargo test -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render -p vex-js -p vex-browser -p vex-app` passes.
+- [x] `cargo clippy -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render -p vex-js -p vex-browser -p vex-app --all-targets -- -D warnings` passes.
 
 ## Phase 7: The Bridge & Interactivity
 Connect the JS Engine to the Rendering Engine and OS interactions.

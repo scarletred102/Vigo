@@ -5,6 +5,7 @@
 
 pub mod console;
 pub mod document;
+pub(crate) mod dom_dirty;
 pub mod element;
 pub mod eme;
 pub mod events;

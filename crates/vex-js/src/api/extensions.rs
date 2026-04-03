@@ -247,7 +247,7 @@ fn serialize_payload(value: &JsValue, context: &mut Context) -> String {
             if let Ok(stringify_val) = json_obj.get(js_string!("stringify"), context) {
                 if let Some(func) = stringify_val.as_callable() {
                     if let Ok(serialized) =
-                        func.call(&JsValue::undefined(), &[value.clone()], context)
+                        func.call(&JsValue::undefined(), std::slice::from_ref(value), context)
                     {
                         if let Some(s) = serialized.as_string() {
                             return s.to_std_string_escaped();

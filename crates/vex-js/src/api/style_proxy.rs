@@ -17,6 +17,7 @@ use boa_engine::property::{Attribute, PropertyDescriptor};
 use boa_engine::{js_string, Context, JsValue, NativeFunction};
 use vex_core::VexId;
 
+use super::dom_dirty::mark_dom_dirty_node;
 use crate::dom_bridge::SharedDocument;
 
 /// Known CSS properties exposed on `element.style`.
@@ -107,6 +108,7 @@ pub fn build_style_proxy(node_id: VexId, doc: &SharedDocument, context: &mut Con
                 .unwrap_or_default();
 
             set_style_property(&doc_sp, node_id, &prop, &val);
+            mark_dom_dirty_node(ctx, node_id);
             Ok(JsValue::undefined())
         })
     };
@@ -146,6 +148,7 @@ pub fn build_style_proxy(node_id: VexId, doc: &SharedDocument, context: &mut Con
 
             let old = get_style_property(&doc_rp, node_id, &prop);
             set_style_property(&doc_rp, node_id, &prop, "");
+            mark_dom_dirty_node(ctx, node_id);
             Ok(JsValue::from(js_string!(old)))
         })
     };
@@ -179,6 +182,7 @@ pub fn build_style_proxy(node_id: VexId, doc: &SharedDocument, context: &mut Con
                     .map(|s| s.to_std_string_escaped())
                     .unwrap_or_default();
                 set_style_property(&setter_doc, node_id, &css_set, &val);
+                mark_dom_dirty_node(ctx, node_id);
                 Ok(JsValue::undefined())
             })
         };

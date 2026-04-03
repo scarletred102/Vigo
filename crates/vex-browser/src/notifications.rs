@@ -332,8 +332,10 @@ mod tests {
 
     #[test]
     fn notification_body() {
-        let mut opts = NotificationOptions::default();
-        opts.body = Some("World".to_string());
+        let opts = NotificationOptions {
+            body: Some("World".to_string()),
+            ..Default::default()
+        };
         let mut center = NotificationCenter::new();
         let id = center.show("Hello", opts, ORIGIN);
         assert_eq!(center.get(id).unwrap().body(), "World");
@@ -368,14 +370,18 @@ mod tests {
     #[test]
     fn tag_replacement() {
         let mut center = NotificationCenter::new();
-        let mut opts1 = NotificationOptions::default();
-        opts1.tag = Some("chat".to_string());
-        opts1.body = Some("Message 1".to_string());
+        let opts1 = NotificationOptions {
+            tag: Some("chat".to_string()),
+            body: Some("Message 1".to_string()),
+            ..Default::default()
+        };
         let id1 = center.show("Chat", opts1, ORIGIN);
 
-        let mut opts2 = NotificationOptions::default();
-        opts2.tag = Some("chat".to_string());
-        opts2.body = Some("Message 2".to_string());
+        let opts2 = NotificationOptions {
+            tag: Some("chat".to_string()),
+            body: Some("Message 2".to_string()),
+            ..Default::default()
+        };
         let id2 = center.show("Chat", opts2, ORIGIN);
 
         assert_ne!(id1, id2);

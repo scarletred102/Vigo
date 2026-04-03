@@ -8,10 +8,11 @@ use std::collections::{HashMap, HashSet};
 
 use vex_core::geometry::Size;
 use vex_core::{VexError, VexId, VexUrl};
-use vex_css::ComputedStyle;
+use vex_css::{ComputedStyle, Stylesheet};
 use vex_dom::Document;
+use vex_js::script_runner::ScriptEntry;
 use vex_js::{ExecutionPlan, JsRuntime, RequestQueue, SharedDocument};
-use vex_layout::LayoutBox;
+use vex_layout::{LayoutBox, ReflowPlan};
 use vex_render::display_list::{DisplayList, ImageId};
 use vex_render::scroll::ScrollState;
 
@@ -74,6 +75,8 @@ pub struct Tab {
     pub request_queue: RequestQueue,
     /// Computed CSS styles for each DOM node.
     pub styles: Option<HashMap<VexId, ComputedStyle>>,
+    /// Parsed stylesheets used to compute the current style tree.
+    pub stylesheets: Vec<Stylesheet>,
     /// Layout tree for the current page.
     pub layout: Option<LayoutBox>,
     /// Pre-built display list (cached between frames if page hasn't changed).
@@ -82,10 +85,14 @@ pub struct Tab {
     pub scroll: ScrollState,
     /// Favicon image ID if one has been loaded.
     pub favicon: Option<ImageId>,
+    /// Mapping from DOM node to uploaded render-image ID.
+    pub image_bindings: HashMap<VexId, ImageId>,
     /// Current loading state.
     pub loading: LoadingState,
     /// Whether this tab's page content needs a re-render.
     pub dirty: bool,
+    /// Incremental reflow invalidation plan.
+    pub reflow_plan: ReflowPlan,
     /// Extension IDs whose content scripts have already been injected into this document.
     pub injected_extensions: HashSet<String>,
 }
@@ -101,12 +108,15 @@ impl Tab {
             runtime: None,
             request_queue: vex_js::new_request_queue(),
             styles: None,
+            stylesheets: Vec::new(),
             layout: None,
             display_list: None,
             scroll: ScrollState::new(1280.0, 720.0),
             favicon: None,
+            image_bindings: HashMap::new(),
             loading: LoadingState::Idle,
             dirty: true,
+            reflow_plan: ReflowPlan::default(),
             injected_extensions: HashSet::new(),
         }
     }
@@ -223,7 +233,8 @@ impl Tab {
 
         // CSS pipeline: extract <style> and <link rel="stylesheet">,
         // compute cascade, layout, display list.
-        let (styles, layout_root, dl, title) = {
+        let image_bindings = self.image_bindings.clone();
+        let (stylesheets, styles, layout_root, dl, title) = {
             let doc = shared_doc.borrow();
 
             // Inline <style> elements.
@@ -276,7 +287,13 @@ impl Tab {
 
             self.loading = LoadingState::Loading { progress: 0.8 };
 
-            let dl = vex_render::build_display_list(&layout_root, &styles, &doc, viewport);
+            let dl = vex_render::build_display_list_with_images(
+                &layout_root,
+                &styles,
+                &doc,
+                viewport,
+                &image_bindings,
+            );
 
             // Extract title from <title> element.
             let title_ids = doc.get_elements_by_tag_name("title");
@@ -285,7 +302,7 @@ impl Tab {
                 .map(|&tid| doc.text_content(tid))
                 .filter(|t| !t.is_empty());
 
-            (styles, layout_root, dl, title)
+            (stylesheets, styles, layout_root, dl, title)
         };
 
         if let Some(title_text) = title {
@@ -306,8 +323,36 @@ impl Tab {
             }
         }
 
-        // Fire lifecycle events.
+        // DOM ready event does not wait for async scripts.
         runtime.fire_dom_content_loaded(&shared_doc);
+
+        // Execute async scripts once resources are available.
+        if !plan.async_scripts.is_empty() {
+            tracing::debug!("Executing {} async script(s)", plan.async_scripts.len());
+            for (i, entry) in plan.async_scripts.iter().enumerate() {
+                let result = match entry {
+                    ScriptEntry::Inline { source } => {
+                        ExecutionPlan::execute_async_script(&mut runtime, source)
+                    }
+                    ScriptEntry::External { url } => {
+                        let source = match fetch_fn(url) {
+                            Ok(source) => source,
+                            Err(error) => {
+                                tracing::warn!("Async script {i} fetch failed ({url}): {error}");
+                                continue;
+                            }
+                        };
+                        ExecutionPlan::execute_async_script(&mut runtime, &source)
+                    }
+                };
+
+                if let Err(e) = result {
+                    tracing::warn!("Async script {i} failed: {e}");
+                }
+            }
+        }
+
+        // Final page lifecycle event (after resources / async scripts).
         runtime.fire_load(&shared_doc);
 
         if plan.total() > 0 {
@@ -324,9 +369,11 @@ impl Tab {
         self.shared_doc = Some(shared_doc);
         self.runtime = Some(runtime);
         self.styles = Some(styles);
+        self.stylesheets = stylesheets;
         self.layout = Some(layout_root);
         self.display_list = Some(dl);
         self.loading = LoadingState::Complete;
+        self.reflow_plan.clear();
         self.dirty = true;
     }
 
@@ -336,9 +383,31 @@ impl Tab {
         self.dirty = true;
     }
 
+    /// Update scroll target with smooth scrolling behavior.
+    pub fn scroll_by_smooth(&mut self, dx: f32, dy: f32) {
+        self.scroll.scroll_by_smooth(dx, dy);
+        self.dirty = true;
+    }
+
+    /// Advance scroll animation state.
+    ///
+    /// Returns `true` when visual scroll state changed.
+    pub fn tick_scroll(&mut self, dt_seconds: f32) -> bool {
+        let before_x = self.scroll.offset_x;
+        let before_y = self.scroll.offset_y;
+        self.scroll.tick(dt_seconds);
+        let changed = (self.scroll.offset_x - before_x).abs() > 0.01
+            || (self.scroll.offset_y - before_y).abs() > 0.01;
+        if changed {
+            self.dirty = true;
+        }
+        changed
+    }
+
     /// Set the viewport dimensions (e.g., on window resize).
     pub fn set_viewport(&mut self, width: f32, height: f32) {
         self.scroll.set_viewport_size(width, height);
+        self.reflow_plan.full_reflow = true;
         self.dirty = true;
     }
 
@@ -389,11 +458,26 @@ impl Tab {
         self.shared_doc = None;
         self.runtime = None;
         self.styles = None;
+        self.stylesheets.clear();
         self.layout = None;
         self.display_list = None;
+        self.image_bindings.clear();
+        self.reflow_plan.clear();
         self.injected_extensions.clear();
         self.dirty = true;
         tracing::info!("Tab {} loading: {}", self.id, self.url);
+    }
+
+    /// Mark a single DOM node as dirty for reflow.
+    pub fn mark_layout_dirty_node(&mut self, node_id: VexId) {
+        self.reflow_plan.mark_dirty(node_id);
+        self.dirty = true;
+    }
+
+    /// Associate an uploaded image ID with a DOM node for display-list painting.
+    pub fn bind_image(&mut self, node_id: VexId, image_id: ImageId) {
+        self.image_bindings.insert(node_id, image_id);
+        self.dirty = true;
     }
 
     /// Whether a content script for an extension has already been injected.
@@ -475,18 +559,46 @@ impl Tab {
     /// Used after zoom level changes to recalculate layout at the new
     /// effective viewport size without re-parsing HTML.
     pub fn relayout(&mut self, viewport: Size) {
-        let (layout_root, dl) = {
-            let (shared_doc, styles) = match (&self.shared_doc, &self.styles) {
-                (Some(sd), Some(s)) => (sd, s),
-                _ => return,
+        let (styles, layout_root, dl) = {
+            let shared_doc = match &self.shared_doc {
+                Some(sd) => sd,
+                None => return,
             };
             let doc = shared_doc.borrow();
-            let layout_root = vex_layout::layout_document(&doc, styles, viewport);
-            let dl = vex_render::build_display_list(&layout_root, styles, &doc, viewport);
-            (layout_root, dl)
+
+            // Recompute styles on relayout so dynamic state changes (:focus,
+            // :checked, media-query viewport updates) are reflected.
+            let styles = vex_css::compute_styles(&doc, &self.stylesheets, viewport);
+
+            let plan = if self.reflow_plan.needs_reflow() {
+                self.reflow_plan.clone()
+            } else {
+                ReflowPlan {
+                    full_reflow: true,
+                    ..Default::default()
+                }
+            };
+
+            let layout_root = vex_layout::reflow_document(
+                &doc,
+                &styles,
+                viewport,
+                self.layout.as_ref(),
+                &plan,
+            );
+            let dl = vex_render::build_display_list_with_images(
+                &layout_root,
+                &styles,
+                &doc,
+                viewport,
+                &self.image_bindings,
+            );
+            (styles, layout_root, dl)
         };
+        self.styles = Some(styles);
         self.layout = Some(layout_root);
         self.display_list = Some(dl);
+        self.reflow_plan.clear();
         self.dirty = true;
         tracing::debug!(
             "Tab {} relayout at {:.0}×{:.0}",
@@ -854,5 +966,29 @@ mod tests {
         let runtime = tab.runtime.as_mut().unwrap();
         let val = runtime.eval("fromExternal").unwrap();
         assert_eq!(val.as_string().unwrap(), "loaded");
+    }
+
+    #[test]
+    fn load_html_executes_async_external_scripts() {
+        let url = VexUrl::parse("https://example.com/page").unwrap();
+        let mut tab = Tab::new(TabId::new(1), url);
+
+        let html = r#"<html>
+            <head>
+                <script async src="https://example.com/async.js"></script>
+            </head>
+            <body></body>
+        </html>"#;
+
+        let mut resources = HashMap::new();
+        resources.insert(
+            "https://example.com/async.js".to_string(),
+            "var asyncFromResource = 99;".to_string(),
+        );
+
+        tab.load_html_with_resources(html, Size::new(800.0, 600.0), &resources);
+        let runtime = tab.runtime.as_mut().unwrap();
+        let val = runtime.eval("asyncFromResource").unwrap();
+        assert_eq!(val.as_number().unwrap() as i32, 99);
     }
 }

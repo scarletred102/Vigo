@@ -19,6 +19,7 @@ use vex_core::{VexId, VexUrl};
 use vex_dom::events::{Event, EventType};
 use vex_dom::node::NodeData;
 use vex_dom::Document;
+use vex_dom::{ElementState, FormElementKind, InputState, InputType};
 use vex_js::{JsRuntime, SharedDocument};
 use vex_layout::LayoutBox;
 use vex_render::scroll::ScrollState;
@@ -46,7 +47,6 @@ pub fn process_click(
     y: f32,
     layout: &LayoutBox,
     scroll: &ScrollState,
-    document: &Document,
     shared_doc: &SharedDocument,
     current_url: &VexUrl,
     runtime: &mut JsRuntime,
@@ -75,8 +75,19 @@ pub fn process_click(
         return ClickResult::Handled;
     }
 
+    // Default form control behavior (checkbox/radio toggles).
+    if apply_default_form_click(shared_doc, target_id) {
+        let mut input_evt = Event::new(EventType::Input, target_id);
+        runtime.dispatch_dom_event(shared_doc, &mut input_evt);
+        let mut change_evt = Event::new(EventType::Change, target_id);
+        runtime.dispatch_dom_event(shared_doc, &mut change_evt);
+    }
+
     // Default action — check if the target is inside an <a> element.
-    let link_action = links::resolve_link_click(document, target_id, current_url);
+    let link_action = {
+        let doc = shared_doc.borrow();
+        links::resolve_link_click(&doc, target_id, current_url)
+    };
     if link_action != LinkAction::None {
         return ClickResult::Navigate(link_action);
     }
@@ -99,8 +110,17 @@ pub fn process_focus_change(
 
     // Fire blur on old element.
     if let Some(old_id) = current_focus {
+        {
+            let mut doc = shared_doc.borrow_mut();
+            clear_focus_chain(&mut doc, old_id);
+        }
         let mut blur = Event::new(EventType::Blur, old_id);
         runtime.dispatch_dom_event(shared_doc, &mut blur);
+    }
+
+    {
+        let mut doc = shared_doc.borrow_mut();
+        set_focus_chain(&mut doc, new_target);
     }
 
     // Fire focus on new element.
@@ -108,6 +128,178 @@ pub fn process_focus_change(
     runtime.dispatch_dom_event(shared_doc, &mut focus);
 
     Some(new_target)
+}
+
+fn clear_focus_chain(doc: &mut Document, start: VexId) {
+    let mut current = Some(start);
+    let mut first = true;
+    while let Some(id) = current {
+        let parent = {
+            let node = doc.arena().get(id);
+            node.parent
+        };
+
+        {
+            let node = doc.arena_mut().get_mut(id);
+            if let NodeData::Element(ref mut el) = node.data {
+                if first {
+                    el.state.remove(ElementState::FOCUS);
+                    first = false;
+                }
+                el.state.remove(ElementState::FOCUS_WITHIN);
+            }
+        }
+
+        current = parent;
+    }
+}
+
+fn set_focus_chain(doc: &mut Document, target: VexId) {
+    let mut current = Some(target);
+    let mut first = true;
+    while let Some(id) = current {
+        let parent = {
+            let node = doc.arena().get(id);
+            node.parent
+        };
+
+        {
+            let node = doc.arena_mut().get_mut(id);
+            if let NodeData::Element(ref mut el) = node.data {
+                if first {
+                    el.state.insert(ElementState::FOCUS);
+                    first = false;
+                }
+                el.state.insert(ElementState::FOCUS_WITHIN);
+            }
+        }
+
+        current = parent;
+    }
+}
+
+fn apply_default_form_click(shared_doc: &SharedDocument, target_id: VexId) -> bool {
+    let mut doc = shared_doc.borrow_mut();
+    let Some(input_id) = find_ancestor_input(&doc, target_id) else {
+        return false;
+    };
+
+    let (input_type, input_name) = {
+        let node = doc.arena().get(input_id);
+        let NodeData::Element(ref el) = node.data else {
+            return false;
+        };
+        (
+            element_input_type(el),
+            el.attributes
+                .iter()
+                .find(|a| a.name.eq_ignore_ascii_case("name"))
+                .map(|a| a.value.clone())
+                .unwrap_or_default(),
+        )
+    };
+
+    match input_type {
+        InputType::Checkbox => {
+            ensure_input_state(&mut doc, input_id, input_type, &input_name);
+            let checked = {
+                let state = match doc.form_states_mut().get_mut(input_id) {
+                    Some(s) => s,
+                    None => return false,
+                };
+                state.checked = !state.checked;
+                state.checked
+            };
+            set_checked_state_flag(&mut doc, input_id, checked);
+            true
+        }
+        InputType::Radio => {
+            // Uncheck all radios in the same group, then check the clicked one.
+            let mut group_ids: Vec<VexId> = Vec::new();
+            for idx in 0..doc.arena().len() {
+                let id = VexId::new(idx as u32);
+                let node = doc.arena().get(id);
+                let NodeData::Element(ref el) = node.data else {
+                    continue;
+                };
+                if !el.tag_name.eq_ignore_ascii_case("input") || element_input_type(el) != InputType::Radio {
+                    continue;
+                }
+                let name = el
+                    .attributes
+                    .iter()
+                    .find(|a| a.name.eq_ignore_ascii_case("name"))
+                    .map(|a| a.value.as_str())
+                    .unwrap_or("");
+                if name == input_name {
+                    group_ids.push(id);
+                }
+            }
+
+            for id in &group_ids {
+                ensure_input_state(&mut doc, *id, InputType::Radio, &input_name);
+                if let Some(state) = doc.form_states_mut().get_mut(*id) {
+                    state.checked = *id == input_id;
+                }
+                set_checked_state_flag(&mut doc, *id, *id == input_id);
+            }
+
+            if group_ids.is_empty() {
+                ensure_input_state(&mut doc, input_id, InputType::Radio, &input_name);
+                if let Some(state) = doc.form_states_mut().get_mut(input_id) {
+                    state.checked = true;
+                }
+                set_checked_state_flag(&mut doc, input_id, true);
+            }
+
+            true
+        }
+        _ => false,
+    }
+}
+
+fn find_ancestor_input(doc: &Document, start: VexId) -> Option<VexId> {
+    let mut current = Some(start);
+    while let Some(id) = current {
+        let node = doc.arena().get(id);
+        if let NodeData::Element(ref el) = node.data {
+            if el.tag_name.eq_ignore_ascii_case("input") {
+                return Some(id);
+            }
+        }
+        current = node.parent;
+    }
+    None
+}
+
+fn element_input_type(el: &vex_dom::node::ElementData) -> InputType {
+    el.attributes
+        .iter()
+        .find(|a| a.name.eq_ignore_ascii_case("type"))
+        .map(|a| InputType::from_attr(&a.value))
+        .unwrap_or(InputType::Text)
+}
+
+fn ensure_input_state(doc: &mut Document, id: VexId, input_type: InputType, name: &str) {
+    if doc.form_states().contains(id) {
+        return;
+    }
+
+    let mut state = match input_type {
+        InputType::Checkbox => InputState::new_checkbox(false),
+        InputType::Radio => InputState::new_radio(false),
+        _ => InputState::new_text(input_type),
+    };
+    state.kind = FormElementKind::Input(input_type);
+    state.name = name.to_string();
+    doc.form_states_mut().insert(id, state);
+}
+
+fn set_checked_state_flag(doc: &mut Document, id: VexId, checked: bool) {
+    let node = doc.arena_mut().get_mut(id);
+    if let NodeData::Element(ref mut el) = node.data {
+        el.state.set(ElementState::CHECKED, checked);
+    }
 }
 
 // ── Keyboard Event Handling ──────────────────────────────────────────
@@ -326,9 +518,8 @@ mod tests {
 
         // Read doc from shared before passing another borrow
         let doc_ref = shared.borrow();
-        let result = process_click(
-            200.0, 200.0, &root, &scroll, &doc_ref, &shared, &url, &mut rt,
-        );
+        drop(doc_ref);
+        let result = process_click(200.0, 200.0, &root, &scroll, &shared, &url, &mut rt);
         assert_eq!(result, ClickResult::Miss);
     }
 
@@ -343,9 +534,77 @@ mod tests {
         let scroll = ScrollState::new(800.0, 600.0);
         let mut rt = JsRuntime::new();
 
-        let doc_ref = shared.borrow();
-        let result = process_click(50.0, 50.0, &root, &scroll, &doc_ref, &shared, &url, &mut rt);
+        let result = process_click(50.0, 50.0, &root, &scroll, &shared, &url, &mut rt);
         assert_eq!(result, ClickResult::Handled);
+    }
+
+    #[test]
+    fn focus_change_sets_element_state_flags() {
+        let mut doc = vex_dom::Document::new();
+        let html = doc.create_element("html", vex_dom::Namespace::Html);
+        let body = doc.create_element("body", vex_dom::Namespace::Html);
+        let input = doc.create_element("input", vex_dom::Namespace::Html);
+        doc.append_child(doc.root(), html);
+        doc.append_child(html, body);
+        doc.append_child(body, input);
+
+        let shared = vex_js::shared_document(doc);
+        let mut rt = JsRuntime::new();
+        let changed = process_focus_change(input, None, &shared, &mut rt);
+        assert_eq!(changed, Some(input));
+
+        let doc_ref = shared.borrow();
+        let input_node = doc_ref.arena().get(input);
+        let body_node = doc_ref.arena().get(body);
+        let html_node = doc_ref.arena().get(html);
+
+        let NodeData::Element(ref input_el) = input_node.data else {
+            panic!("input must be element");
+        };
+        let NodeData::Element(ref body_el) = body_node.data else {
+            panic!("body must be element");
+        };
+        let NodeData::Element(ref html_el) = html_node.data else {
+            panic!("html must be element");
+        };
+
+        assert!(input_el.state.contains(ElementState::FOCUS));
+        assert!(input_el.state.contains(ElementState::FOCUS_WITHIN));
+        assert!(body_el.state.contains(ElementState::FOCUS_WITHIN));
+        assert!(html_el.state.contains(ElementState::FOCUS_WITHIN));
+    }
+
+    #[test]
+    fn checkbox_click_toggles_checked_state() {
+        let mut doc = vex_dom::Document::new();
+        let input = doc.create_element("input", vex_dom::Namespace::Html);
+        {
+            let node = doc.arena_mut().get_mut(input);
+            if let NodeData::Element(ref mut el) = node.data {
+                el.attributes.push(vex_dom::node::Attribute {
+                    name: "type".to_string(),
+                    value: "checkbox".to_string(),
+                });
+            }
+        }
+        doc.append_child(doc.root(), input);
+
+        let shared = vex_js::shared_document(doc);
+        let mut rt = JsRuntime::new();
+        let mut root = make_box(Some(input), 0.0, 0.0, 100.0, 40.0);
+        root.box_type = BoxType::Inline;
+        let scroll = ScrollState::new(800.0, 600.0);
+        let url = VexUrl::parse("https://example.com").unwrap();
+
+        let _ = process_click(10.0, 10.0, &root, &scroll, &shared, &url, &mut rt);
+
+        let doc_ref = shared.borrow();
+        let checked = doc_ref
+            .form_states()
+            .get(input)
+            .map(|s| s.checked)
+            .unwrap_or(false);
+        assert!(checked);
     }
 
     #[test]

@@ -53,12 +53,15 @@ fn run() {
     use vex_browser::ui::tab_bar::{hit_test_tab_bar, TabBarAction};
     use vex_browser::ui::toolbar::ToolbarLayout;
     use vex_browser::zoom::ZoomState;
-    use vex_core::geometry::{Point, Size};
+    use vex_core::geometry::{Point, Rect, Size};
     use vex_core::VexUrl;
     use vex_js::BrowserRequest;
     use vex_render::event::MouseButton;
     use vex_render::renderer::Renderer;
-    use vex_render::{Event, GpuContext, RenderPrivacyConfig, Window};
+    use vex_render::{
+        build_layers, compute_damage, cull_fully_occluded, Event, GpuContext,
+        RenderPrivacyConfig, TileGrid, Window,
+    };
 
     tracing_subscriber::fmt().with_env_filter("info").init();
 
@@ -101,6 +104,12 @@ fn run() {
 
     let mut vp_w = gpu.config.width as f32;
     let mut vp_h = gpu.config.height as f32;
+    let mut previous_frame_dl: Option<vex_render::display_list::DisplayList> = None;
+    let mut frame_tiles = TileGrid::new(Size::new(vp_w, vp_h), 256);
+    let mut last_damage_rects: usize;
+    let mut last_visible_dirty_tiles: usize;
+    let mut last_composited_layers: usize;
+    let mut frame_clock = Instant::now();
 
     // ── Browser state ────────────────────────────────────────────
     let mut tab_mgr = TabManager::new();
@@ -257,6 +266,7 @@ fn run() {
                     gpu.resize(width, height);
                     vp_w = width as f32;
                     vp_h = height as f32;
+                    frame_tiles = TileGrid::new(Size::new(vp_w, vp_h), 256);
                     let count = tab_mgr.tab_count();
                     for i in 0..count {
                         let id = tab_mgr.tabs()[i].id;
@@ -269,7 +279,7 @@ fn run() {
                 // ── Scroll ──────────────────────────────────────
                 Event::MouseScroll { dy, .. } => {
                     context_menu = None;
-                    tab_mgr.active_tab_mut().scroll_by(0.0, -dy * 40.0);
+                    tab_mgr.active_tab_mut().scroll_by_smooth(0.0, -dy * 40.0);
                 }
 
                 // ── Mouse click ─────────────────────────────────
@@ -423,7 +433,16 @@ fn run() {
                                 match result {
                                     KeyResult::InputChanged => {
                                         let viewport = Size::new(vp_w, vp_h);
-                                        tab_mgr.active_tab_mut().relayout(viewport);
+                                        let tab = tab_mgr.active_tab_mut();
+                                        tab.mark_layout_dirty_node(focused);
+                                        tab.relayout(viewport);
+                                        let content_height = tab
+                                            .layout
+                                            .as_ref()
+                                            .map(estimated_layout_height)
+                                            .unwrap_or(vp_h)
+                                            .max(vp_h);
+                                        tab.set_content_size(vp_w, content_height + 32.0);
                                         continue;
                                     }
                                     KeyResult::Handled => continue,
@@ -555,6 +574,41 @@ fn run() {
                 }
 
                 _ => {}
+            }
+        }
+
+        // Tick smooth/kinetic scrolling for the active tab.
+        {
+            let dt = frame_clock.elapsed().as_secs_f32().min(0.1);
+            frame_clock = Instant::now();
+            let tab = tab_mgr.active_tab_mut();
+            tab.tick_scroll(dt);
+        }
+
+        // Phase 6 integration: drain JS DOM/style mutation queue and trigger
+        // targeted reflow/repaint invalidation.
+        {
+            let dirty_nodes = {
+                let tab = tab_mgr.active_tab_mut();
+                match tab.runtime.as_mut() {
+                    Some(runtime) => runtime.take_dom_dirty_nodes(),
+                    None => Vec::new(),
+                }
+            };
+
+            if !dirty_nodes.is_empty() {
+                let tab = tab_mgr.active_tab_mut();
+                for id in dirty_nodes {
+                    tab.mark_layout_dirty_node(id);
+                }
+                tab.relayout(Size::new(vp_w, vp_h));
+                let content_height = tab
+                    .layout
+                    .as_ref()
+                    .map(estimated_layout_height)
+                    .unwrap_or(vp_h)
+                    .max(vp_h);
+                tab.set_content_size(vp_w, content_height + 32.0);
             }
         }
 
@@ -720,6 +774,29 @@ fn run() {
             &sources_state,
         );
 
+        // Phase 5 integration: damage tracking + tiling + layerization diagnostics.
+        let viewport_rect = Rect::new(0.0, 0.0, vp_w, vp_h);
+        let damage = if let Some(prev) = previous_frame_dl.as_ref() {
+            compute_damage(prev, &dl, viewport_rect)
+        } else {
+            vec![viewport_rect]
+        };
+
+        frame_tiles.clear_dirty();
+        for rect in &damage {
+            frame_tiles.mark_dirty(*rect);
+        }
+        last_damage_rects = damage.len();
+        last_visible_dirty_tiles = frame_tiles.dirty_visible_tile_ids(viewport_rect).len();
+
+        if let (Some(layout), Some(styles)) = (&tab_mgr.active_tab().layout, &tab_mgr.active_tab().styles)
+        {
+            let layers = build_layers(layout, styles);
+            last_composited_layers = cull_fully_occluded(layers).len();
+        } else {
+            last_composited_layers = 0;
+        }
+
         // ── Tick JS timers for active tab (Task: timer queue) ────
         {
             let active_id = tab_mgr.active_tab().id;
@@ -751,6 +828,7 @@ fn run() {
         renderer.render(&mut encoder, &view);
         gpu.queue.submit(std::iter::once(encoder.finish()));
         output.present();
+        previous_frame_dl = Some(dl.clone());
 
         // A-004 (KPI): write one cold-start snapshot after the first frame is presented.
         if !cold_start_recorded {
@@ -791,7 +869,13 @@ fn run() {
             _last_fps = frame_count;
             frame_count = 0;
             fps_timer = Instant::now();
-            tracing::debug!("FPS: {_last_fps}");
+            tracing::debug!(
+                fps = _last_fps,
+                damage_rects = last_damage_rects,
+                dirty_visible_tiles = last_visible_dirty_tiles,
+                composited_layers = last_composited_layers,
+                "Frame diagnostics"
+            );
         }
 
         // ── Window title (Task 76 + 77) ────────────────────────
@@ -1925,13 +2009,11 @@ fn handle_content_click(
         let tab = tab_mgr.active_tab_mut();
         match (&tab.layout, &tab.shared_doc, tab.runtime.as_mut()) {
             (Some(layout), Some(shared), Some(runtime)) => {
-                let doc = shared.borrow();
                 Some(vex_browser::event_handler::process_click(
                     local_x,
                     local_y,
                     layout,
                     &tab.scroll,
-                    &doc,
                     shared,
                     &tab.url,
                     runtime,
@@ -1942,6 +2024,7 @@ fn handle_content_click(
     };
 
     // Focus follows click target (if any).
+    let mut focus_changed = false;
     if let Some(target) = hit_target {
         let maybe_focus = {
             let tab = tab_mgr.active_tab_mut();
@@ -1957,10 +2040,13 @@ fn handle_content_click(
         };
         if let Some(new_focus) = maybe_focus {
             *focused_node = Some(new_focus);
+            focus_changed = true;
         }
     } else {
         *focused_node = None;
     }
+
+    let mut needs_relayout = focus_changed;
 
     match click_result {
         Some(vex_browser::event_handler::ClickResult::Navigate(
@@ -1978,6 +2064,7 @@ fn handle_content_click(
                 .push(url.clone(), title, scroll);
             navigate_tab(tab_mgr, &url, vp_w, vp_h);
             *focused_node = None;
+            needs_relayout = false;
         }
         Some(vex_browser::event_handler::ClickResult::Navigate(
             vex_browser::links::LinkAction::NewTab(url),
@@ -1991,6 +2078,7 @@ fn handle_content_click(
             );
             navigate_tab(tab_mgr, &url, vp_w, vp_h);
             *focused_node = None;
+            needs_relayout = false;
         }
         Some(vex_browser::event_handler::ClickResult::Navigate(
             vex_browser::links::LinkAction::RunScript(script),
@@ -2021,13 +2109,34 @@ fn handle_content_click(
                     .max(vp_h);
                 tab.set_content_size(vp_w, content_height + 32.0);
             }
+            needs_relayout = false;
         }
         Some(vex_browser::event_handler::ClickResult::Handled)
-        | Some(vex_browser::event_handler::ClickResult::Miss)
+            if hit_target.is_some() =>
+        {
+            needs_relayout = true;
+        }
+        Some(vex_browser::event_handler::ClickResult::Handled) => {}
+        Some(vex_browser::event_handler::ClickResult::Miss)
         | None => {}
         Some(vex_browser::event_handler::ClickResult::Navigate(
             vex_browser::links::LinkAction::None,
         )) => {}
+    }
+
+    if needs_relayout {
+        let tab = tab_mgr.active_tab_mut();
+        if let Some(target) = hit_target {
+            tab.mark_layout_dirty_node(target);
+        }
+        tab.relayout(vex_core::geometry::Size::new(vp_w, vp_h));
+        let content_height = tab
+            .layout
+            .as_ref()
+            .map(estimated_layout_height)
+            .unwrap_or(vp_h)
+            .max(vp_h);
+        tab.set_content_size(vp_w, content_height + 32.0);
     }
 }
 

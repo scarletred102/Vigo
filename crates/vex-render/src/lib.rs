@@ -30,7 +30,7 @@ pub use display_list::DisplayList;
 pub use event::Event;
 #[cfg(target_os = "windows")]
 pub use gpu::GpuContext;
-pub use painter::build_display_list;
+pub use painter::{build_display_list, build_display_list_with_images};
 #[cfg(target_os = "windows")]
 pub use platform::Window;
 pub use privacy::RenderPrivacyConfig;

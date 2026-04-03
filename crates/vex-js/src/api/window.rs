@@ -118,6 +118,30 @@ fn register_inner(
         .function(alert_closure, js_string!("alert"), 1)
         .build();
 
+    // Mirror selected global APIs onto window for browser-compat surface.
+    let global = context.global_object();
+    if let Ok(v) = global.get(js_string!("setTimeout"), context) {
+        let _ = window.set(js_string!("setTimeout"), v, false, context);
+    }
+    if let Ok(v) = global.get(js_string!("setInterval"), context) {
+        let _ = window.set(js_string!("setInterval"), v, false, context);
+    }
+    if let Ok(v) = global.get(js_string!("clearTimeout"), context) {
+        let _ = window.set(js_string!("clearTimeout"), v, false, context);
+    }
+    if let Ok(v) = global.get(js_string!("clearInterval"), context) {
+        let _ = window.set(js_string!("clearInterval"), v, false, context);
+    }
+    if let Ok(v) = global.get(js_string!("requestAnimationFrame"), context) {
+        let _ = window.set(js_string!("requestAnimationFrame"), v, false, context);
+    }
+    if let Ok(v) = global.get(js_string!("cancelAnimationFrame"), context) {
+        let _ = window.set(js_string!("cancelAnimationFrame"), v, false, context);
+    }
+    if let Ok(v) = global.get(js_string!("fetch"), context) {
+        let _ = window.set(js_string!("fetch"), v, false, context);
+    }
+
     // Register `window` as a global property.
     if let Err(error) = context.register_global_property(
         js_string!("window"),
@@ -623,6 +647,33 @@ mod tests {
             result.as_string().unwrap().to_std_string_escaped(),
             "object"
         );
+    }
+
+    #[test]
+    fn window_has_timer_and_fetch_methods() {
+        let mut ctx = Context::default();
+        super::super::timers::register(&mut ctx);
+        super::super::fetch::register(&mut ctx);
+        register(&mut ctx);
+
+        let raf = ctx
+            .eval(boa_engine::Source::from_bytes(
+                "typeof window.requestAnimationFrame",
+            ))
+            .unwrap();
+        assert_eq!(raf.as_string().unwrap().to_std_string_escaped(), "function");
+
+        let caf = ctx
+            .eval(boa_engine::Source::from_bytes(
+                "typeof window.cancelAnimationFrame",
+            ))
+            .unwrap();
+        assert_eq!(caf.as_string().unwrap().to_std_string_escaped(), "function");
+
+        let fetch = ctx
+            .eval(boa_engine::Source::from_bytes("typeof window.fetch"))
+            .unwrap();
+        assert_eq!(fetch.as_string().unwrap().to_std_string_escaped(), "function");
     }
 
     #[test]

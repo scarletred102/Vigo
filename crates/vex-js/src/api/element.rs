@@ -18,14 +18,39 @@ use boa_engine::{js_string, Context, JsNativeError, JsResult, JsValue, NativeFun
 use vex_core::VexId;
 use vex_dom::{attributes, NodeData};
 
+use super::dom_dirty::mark_dom_dirty_node;
 use super::events::EventBridge;
 use crate::dom_bridge::SharedDocument;
+use crate::GcRootSet;
 
 /// Build a rich element proxy object for the given `VexId`.
 ///
 /// Properties are populated as a snapshot on creation. Mutation methods
 /// (`setAttribute`, `appendChild`, etc.) round-trip through the real DOM.
 pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Context) -> JsValue {
+    build_element_proxy_internal(id, doc, None, context)
+}
+
+/// Build an element proxy and record it in the JS GC root set.
+pub fn build_element_proxy_rooted(
+    id: VexId,
+    doc: &SharedDocument,
+    roots: &GcRootSet,
+    context: &mut Context,
+) -> JsValue {
+    build_element_proxy_internal(id, doc, Some(roots.clone()), context)
+}
+
+fn build_element_proxy_internal(
+    id: VexId,
+    doc: &SharedDocument,
+    roots: Option<GcRootSet>,
+    context: &mut Context,
+) -> JsValue {
+    if let Some(ref roots) = roots {
+        roots.root(id);
+    }
+
     // Pre-build the style proxy before ObjectInitializer takes the &mut Context.
     let style_proxy = {
         let doc_ref = doc.borrow();
@@ -189,6 +214,7 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
                 .to_std_string_escaped();
 
             attributes::set_attribute(doc_sa.borrow_mut().arena_mut(), node_id, &name, &value);
+            mark_dom_dirty_node(ctx, node_id);
             Ok(JsValue::undefined())
         })
     };
@@ -210,6 +236,7 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
                 .to_std_string_escaped();
 
             attributes::remove_attribute(doc_ra.borrow_mut().arena_mut(), node_id, &name);
+            mark_dom_dirty_node(ctx, node_id);
             Ok(JsValue::undefined())
         })
     };
@@ -228,6 +255,7 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
             let child_id = extract_vex_id(child_val, ctx)?;
 
             doc_ac.borrow_mut().append_child(parent_id, child_id);
+            mark_dom_dirty_node(ctx, parent_id);
             Ok(child_val.clone())
         })
     };
@@ -246,6 +274,7 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
             let child_id = extract_vex_id(child_val, ctx)?;
 
             doc_rc.borrow_mut().remove_child(parent_id, child_id);
+            mark_dom_dirty_node(ctx, parent_id);
             Ok(child_val.clone())
         })
     };
@@ -268,11 +297,13 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
                 if !rv.is_null() && !rv.is_undefined() {
                     let ref_id = extract_vex_id(rv, ctx)?;
                     doc_ib.borrow_mut().insert_before(parent_id, new_id, ref_id);
+                    mark_dom_dirty_node(ctx, parent_id);
                     return Ok(new_val.clone());
                 }
             }
             // If refNode is null/undefined, behaves like appendChild.
             doc_ib.borrow_mut().append_child(parent_id, new_id);
+            mark_dom_dirty_node(ctx, parent_id);
             Ok(new_val.clone())
         })
     };
@@ -280,6 +311,7 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
 
     // children (getter — returns array of child element proxies)
     let doc_ch = doc.clone();
+    let roots_ch = roots.clone();
     // SAFETY: The closure captures only Rc<RefCell<Document>> handles and is
     // invoked by Boa on the same thread as the owning JS context.
     let get_children = unsafe {
@@ -304,7 +336,10 @@ pub fn build_element_proxy(id: VexId, doc: &SharedDocument, context: &mut Contex
             // Build proxies outside the borrow.
             let arr = JsArray::new(ctx);
             for cid in child_ids {
-                let proxy = build_element_proxy(cid, &doc_ch, ctx);
+                let proxy = match roots_ch.as_ref() {
+                    Some(roots) => build_element_proxy_rooted(cid, &doc_ch, roots, ctx),
+                    None => build_element_proxy(cid, &doc_ch, ctx),
+                };
                 arr.push(proxy, ctx)?;
             }
             Ok(JsValue::from(arr))
@@ -325,7 +360,31 @@ pub fn build_element_proxy_with_events(
     bridge: &EventBridge,
     context: &mut Context,
 ) -> JsValue {
-    let base = build_element_proxy(id, doc, context);
+    build_element_proxy_with_events_internal(id, doc, bridge, None, context)
+}
+
+/// Build an event-enabled element proxy and record it in the GC root set.
+pub fn build_element_proxy_with_events_rooted(
+    id: VexId,
+    doc: &SharedDocument,
+    bridge: &EventBridge,
+    roots: &GcRootSet,
+    context: &mut Context,
+) -> JsValue {
+    build_element_proxy_with_events_internal(id, doc, bridge, Some(roots.clone()), context)
+}
+
+fn build_element_proxy_with_events_internal(
+    id: VexId,
+    doc: &SharedDocument,
+    bridge: &EventBridge,
+    roots: Option<GcRootSet>,
+    context: &mut Context,
+) -> JsValue {
+    let base = match roots.as_ref() {
+        Some(roots) => build_element_proxy_rooted(id, doc, roots, context),
+        None => build_element_proxy(id, doc, context),
+    };
     let obj = match base.as_object() {
         Some(o) => o.clone(),
         None => return base,

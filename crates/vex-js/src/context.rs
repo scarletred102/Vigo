@@ -11,17 +11,19 @@ use std::time::{Duration, Instant};
 
 use boa_engine::object::builtins::JsFunction;
 use boa_engine::{js_string, Context, JsValue, Source};
-use vex_core::{VexError, VexResult};
+use vex_core::{VexError, VexId, VexResult};
 
 use crate::api::events::EventBridge;
 use crate::browser_request::{new_request_queue, RequestQueue};
 use crate::dom_bridge::SharedDocument;
+use crate::GcRootSet;
 
 /// A pending timer entry for the event-loop timer queue.
 struct PendingTimer {
     id: u32,
     callback: JsFunction,
     interval: Option<Duration>,
+    raf: bool,
 }
 
 /// Wraps a Boa [`Context`] with Vex-specific Web API registrations.
@@ -38,6 +40,10 @@ pub struct JsRuntime {
     tokio_handle: tokio::runtime::Handle,
     /// Owned tokio runtime (kept alive for the handle).
     tokio_runtime: Option<tokio::runtime::Runtime>,
+    /// DOM nodes currently rooted by live JS proxies.
+    gc_roots: GcRootSet,
+    /// High-resolution time origin for APIs like requestAnimationFrame.
+    time_origin: Instant,
 }
 
 impl JsRuntime {
@@ -71,6 +77,8 @@ impl JsRuntime {
             event_bridge: EventBridge::new(),
             tokio_handle: handle,
             tokio_runtime: Some(rt),
+            gc_roots: GcRootSet::new(),
+            time_origin: Instant::now(),
         }
     }
 
@@ -92,6 +100,11 @@ impl JsRuntime {
         &self.event_bridge
     }
 
+    /// Access the current JS DOM GC roots.
+    pub fn gc_roots(&self) -> &GcRootSet {
+        &self.gc_roots
+    }
+
     /// Register the DOM `document` global with full event listener support.
     ///
     /// This must be called after the DOM is parsed (the `SharedDocument`
@@ -99,7 +112,14 @@ impl JsRuntime {
     /// `getElementById`, `querySelector`, etc. will include
     /// `addEventListener` / `removeEventListener`.
     pub fn register_document(&mut self, doc: &SharedDocument) {
-        crate::api::document::register_with_events(doc, &self.event_bridge, &mut self.context);
+        self.gc_roots.clear();
+        self.gc_roots.root(doc.borrow().root());
+        crate::api::document::register_with_events(
+            doc,
+            &self.event_bridge,
+            &self.gc_roots,
+            &mut self.context,
+        );
     }
 
     /// Dispatch a DOM event through the JS event system.
@@ -192,9 +212,19 @@ impl JsRuntime {
         for key in expired_keys {
             if let Some(entries) = self.timer_queue.remove(&key) {
                 for entry in entries {
-                    let _ = entry
-                        .callback
-                        .call(&JsValue::undefined(), &[], &mut self.context);
+                    if entry.raf {
+                        let timestamp =
+                            JsValue::from(self.time_origin.elapsed().as_secs_f64() * 1000.0);
+                        let _ = entry.callback.call(
+                            &JsValue::undefined(),
+                            &[timestamp],
+                            &mut self.context,
+                        );
+                    } else {
+                        let _ = entry
+                            .callback
+                            .call(&JsValue::undefined(), &[], &mut self.context);
+                    }
                     fired += 1;
 
                     if let Some(interval) = entry.interval {
@@ -204,6 +234,7 @@ impl JsRuntime {
                                 id: entry.id,
                                 callback: entry.callback,
                                 interval: Some(interval),
+                                raf: false,
                             },
                         ));
                     }
@@ -221,6 +252,11 @@ impl JsRuntime {
     /// Returns `true` if there are pending timers.
     pub fn has_pending_timers(&self) -> bool {
         !self.timer_queue.is_empty()
+    }
+
+    /// Drain JS-reported dirty DOM nodes and clear the JS-side queue.
+    pub fn take_dom_dirty_nodes(&mut self) -> Vec<VexId> {
+        crate::api::dom_dirty::take_dom_dirty_nodes(&mut self.context)
     }
 
     /// Cancel a timer by ID.
@@ -321,6 +357,11 @@ impl JsRuntime {
                     } else {
                         None
                     },
+                    raf: entry_obj
+                        .get(js_string!("raf"), &mut self.context)
+                        .ok()
+                        .map(|v| v.to_boolean())
+                        .unwrap_or(false),
                 });
         }
 
@@ -355,6 +396,7 @@ impl Drop for JsRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vex_dom::{attributes, Document, Namespace};
 
     #[test]
     fn test_arithmetic_evaluation() {
@@ -391,5 +433,43 @@ mod tests {
             let _js = JsRuntime::new();
             // Dropped at end of async scope.
         });
+    }
+
+    #[test]
+    fn dom_mutation_reports_dirty_nodes() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let div = doc.create_element("div", Namespace::Html);
+        attributes::set_attribute(doc.arena_mut(), div, "id", "target");
+        doc.append_child(root, div);
+
+        let shared = crate::dom_bridge::shared_document(doc);
+        let mut rt = JsRuntime::new();
+        rt.register_document(&shared);
+
+        rt.execute("document.getElementById('target').setAttribute('data-x', '1');")
+            .unwrap();
+
+        let dirty = rt.take_dom_dirty_nodes();
+        assert!(dirty.contains(&div));
+        assert!(rt.take_dom_dirty_nodes().is_empty());
+    }
+
+    #[test]
+    fn element_proxies_are_rooted_in_gc_set() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let div = doc.create_element("div", Namespace::Html);
+        attributes::set_attribute(doc.arena_mut(), div, "id", "target");
+        doc.append_child(root, div);
+
+        let shared = crate::dom_bridge::shared_document(doc);
+        let mut rt = JsRuntime::new();
+        rt.register_document(&shared);
+
+        rt.execute("document.getElementById('target');").unwrap();
+
+        assert!(rt.gc_roots().is_rooted(shared.borrow().root()));
+        assert!(rt.gc_roots().is_rooted(div));
     }
 }

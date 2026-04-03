@@ -48,6 +48,22 @@ pub fn register(context: &mut Context) {
     ) {
         tracing::error!(target: "vex_js::timers", "failed to register clearInterval: {error}");
     }
+
+    if let Err(error) = context.register_global_callable(
+        js_string!("requestAnimationFrame"),
+        1,
+        NativeFunction::from_fn_ptr(request_animation_frame),
+    ) {
+        tracing::error!(target: "vex_js::timers", "failed to register requestAnimationFrame: {error}");
+    }
+
+    if let Err(error) = context.register_global_callable(
+        js_string!("cancelAnimationFrame"),
+        1,
+        NativeFunction::from_fn_ptr(cancel_animation_frame),
+    ) {
+        tracing::error!(target: "vex_js::timers", "failed to register cancelAnimationFrame: {error}");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -63,13 +79,27 @@ pub fn register(context: &mut Context) {
 static NEXT_TIMER_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 fn set_timeout(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
-    let id = schedule_timer(args, context, false)?;
+    let id = schedule_timer(args, context, false, None, false)?;
     Ok(JsValue::from(id))
 }
 
 fn set_interval(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
-    let id = schedule_timer(args, context, true)?;
+    let id = schedule_timer(args, context, true, None, false)?;
     Ok(JsValue::from(id))
+}
+
+fn request_animation_frame(
+    _: &JsValue,
+    args: &[JsValue],
+    context: &mut Context,
+) -> JsResult<JsValue> {
+    // rAF uses next-frame scheduling (~60Hz) and callback(timestamp).
+    let id = schedule_timer(args, context, false, Some(16), true)?;
+    Ok(JsValue::from(id))
+}
+
+fn cancel_animation_frame(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    clear_timeout(&JsValue::undefined(), args, context)
 }
 
 fn clear_timeout(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
@@ -90,7 +120,13 @@ fn clear_interval(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsRes
 /// Stores the callback and metadata in a global `__vex_timers` object on the
 /// JS context so that `JsRuntime::run_pending_timers()` can retrieve and
 /// invoke them.
-fn schedule_timer(args: &[JsValue], context: &mut Context, repeating: bool) -> JsResult<u32> {
+fn schedule_timer(
+    args: &[JsValue],
+    context: &mut Context,
+    repeating: bool,
+    default_delay_ms: Option<u32>,
+    raf: bool,
+) -> JsResult<u32> {
     let callback = args
         .first()
         .and_then(|v| v.as_callable())
@@ -99,11 +135,14 @@ fn schedule_timer(args: &[JsValue], context: &mut Context, repeating: bool) -> J
         })?
         .clone();
 
-    let delay_ms = args
-        .get(1)
-        .map(|v| v.to_u32(context))
-        .transpose()?
-        .unwrap_or(0);
+    let delay_ms = match default_delay_ms {
+        Some(v) => v,
+        None => args
+            .get(1)
+            .map(|v| v.to_u32(context))
+            .transpose()?
+            .unwrap_or(0),
+    };
 
     let id = NEXT_TIMER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -151,6 +190,11 @@ fn schedule_timer(args: &[JsValue], context: &mut Context, repeating: bool) -> J
         .property(
             js_string!("scheduled"),
             JsValue::from(false),
+            boa_engine::property::Attribute::all(),
+        )
+        .property(
+            js_string!("raf"),
+            JsValue::from(raf),
             boa_engine::property::Attribute::all(),
         )
         .build();
@@ -234,5 +278,26 @@ mod tests {
         let result = rt.eval("setInterval(function() {}, 50)").unwrap();
         let id = result.as_number().unwrap();
         assert!(id > 0.0, "timer ID should be positive");
+    }
+
+    #[test]
+    fn request_animation_frame_returns_id() {
+        let mut rt = JsRuntime::new();
+        register(rt.context_mut());
+
+        let result = rt.eval("requestAnimationFrame(function(ts) {})").unwrap();
+        let id = result.as_number().unwrap();
+        assert!(id > 0.0, "raf ID should be positive");
+    }
+
+    #[test]
+    fn cancel_animation_frame_does_not_panic() {
+        let mut rt = JsRuntime::new();
+        register(rt.context_mut());
+
+        let result = rt.eval(
+            "var id = requestAnimationFrame(function(ts) {}); cancelAnimationFrame(id);",
+        );
+        assert!(result.is_ok());
     }
 }

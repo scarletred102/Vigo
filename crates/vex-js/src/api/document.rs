@@ -12,9 +12,12 @@ use boa_engine::property::Attribute;
 use boa_engine::{js_string, Context, JsNativeError, JsValue, NativeFunction};
 use vex_dom::Namespace;
 
-use super::element::{build_element_proxy, build_element_proxy_with_events};
+use super::element::{
+    build_element_proxy, build_element_proxy_with_events_rooted,
+};
 use super::events::EventBridge;
 use crate::dom_bridge::SharedDocument;
+use crate::GcRootSet;
 
 /// Register the `document` global on the given Boa context.
 ///
@@ -195,7 +198,12 @@ pub fn register(doc: &SharedDocument, context: &mut Context) {
 /// Like [`register`] but element-returning methods return proxies with
 /// `addEventListener` / `removeEventListener`, and the document object
 /// itself also gets those methods.
-pub fn register_with_events(doc: &SharedDocument, bridge: &EventBridge, context: &mut Context) {
+pub fn register_with_events(
+    doc: &SharedDocument,
+    bridge: &EventBridge,
+    roots: &GcRootSet,
+    context: &mut Context,
+) {
     let doc_clone = doc.clone();
     let doc_get_el = doc.clone();
     let doc_qs = doc.clone();
@@ -209,6 +217,12 @@ pub fn register_with_events(doc: &SharedDocument, bridge: &EventBridge, context:
     let br_qsa = bridge.clone();
     let br_ce = bridge.clone();
     let br_ctn = bridge.clone();
+
+    let roots_get_el = roots.clone();
+    let roots_qs = roots.clone();
+    let roots_qsa = roots.clone();
+    let roots_ce = roots.clone();
+    let roots_ctn = roots.clone();
 
     // --- getElementById ---
     // SAFETY: Rc handles; single-threaded JS.
@@ -226,10 +240,11 @@ pub fn register_with_events(doc: &SharedDocument, bridge: &EventBridge, context:
             match doc_ref.get_element_by_id(&id_str) {
                 Some(vex_id) => {
                     drop(doc_ref);
-                    Ok(build_element_proxy_with_events(
+                    Ok(build_element_proxy_with_events_rooted(
                         vex_id,
                         &doc_get_el,
                         &br_get_el,
+                        &roots_get_el,
                         ctx,
                     ))
                 }
@@ -254,8 +269,12 @@ pub fn register_with_events(doc: &SharedDocument, bridge: &EventBridge, context:
             match doc_ref.query_selector(&sel) {
                 Ok(Some(vex_id)) => {
                     drop(doc_ref);
-                    Ok(build_element_proxy_with_events(
-                        vex_id, &doc_qs, &br_qs, ctx,
+                    Ok(build_element_proxy_with_events_rooted(
+                        vex_id,
+                        &doc_qs,
+                        &br_qs,
+                        &roots_qs,
+                        ctx,
                     ))
                 }
                 Ok(None) => Ok(JsValue::null()),
@@ -282,7 +301,13 @@ pub fn register_with_events(doc: &SharedDocument, bridge: &EventBridge, context:
                     drop(doc_ref);
                     let arr = boa_engine::object::builtins::JsArray::new(ctx);
                     for vex_id in ids {
-                        let proxy = build_element_proxy_with_events(vex_id, &doc_qsa, &br_qsa, ctx);
+                        let proxy = build_element_proxy_with_events_rooted(
+                            vex_id,
+                            &doc_qsa,
+                            &br_qsa,
+                            &roots_qsa,
+                            ctx,
+                        );
                         arr.push(proxy, ctx)?;
                     }
                     Ok(JsValue::from(arr))
@@ -306,8 +331,12 @@ pub fn register_with_events(doc: &SharedDocument, bridge: &EventBridge, context:
                 .to_ascii_lowercase();
 
             let vex_id = doc_ce.borrow_mut().create_element(&tag, Namespace::Html);
-            Ok(build_element_proxy_with_events(
-                vex_id, &doc_ce, &br_ce, ctx,
+            Ok(build_element_proxy_with_events_rooted(
+                vex_id,
+                &doc_ce,
+                &br_ce,
+                &roots_ce,
+                ctx,
             ))
         })
     };
@@ -323,8 +352,12 @@ pub fn register_with_events(doc: &SharedDocument, bridge: &EventBridge, context:
                 .to_std_string_escaped();
 
             let vex_id = doc_ctn.borrow_mut().create_text(&text);
-            Ok(build_element_proxy_with_events(
-                vex_id, &doc_ctn, &br_ctn, ctx,
+            Ok(build_element_proxy_with_events_rooted(
+                vex_id,
+                &doc_ctn,
+                &br_ctn,
+                &roots_ctn,
+                ctx,
             ))
         })
     };
@@ -336,7 +369,7 @@ pub fn register_with_events(doc: &SharedDocument, bridge: &EventBridge, context:
         match body_id {
             Some(id) => {
                 drop(doc_ref);
-                build_element_proxy_with_events(id, &doc_body, bridge, context)
+                build_element_proxy_with_events_rooted(id, &doc_body, bridge, roots, context)
             }
             None => JsValue::null(),
         }
@@ -348,7 +381,7 @@ pub fn register_with_events(doc: &SharedDocument, bridge: &EventBridge, context:
         match doc_ref.root_element() {
             Some(id) => {
                 drop(doc_ref);
-                build_element_proxy_with_events(id, &doc_clone, bridge, context)
+                build_element_proxy_with_events_rooted(id, &doc_clone, bridge, roots, context)
             }
             None => JsValue::null(),
         }
