@@ -11,7 +11,10 @@
 
 use std::collections::HashMap;
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use vex_core::VexUrl;
+use vex_net::{HttpClient, Method, Request};
 
 /// Errors from sync operations.
 #[derive(Debug, thiserror::Error)]
@@ -103,6 +106,24 @@ pub struct SyncClient {
     last_sync: HashMap<SyncCollection, u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WireRecord {
+    #[serde(rename = "record_id")]
+    record_id: String,
+    collection: String,
+    ciphertext: String,
+    version: i32,
+    #[serde(rename = "modified_at")]
+    modified_at: String,
+    #[serde(default)]
+    content_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WireRecordList {
+    records: Vec<WireRecord>,
+}
+
 impl SyncClient {
     /// Create a new sync client (not authenticated).
     pub fn new() -> Self {
@@ -164,6 +185,208 @@ impl SyncClient {
             AuthState::SignedIn { server_url, .. } => Some(server_url),
             _ => None,
         }
+    }
+
+    fn auth_parts(&self) -> Result<(&str, &str, &str), SyncError> {
+        match &self.auth {
+            AuthState::SignedIn {
+                server_url,
+                token,
+                user_id,
+            } => Ok((server_url, token, user_id)),
+            AuthState::SignedOut => Err(SyncError::NotAuthenticated),
+        }
+    }
+
+    fn collection_endpoint(server_url: &str, collection: SyncCollection, suffix: &str) -> String {
+        format!(
+            "{}/api/v1/collections/{}/records{}",
+            server_url.trim_end_matches('/'),
+            collection.path(),
+            suffix
+        )
+    }
+
+    /// Push a batch of records to the sync server.
+    pub async fn push_records(
+        &mut self,
+        collection: SyncCollection,
+        records: &[SyncRecord],
+    ) -> Result<(), SyncError> {
+        if records.is_empty() {
+            return Ok(());
+        }
+
+        let (server_url, token, _user_id) = self.auth_parts()?;
+        let endpoint = Self::collection_endpoint(server_url, collection, "/batch");
+        let url = VexUrl::parse(&endpoint).map_err(|e| SyncError::Network(e.to_string()))?;
+
+        let mut max_modified = self.last_sync_time(collection);
+        let wire_records: Vec<WireRecord> = records
+            .iter()
+            .map(|r| {
+                let modified = if r.modified == 0 {
+                    now_unix_ms()
+                } else {
+                    r.modified
+                };
+                if modified > max_modified {
+                    max_modified = modified;
+                }
+                WireRecord {
+                    record_id: r.id.clone(),
+                    collection: collection.path().to_owned(),
+                    ciphertext: if r.deleted {
+                        String::new()
+                    } else {
+                        r.payload.clone()
+                    },
+                    version: 1,
+                    modified_at: modified.to_string(),
+                    content_hash: if r.deleted {
+                        "tombstone".to_owned()
+                    } else {
+                        String::new()
+                    },
+                }
+            })
+            .collect();
+
+        let body = serde_json::to_vec(&WireRecordList {
+            records: wire_records,
+        })
+        .map_err(|e| SyncError::Serialization(e.to_string()))?;
+
+        let mut headers = HashMap::new();
+        headers.insert("content-type".to_string(), "application/json".to_string());
+        headers.insert("authorization".to_string(), format!("Bearer {token}"));
+
+        let request = Request {
+            url,
+            method: Method::Put,
+            headers,
+            body: Some(body),
+        };
+
+        let client = HttpClient::new().map_err(|e| SyncError::Network(e.to_string()))?;
+        let response = client
+            .fetch(request)
+            .await
+            .map_err(|e| SyncError::Network(e.to_string()))?;
+
+        if !(200..300).contains(&response.status) {
+            return Err(SyncError::Server {
+                status: response.status,
+            });
+        }
+
+        self.mark_synced(collection, max_modified.max(now_unix_ms()));
+        Ok(())
+    }
+
+    /// Pull records changed since the last sync timestamp for a collection.
+    pub async fn pull_records(&mut self, collection: SyncCollection) -> Result<Vec<SyncRecord>, SyncError> {
+        let since = self.last_sync_time(collection);
+        self.pull_records_since(collection, since).await
+    }
+
+    /// Pull records changed since a specific timestamp.
+    pub async fn pull_records_since(
+        &mut self,
+        collection: SyncCollection,
+        since: u64,
+    ) -> Result<Vec<SyncRecord>, SyncError> {
+        let (server_url, token, _user_id) = self.auth_parts()?;
+        let endpoint = format!(
+            "{}?since={since}",
+            Self::collection_endpoint(server_url, collection, "")
+        );
+        let url = VexUrl::parse(&endpoint).map_err(|e| SyncError::Network(e.to_string()))?;
+
+        let mut headers = HashMap::new();
+        headers.insert("authorization".to_string(), format!("Bearer {token}"));
+
+        let request = Request {
+            url,
+            method: Method::Get,
+            headers,
+            body: None,
+        };
+
+        let client = HttpClient::new().map_err(|e| SyncError::Network(e.to_string()))?;
+        let response = client
+            .fetch(request)
+            .await
+            .map_err(|e| SyncError::Network(e.to_string()))?;
+
+        if !(200..300).contains(&response.status) {
+            return Err(SyncError::Server {
+                status: response.status,
+            });
+        }
+
+        let list: WireRecordList = serde_json::from_slice(&response.body)
+            .map_err(|e| SyncError::Serialization(e.to_string()))?;
+
+        let mut out = Vec::with_capacity(list.records.len());
+        let mut max_modified = since;
+        for wr in list.records {
+            let modified = wr.modified_at.parse::<u64>().unwrap_or(0);
+            if modified > max_modified {
+                max_modified = modified;
+            }
+            out.push(SyncRecord {
+                id: wr.record_id,
+                collection,
+                payload: wr.ciphertext,
+                modified,
+                deleted: wr.content_hash == "tombstone",
+            });
+        }
+
+        if max_modified > self.last_sync_time(collection) {
+            self.mark_synced(collection, max_modified);
+        }
+
+        Ok(out)
+    }
+
+    /// Encrypt and push one logical collection payload as a single sync record.
+    pub async fn push_collection_blob<T: Serialize>(
+        &mut self,
+        collection: SyncCollection,
+        record_id: &str,
+        value: &T,
+        key: &vex_crypto::SymmetricKey,
+    ) -> Result<(), SyncError> {
+        let data = serde_json::to_vec(value).map_err(|e| SyncError::Serialization(e.to_string()))?;
+        let mut record = Self::build_record(record_id, collection, &data, key)?;
+        record.modified = now_unix_ms();
+        self.push_records(collection, &[record]).await
+    }
+
+    /// Pull and decrypt the latest non-deleted blob for a collection.
+    pub async fn pull_latest_collection_blob<T: DeserializeOwned>(
+        &mut self,
+        collection: SyncCollection,
+        key: &vex_crypto::SymmetricKey,
+    ) -> Result<Option<T>, SyncError> {
+        let mut records = self.pull_records(collection).await?;
+        records.sort_by_key(|r| r.modified);
+
+        let latest = records
+            .into_iter()
+            .rev()
+            .find(|r| !r.deleted && !r.payload.is_empty());
+
+        let Some(record) = latest else {
+            return Ok(None);
+        };
+
+        let plaintext = Self::decrypt_payload(&record.payload, key)?;
+        let value = serde_json::from_slice::<T>(&plaintext)
+            .map_err(|e| SyncError::Serialization(e.to_string()))?;
+        Ok(Some(value))
     }
 
     /// Encrypt a record payload for sync.
@@ -285,6 +508,13 @@ fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
     }
 
     Ok(out)
+}
+
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────

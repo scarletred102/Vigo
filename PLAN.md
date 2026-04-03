@@ -399,6 +399,49 @@ Ensure heavy isolation to protect users against malicious scripts.
   - Implement Cross-Origin Resource Sharing (CORS) and Content Security Policy (CSP).
   - Integrate native Ad/Tracker blocking at the network edge (`vigo_adblock`).
 
+### Phase 9.5: Production Hardening Track (Security/Privacy/Isolation Integration)
+Phase 9 is treated as a security-integration milestone, not only module implementation.
+
+* **Goal:** Activate and connect security/privacy/process-isolation systems in live runtime flows.
+* **Scope:** `vex-security`, `vex-privacy`, `vex-browser`, `vex-app`, `vex-net`.
+* **Status:** ✅ Completed (2026-04-03)
+
+#### Subtask Group A — Network Edge Privacy (improvised expansion)
+- [x] **A1**: Routed top-level navigations through privacy middleware (`fetch_filtered`).
+- [x] **A2**: Enabled default ad/tracker blocking domain list for runtime navigation.
+- [x] **A3**: Applied privacy middleware to external resource prefetch pipeline.
+- [x] **A4**: Preserved tracking-strip, HTTPS upgrade, and header-sanitization flow on outgoing requests.
+
+#### Subtask Group B — CSP/CORS/SOP Activation in Real Pipeline
+- [x] **B1**: Connected `secure_fetch` to subresource loading path (`script`/`style`).
+- [x] **B2**: Bound CSP extraction from main response headers into a reusable `SecurityContext`.
+- [x] **B3**: Enforced CSP + CORS validation during external resource fetch.
+- [x] **B4**: Added diagnostics for security rejections at resource-load time.
+
+#### Subtask Group C — Cookie / Security State Continuity
+- [x] **C1**: Persisted `Set-Cookie` headers from network responses into shared cookie storage.
+- [x] **C2**: Kept phase8 cookie APIs connected while phase9 security filters are active.
+
+#### Subtask Group D — Process Isolation + Sandbox Wiring (single-process milestone bridge)
+- [x] **D1**: Added renderer-process synchronization helper in app loop.
+- [x] **D2**: Added automatic spawn/mark-running/terminate flow based on active tab lifecycle.
+- [x] **D3**: Added sandbox policy application hook on renderer process binding.
+- [x] **D4**: Added IPC `LoadUrl` synchronization from tab navigation state to renderer tracking.
+
+#### Subtask Group E — Cross-Phase 1-9 Connectivity
+- [x] **E1**: Phase1 network requests now pass through phase9 privacy filtering on top-level navigation.
+- [x] **E2**: Phase1/2/6/7 external script/style fetches now pass phase9 secure-fetch checks.
+- [x] **E3**: Phase8 storage and cookie persistence remains connected under phase9 filtering.
+- [x] **E4**: Phase9 process/sandbox orchestration coexists with prior render/event/runtime loops.
+
+#### Subtask Group F — Regression Coverage
+- [x] **F1**: Added tab tests for privacy blocking and cookie-header parsing.
+- [x] **F2**: Added app-level test for renderer-process synchronization across tab lifecycle.
+
+#### Phase 1-9 Quality Gates
+- [x] `cargo test -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render -p vex-js -p vex-browser -p vex-app -p vex-storage -p vex-media -p vex-security -p vex-privacy` passes.
+- [x] `cargo clippy -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render -p vex-js -p vex-browser -p vex-app -p vex-storage -p vex-media -p vex-security -p vex-privacy --all-targets -- -D warnings` passes.
+
 ## Phase 10: The Browser UI, Extensions & Sync
 The final layer: the actual graphical application the user interacts with.
 * **Crates:** `crates/vex-browser`, `crates/vex-sync`, `extensions/`, `sync-server/`
@@ -406,3 +449,51 @@ The final layer: the actual graphical application the user interacts with.
   - Window Management: Draw the Tabs, Omnibox, and Bookmarks UI.
   - Extension API: Implement WebExtensions APIs (Manifest V3 compatible) for third-party add-ons.
   - Sync Services: Sync passwords and history via `vex-sync` and the external `sync-server`.
+
+### Phase 10.5: Production Hardening Track (UI/UX + Extensions + Sync)
+Phase 10 is treated as a full product integration layer across prior engine phases.
+
+* **Goal:** Ship a connected browser application where UI, extension runtime, and encrypted sync operate as one system.
+* **Scope:** `vex-app`, `vex-browser`, `vex-js`, `vex-sync`, `vex-crypto`, `sync-server`.
+* **Status:** ✅ Completed (2026-04-03)
+
+#### Subtask Group A — UX Continuity & State Persistence
+- [x] **A1**: Load settings from persisted profile storage at startup.
+- [x] **A2**: Persist settings on clean shutdown together with session/bookmarks.
+- [x] **A3**: Keep session/tab/bookmark persistence connected to the live event loop lifecycle.
+
+#### Subtask Group B — Extension UX Integration (improvised expansion)
+- [x] **B1**: Added runtime extension action-bar model rebuild from active extension manifests.
+- [x] **B2**: Rendered extension action controls directly into nav-bar composition path.
+- [x] **B3**: Added extension action hit-testing + click routing in mouse input path.
+- [x] **B4**: Implemented popup flow for browser actions with popup HTML.
+- [x] **B5**: Added fallback click-event dispatch into extension runtime messaging when no popup.
+
+#### Subtask Group C — Sync Client Real Transport Activation
+- [x] **C1**: Implemented authenticated sync push transport (batch records) in `vex-sync`.
+- [x] **C2**: Implemented pull transport with timestamp-based incremental fetch.
+- [x] **C3**: Added encrypted collection blob helpers for ergonomic app integration.
+- [x] **C4**: Added sync timestamp progression handling in client state.
+
+#### Subtask Group D — App-Level Sync Runtime Orchestration
+- [x] **D1**: Added sync runtime bootstrap from environment credentials and KDF key derivation.
+- [x] **D2**: Added initial pull-then-push handshake flow on browser startup.
+- [x] **D3**: Added periodic sync scheduler in main loop.
+- [x] **D4**: Added final sync push on graceful shutdown.
+- [x] **D5**: Synced concrete collections: bookmarks, settings, open tabs, and history URL snapshots.
+
+#### Subtask Group E — Phase 1-10 Connectivity
+- [x] **E1**: Phase1 networking + phase9 security/privacy layers remain active while phase10 sync/extension flows run.
+- [x] **E2**: Phase6/7 JS runtime bridges remain connected to extension message dispatch and browser action events.
+- [x] **E3**: Phase8 storage/session continuity remains active with new phase10 settings/sync lifecycle.
+- [x] **E4**: Phase9 process/sandbox orchestration remains active in the app loop alongside phase10 UX layers.
+
+#### Subtask Group F — Regression Coverage
+- [x] **F1**: Added extension popup-source loader test.
+- [x] **F2**: Added extension action hit-test/layout app test.
+- [x] **F3**: Added synced-history payload snapshot/dedupe test.
+- [x] **F4**: Added synced-settings merge behavior test preserving runtime privacy state.
+
+#### Phase 1-10 Quality Gates
+- [x] `cargo test -p vex-core -p vex-net -p vex-dom -p vex-html -p vex-css -p vex-layout -p vex-js -p vex-render -p vex-media -p vex-storage -p vex-security -p vex-privacy -p vex-crypto -p vex-sync -p vex-browser -p vex-app` passes.
+- [x] `cargo clippy -p vex-core -p vex-net -p vex-dom -p vex-html -p vex-css -p vex-layout -p vex-js -p vex-render -p vex-media -p vex-storage -p vex-security -p vex-privacy -p vex-crypto -p vex-sync -p vex-browser -p vex-app --all-targets -- -D warnings` passes.

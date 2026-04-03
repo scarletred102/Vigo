@@ -20,6 +20,8 @@ vex-css = { path = "../vex-css" }
 vex-dom = { path = "../vex-dom" }
 vex-layout = { path = "../vex-layout" }
 vex-js = { path = "../vex-js" }
+vex-sync = { path = "../vex-sync" }
+vex-crypto = { path = "../vex-crypto" }
 wgpu.workspace = true
 tokio.workspace = true
 tracing.workspace = true

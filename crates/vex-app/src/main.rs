@@ -74,8 +74,12 @@ fn run() {
     // A-004 (KPI): measure cold start from `run()` entry to first presented frame.
     let app_start = Instant::now();
 
+    let data = data_dir();
+    let _ = std::fs::create_dir_all(&data);
+
     // ── Settings ─────────────────────────────────────────────────
-    let settings = BrowserSettings::default();
+    let settings_path = data.join("settings.json");
+    let mut settings = BrowserSettings::load(&settings_path);
     let launch = launch_options_from_args(&settings);
     let window = Window::new(
         "Vigo Browser",
@@ -120,6 +124,10 @@ fn run() {
     let mut find = FindState::new();
     let mut context_menu: Option<ContextMenu> = None;
     let mut embedder_bus = EmbedderBus::new();
+    let mut process_manager = vex_browser::ProcessManager::new();
+    let sandbox_policy = vex_browser::SandboxPolicy::production();
+    let mut renderer_nav_urls: HashMap<TabId, String> = HashMap::new();
+    let mut extension_actions = vex_browser::ActionBar::new();
 
     // Address bar editing state.
     let mut address_bar_focused = false;
@@ -141,7 +149,7 @@ fn run() {
     perf_state.start_recording();
 
     // ── Extensions (Tasks 57-60) ─────────────────────────────────
-    let ext_dir = data_dir().join("extensions");
+    let ext_dir = data.join("extensions");
     let _ = std::fs::create_dir_all(&ext_dir);
     let mut ext_loader = ExtensionLoader::new(ext_dir);
     {
@@ -157,10 +165,9 @@ fn run() {
             tracing::warn!("Extension load error: {e}");
         }
     }
+    rebuild_extension_action_bar(&ext_loader, &mut extension_actions);
 
     // ── Session restore (Task 40) ────────────────────────────────
-    let data = data_dir();
-    let _ = std::fs::create_dir_all(&data);
     let session_path = data.join("session.json");
     let session_health_path = data.join("session_health.json");
     let bookmarks_path = data.join("bookmarks.json");
@@ -191,6 +198,19 @@ fn run() {
         }
     } else {
         tracing::info!("Session restore disabled by launch options");
+    }
+
+    let mut sync_state = init_sync_runtime_state_from_env();
+    if let Some(state) = sync_state.as_mut() {
+        if let Err(e) = run_initial_sync(
+            state,
+            &mut bookmarks,
+            &mut settings,
+            &mut tab_mgr,
+            &nav_histories,
+        ) {
+            tracing::warn!("Initial sync failed: {e}");
+        }
     }
 
     // ── Bootstrap active tab content if needed ─────────────────────────────
@@ -228,6 +248,13 @@ fn run() {
         }
     }
 
+    sync_renderer_processes(
+        &tab_mgr,
+        &mut process_manager,
+        &sandbox_policy,
+        &mut renderer_nav_urls,
+    );
+
     // ── FPS tracking ─────────────────────────────────────────────
     let mut frame_count: u32 = 0;
     let mut fps_timer = Instant::now();
@@ -235,6 +262,11 @@ fn run() {
 
     // ── Main event loop ──────────────────────────────────────────
     loop {
+        rebuild_extension_action_bar(&ext_loader, &mut extension_actions);
+        if let Some(state) = sync_state.as_mut() {
+            maybe_run_periodic_sync(state, &bookmarks, &settings, &tab_mgr, &nav_histories);
+        }
+
         let show_bookmarks = settings.show_bookmarks_bar;
         let toolbar = ToolbarLayout::compute(vp_w, vp_h, show_bookmarks, find_bar_visible);
 
@@ -248,6 +280,21 @@ fn run() {
                     }
                     if let Err(e) = bookmarks.save(&bookmarks_path) {
                         tracing::warn!("Failed to save bookmarks: {e}");
+                    }
+                    if let Err(e) = settings.save(&settings_path) {
+                        tracing::warn!("Failed to save settings: {e}");
+                    }
+
+                    if let Some(state) = sync_state.as_mut() {
+                        if let Err(e) = run_sync_push_blocking(
+                            state,
+                            &bookmarks,
+                            &settings,
+                            &tab_mgr,
+                            &nav_histories,
+                        ) {
+                            tracing::warn!("Final sync push failed: {e}");
+                        }
                     }
 
                     // A-006 (KPI): mark clean shutdown.
@@ -329,6 +376,24 @@ fn run() {
                                     address_bar_focused = false;
                                 }
                                 TabBarAction::None => {
+                                    if let Some(action_index) = hit_test_extension_action(
+                                        fx,
+                                        fy,
+                                        toolbar.nav_bar,
+                                        extension_actions.count(),
+                                    ) {
+                                        handle_extension_action_click(
+                                            action_index,
+                                            &extension_actions,
+                                            &ext_loader,
+                                            &mut tab_mgr,
+                                            vp_w,
+                                            vp_h,
+                                        );
+                                        address_bar_focused = false;
+                                        continue;
+                                    }
+
                                     // Task 32: Nav bar clicks.
                                     let nav_action = hit_test_nav_bar(fx, fy, toolbar.nav_bar);
                                     let nav_action_after = nav_action.clone();
@@ -735,6 +800,13 @@ fn run() {
             vp_h,
         );
 
+        sync_renderer_processes(
+            &tab_mgr,
+            &mut process_manager,
+            &sandbox_policy,
+            &mut renderer_nav_urls,
+        );
+
         // ── Extension content script injection (Task 58) ────────
         {
             let injected = inject_matching_content_scripts(&mut tab_mgr, &ext_loader, vp_w, vp_h);
@@ -757,6 +829,7 @@ fn run() {
         let dl = compose_frame(
             &tab_mgr,
             &toolbar,
+            extension_actions.actions(),
             &bookmarks,
             &find,
             find_bar_visible,
@@ -906,6 +979,423 @@ fn data_dir() -> std::path::PathBuf {
         std::path::PathBuf::from(home).join(".vigo")
     } else {
         std::path::PathBuf::from(".vigo")
+    }
+}
+
+#[cfg(target_os = "windows")]
+struct SyncRuntimeState {
+    client: vex_sync::SyncClient,
+    key: vex_crypto::SymmetricKey,
+    interval: std::time::Duration,
+    last_attempt: std::time::Instant,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct SyncedHistoryPayload {
+    urls: Vec<String>,
+}
+
+#[cfg(target_os = "windows")]
+fn init_sync_runtime_state_from_env() -> Option<SyncRuntimeState> {
+    let server_url = std::env::var("VIGO_SYNC_SERVER_URL").ok()?;
+    let user_id = std::env::var("VIGO_SYNC_USER_ID").ok()?;
+    let token = std::env::var("VIGO_SYNC_TOKEN").ok()?;
+
+    let passphrase = std::env::var("VIGO_SYNC_KEY").unwrap_or_else(|_| token.clone());
+    let salt = std::env::var("VIGO_SYNC_SALT").unwrap_or_else(|_| "vigo-sync-salt-2026".to_owned());
+    let key = match vex_crypto::derive_key(passphrase.as_bytes(), salt.as_bytes()) {
+        Ok(key) => key,
+        Err(e) => {
+            tracing::warn!("Sync key derivation failed: {e}");
+            return None;
+        }
+    };
+
+    let mut client = vex_sync::SyncClient::new();
+    if let Err(e) = client.sign_in(&server_url, &user_id, &token) {
+        tracing::warn!("Sync sign-in failed: {e}");
+        return None;
+    }
+
+    let interval_secs = std::env::var("VIGO_SYNC_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(45);
+
+    tracing::info!(
+        server = server_url,
+        user_id = user_id,
+        interval_secs,
+        "Sync runtime enabled"
+    );
+
+    Some(SyncRuntimeState {
+        client,
+        key,
+        interval: std::time::Duration::from_secs(interval_secs),
+        last_attempt: std::time::Instant::now() - std::time::Duration::from_secs(interval_secs),
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn run_initial_sync(
+    state: &mut SyncRuntimeState,
+    bookmarks: &mut vex_browser::BookmarkManager,
+    settings: &mut vex_browser::BrowserSettings,
+    tab_mgr: &mut vex_browser::TabManager,
+    nav_histories: &std::collections::HashMap<vex_browser::tab::TabId, vex_browser::NavigationHistory>,
+) -> Result<(), String> {
+    run_sync_pull_blocking(state, bookmarks, settings, tab_mgr)?;
+    run_sync_push_blocking(state, bookmarks, settings, tab_mgr, nav_histories)?;
+    state.last_attempt = std::time::Instant::now();
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn maybe_run_periodic_sync(
+    state: &mut SyncRuntimeState,
+    bookmarks: &vex_browser::BookmarkManager,
+    settings: &vex_browser::BrowserSettings,
+    tab_mgr: &vex_browser::TabManager,
+    nav_histories: &std::collections::HashMap<vex_browser::tab::TabId, vex_browser::NavigationHistory>,
+) {
+    if state.last_attempt.elapsed() < state.interval {
+        return;
+    }
+
+    if let Err(e) = run_sync_push_blocking(state, bookmarks, settings, tab_mgr, nav_histories) {
+        tracing::warn!("Periodic sync failed: {e}");
+    }
+    state.last_attempt = std::time::Instant::now();
+}
+
+#[cfg(target_os = "windows")]
+fn run_sync_pull_blocking(
+    state: &mut SyncRuntimeState,
+    bookmarks: &mut vex_browser::BookmarkManager,
+    settings: &mut vex_browser::BrowserSettings,
+    tab_mgr: &mut vex_browser::TabManager,
+) -> Result<(), String> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("sync runtime create failed: {e}"))?;
+
+    rt.block_on(async {
+        if let Some(remote_bookmarks) = state
+            .client
+            .pull_latest_collection_blob::<vex_browser::BookmarkManager>(
+                vex_sync::SyncCollection::Bookmarks,
+                &state.key,
+            )
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            if remote_bookmarks.count() > bookmarks.count() {
+                *bookmarks = remote_bookmarks;
+                tracing::info!("Sync: bookmarks updated from remote");
+            }
+        }
+
+        if let Some(remote_settings) = state
+            .client
+            .pull_latest_collection_blob::<vex_browser::BrowserSettings>(
+                vex_sync::SyncCollection::Settings,
+                &state.key,
+            )
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            merge_synced_settings(settings, &remote_settings);
+            tracing::info!("Sync: settings updated from remote");
+        }
+
+        if let Some(remote_tabs) = state
+            .client
+            .pull_latest_collection_blob::<vex_browser::SessionState>(
+                vex_sync::SyncCollection::OpenTabs,
+                &state.key,
+            )
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            apply_remote_open_tabs_if_empty(tab_mgr, &remote_tabs);
+        }
+
+        let _ = state
+            .client
+            .pull_latest_collection_blob::<SyncedHistoryPayload>(
+                vex_sync::SyncCollection::History,
+                &state.key,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok::<(), String>(())
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn run_sync_push_blocking(
+    state: &mut SyncRuntimeState,
+    bookmarks: &vex_browser::BookmarkManager,
+    settings: &vex_browser::BrowserSettings,
+    tab_mgr: &vex_browser::TabManager,
+    nav_histories: &std::collections::HashMap<vex_browser::tab::TabId, vex_browser::NavigationHistory>,
+) -> Result<(), String> {
+    let tabs_snapshot = vex_browser::SessionState::from_tabs(tab_mgr.tabs(), tab_mgr.active_index());
+    let history_payload = snapshot_history_payload(nav_histories);
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("sync runtime create failed: {e}"))?;
+
+    rt.block_on(async {
+        state
+            .client
+            .push_collection_blob(
+                vex_sync::SyncCollection::Bookmarks,
+                "vigo-bookmarks-main",
+                bookmarks,
+                &state.key,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        state
+            .client
+            .push_collection_blob(
+                vex_sync::SyncCollection::Settings,
+                "vigo-settings-main",
+                settings,
+                &state.key,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        state
+            .client
+            .push_collection_blob(
+                vex_sync::SyncCollection::OpenTabs,
+                "vigo-tabs-main",
+                &tabs_snapshot,
+                &state.key,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        state
+            .client
+            .push_collection_blob(
+                vex_sync::SyncCollection::History,
+                "vigo-history-main",
+                &history_payload,
+                &state.key,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok::<(), String>(())
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn snapshot_history_payload(
+    nav_histories: &std::collections::HashMap<vex_browser::tab::TabId, vex_browser::NavigationHistory>,
+) -> SyncedHistoryPayload {
+    let mut urls = Vec::new();
+    for history in nav_histories.values() {
+        let (entries, _) = history.snapshot();
+        for url in entries {
+            urls.push(url.to_string());
+        }
+    }
+    urls.sort();
+    urls.dedup();
+    SyncedHistoryPayload { urls }
+}
+
+#[cfg(target_os = "windows")]
+fn apply_remote_open_tabs_if_empty(tab_mgr: &mut vex_browser::TabManager, remote: &vex_browser::SessionState) {
+    if remote.tabs.is_empty() {
+        return;
+    }
+    let local_is_single_blank = tab_mgr.tab_count() == 1
+        && tab_mgr.active_tab().url.as_ref().starts_with("vex://newtab");
+    if local_is_single_blank {
+        remote.restore_into(tab_mgr);
+        tracing::info!(count = tab_mgr.tab_count(), "Sync: restored open tabs from remote");
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn merge_synced_settings(local: &mut vex_browser::BrowserSettings, remote: &vex_browser::BrowserSettings) {
+    let canvas = local.canvas_fingerprint.clone();
+    let webgl = local.webgl_mask.clone();
+    let fonts = local.font_restriction.clone();
+
+    *local = remote.clone();
+    local.canvas_fingerprint = canvas;
+    local.webgl_mask = webgl;
+    local.font_restriction = fonts;
+}
+
+#[cfg(target_os = "windows")]
+fn rebuild_extension_action_bar(
+    ext_loader: &vex_browser::ExtensionLoader,
+    action_bar: &mut vex_browser::ActionBar,
+) {
+    *action_bar = vex_browser::ActionBar::new();
+    for action in ext_loader.browser_actions() {
+        action_bar.add(action);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn extension_action_button_rects(nav_rect: vex_core::geometry::Rect, count: usize) -> Vec<vex_core::geometry::Rect> {
+    use vex_core::geometry::Rect;
+
+    const BTN_W: f32 = 22.0;
+    const BTN_H: f32 = 22.0;
+    const GAP: f32 = 4.0;
+    const RIGHT_PAD: f32 = 10.0;
+    const TOP_OFF: f32 = 11.0;
+
+    if count == 0 {
+        return Vec::new();
+    }
+
+    let visible = count.min(8);
+    let total_w = visible as f32 * BTN_W + (visible.saturating_sub(1)) as f32 * GAP;
+    let mut x = nav_rect.origin.x + nav_rect.size.width - RIGHT_PAD - total_w;
+    let y = nav_rect.origin.y + TOP_OFF;
+
+    let mut rects = Vec::with_capacity(visible);
+    for _ in 0..visible {
+        rects.push(Rect::new(x, y, BTN_W, BTN_H));
+        x += BTN_W + GAP;
+    }
+    rects
+}
+
+#[cfg(target_os = "windows")]
+fn hit_test_extension_action(
+    x: f32,
+    y: f32,
+    nav_rect: vex_core::geometry::Rect,
+    action_count: usize,
+) -> Option<usize> {
+    extension_action_button_rects(nav_rect, action_count)
+        .iter()
+        .position(|r| {
+            x >= r.origin.x
+                && x <= r.origin.x + r.size.width
+                && y >= r.origin.y
+                && y <= r.origin.y + r.size.height
+        })
+}
+
+#[cfg(target_os = "windows")]
+fn render_extension_action_bar(
+    dl: &mut vex_render::display_list::DisplayList,
+    actions: &[vex_browser::ExtBrowserAction],
+    nav_rect: vex_core::geometry::Rect,
+) {
+    use vex_core::color::Color;
+    use vex_core::geometry::Point;
+    use vex_render::display_list::DisplayCommand;
+
+    let rects = extension_action_button_rects(nav_rect, actions.len());
+    for (idx, rect) in rects.iter().enumerate() {
+        let action = &actions[idx];
+        dl.push(DisplayCommand::FillRect {
+            rect: *rect,
+            color: if action.enabled {
+                Color::rgb(224, 224, 224)
+            } else {
+                Color::rgb(204, 204, 204)
+            },
+            border_radius: 6.0,
+        });
+
+        let glyph = action
+            .title
+            .chars()
+            .next()
+            .map(|c| c.to_ascii_uppercase().to_string())
+            .unwrap_or_else(|| "?".to_owned());
+        dl.push(DisplayCommand::DrawText {
+            position: Point::new(rect.origin.x + 7.0, rect.origin.y + 4.0),
+            text: glyph,
+            color: Color::rgb(40, 40, 40),
+            font_size: 11.0,
+            line_height: 14.0,
+        });
+
+        if action.has_badge() {
+            dl.push(DisplayCommand::DrawText {
+                position: Point::new(rect.origin.x + 11.0, rect.origin.y - 2.0),
+                text: action.badge_text.clone(),
+                color: Color::rgb(200, 40, 40),
+                font_size: 9.0,
+                line_height: 11.0,
+            });
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn handle_extension_action_click(
+    action_index: usize,
+    action_bar: &vex_browser::ActionBar,
+    ext_loader: &vex_browser::ExtensionLoader,
+    tab_mgr: &mut vex_browser::TabManager,
+    vp_w: f32,
+    vp_h: f32,
+) {
+    let Some(click) = action_bar.click(action_index) else {
+        return;
+    };
+
+    if click.show_popup {
+        if let Some(popup_html) = ext_loader.browser_action_popup_source(&click.extension_id) {
+            let tab_id = tab_mgr.new_tab_blank();
+            if let Some(tab) = tab_mgr.tab_mut(tab_id) {
+                tab.load_html(&popup_html, vex_core::geometry::Size::new(vp_w, vp_h));
+                tab.url = vex_core::VexUrl::parse(&format!(
+                    "vex://extension-popup/{}",
+                    click.extension_id
+                ))
+                .unwrap_or_else(|_| {
+                    vex_core::VexUrl::parse("about:blank").expect("about:blank valid")
+                });
+                tab.set_title(format!("{} popup", click.extension_id));
+                tab.set_content_size(vp_w, vp_h.max(600.0));
+            }
+            tracing::info!(extension = click.extension_id, "Opened extension action popup");
+            return;
+        }
+    }
+
+    let payload = r#"{"action":"browserActionClicked"}"#;
+    if let Some(tab) = tab_mgr.tab_mut(tab_mgr.active_tab_id()) {
+        if tab.has_injected_extension(&click.extension_id) {
+            if let Some(runtime) = tab.runtime.as_mut() {
+                let _ = vex_js::api::extensions::dispatch_runtime_message(
+                    runtime.context_mut(),
+                    &click.extension_id,
+                    "browser",
+                    payload,
+                );
+                tracing::info!(
+                    extension = click.extension_id,
+                    "Dispatched browser action click event"
+                );
+            }
+        }
     }
 }
 
@@ -1451,9 +1941,13 @@ fn process_embedder_bus(
 mod tests {
     use super::{
         current_process_working_set_bytes, launch_options_from_iter, load_session_health,
-        resolve_browser_request_url, save_session_health, startup_target_from_input,
-        write_kpi_snapshot, SessionHealthSnapshot,
+        extension_action_button_rects, hit_test_extension_action, merge_synced_settings,
+        resolve_browser_request_url, save_session_health, snapshot_history_payload,
+        startup_target_from_input, sync_renderer_processes, write_kpi_snapshot,
+        SessionHealthSnapshot,
     };
+    use std::collections::HashMap;
+    use vex_core::geometry::Point;
     use vex_core::VexUrl;
 
     #[test]
@@ -1596,6 +2090,94 @@ mod tests {
 
         let _ = std::fs::remove_file(path);
     }
+
+    #[test]
+    fn sync_renderer_processes_tracks_tab_lifecycle() {
+        let mut tabs = vex_browser::TabManager::new();
+        let mut pm = vex_browser::ProcessManager::new();
+        let policy = vex_browser::SandboxPolicy::production();
+        let mut nav_cache = std::collections::HashMap::new();
+
+        sync_renderer_processes(&tabs, &mut pm, &policy, &mut nav_cache);
+        let active = tabs.active_tab_id();
+        assert!(pm.get(active).is_some());
+        assert_eq!(nav_cache.get(&active), Some(&tabs.active_tab().url.to_string()));
+
+        let new_id = tabs.new_tab(VexUrl::parse("https://example.com").unwrap());
+        sync_renderer_processes(&tabs, &mut pm, &policy, &mut nav_cache);
+        assert!(pm.get(new_id).is_some());
+
+        assert!(tabs.close_tab(new_id));
+        sync_renderer_processes(&tabs, &mut pm, &policy, &mut nav_cache);
+        assert!(pm.get(new_id).is_none());
+        assert!(!nav_cache.contains_key(&new_id));
+    }
+
+    #[test]
+    fn extension_action_hit_test_and_layout() {
+        let nav = vex_core::geometry::Rect::new(0.0, 40.0, 1200.0, 40.0);
+        let rects = extension_action_button_rects(nav, 3);
+        assert_eq!(rects.len(), 3);
+
+        let target = rects[1];
+        let idx = hit_test_extension_action(
+            target.origin.x + 3.0,
+            target.origin.y + 3.0,
+            nav,
+            3,
+        );
+        assert_eq!(idx, Some(1));
+    }
+
+    #[test]
+    fn snapshot_history_payload_deduplicates_urls() {
+        let mut histories: HashMap<vex_browser::tab::TabId, vex_browser::NavigationHistory> =
+            HashMap::new();
+
+        let mut h1 = vex_browser::NavigationHistory::new();
+        h1.push(
+            VexUrl::parse("https://example.com").unwrap(),
+            "Example".to_owned(),
+            Point::new(0.0, 0.0),
+        );
+        h1.push(
+            VexUrl::parse("https://rust-lang.org").unwrap(),
+            "Rust".to_owned(),
+            Point::new(0.0, 0.0),
+        );
+
+        let mut h2 = vex_browser::NavigationHistory::new();
+        h2.push(
+            VexUrl::parse("https://example.com").unwrap(),
+            "Example".to_owned(),
+            Point::new(0.0, 0.0),
+        );
+
+        histories.insert(vex_browser::tab::TabId(1), h1);
+        histories.insert(vex_browser::tab::TabId(2), h2);
+
+        let payload = snapshot_history_payload(&histories);
+        assert_eq!(payload.urls.len(), 2);
+        assert!(payload.urls.iter().any(|u| u.contains("example.com")));
+        assert!(payload.urls.iter().any(|u| u.contains("rust-lang.org")));
+    }
+
+    #[test]
+    fn merge_synced_settings_preserves_runtime_privacy_state() {
+        let mut local = vex_browser::BrowserSettings::default();
+        let remote = vex_browser::BrowserSettings {
+            default_zoom: 175,
+            show_bookmarks_bar: false,
+            ..vex_browser::BrowserSettings::default()
+        };
+
+        let original_canvas_seed = local.canvas_fingerprint.session_seed;
+        merge_synced_settings(&mut local, &remote);
+
+        assert_eq!(local.default_zoom, 175);
+        assert!(!local.show_bookmarks_bar);
+        assert_eq!(local.canvas_fingerprint.session_seed, original_canvas_seed);
+    }
 }
 
 /// Open a new tab with the built-in welcome page.
@@ -1693,6 +2275,54 @@ fn navigate_tab(
         viewport,
     );
     tab.set_content_size(vp_w, vp_h);
+}
+
+#[cfg(target_os = "windows")]
+fn sync_renderer_processes(
+    tab_mgr: &vex_browser::TabManager,
+    process_manager: &mut vex_browser::ProcessManager,
+    sandbox_policy: &vex_browser::SandboxPolicy,
+    nav_cache: &mut std::collections::HashMap<vex_browser::tab::TabId, String>,
+) {
+    use std::collections::HashSet;
+
+    let live_ids: HashSet<_> = tab_mgr.tabs().iter().map(|t| t.id).collect();
+    let stale: Vec<_> = process_manager
+        .all()
+        .filter(|info| !live_ids.contains(&info.tab_id))
+        .map(|info| info.tab_id)
+        .collect();
+
+    for tab_id in stale {
+        let _ = process_manager.terminate_renderer(tab_id, 100);
+        nav_cache.remove(&tab_id);
+    }
+
+    for tab in tab_mgr.tabs() {
+        if process_manager.get(tab.id).is_none() {
+            let pid = process_manager.spawn_renderer_os(tab.id);
+            let _ = sandbox_policy.apply(std::ptr::null_mut());
+            process_manager.mark_running(tab.id);
+            tracing::info!(tab_id = %tab.id, %pid, "renderer sandbox/process bound to tab");
+        }
+
+        let url_now = tab.url.to_string();
+        let needs_nav_update = nav_cache
+            .get(&tab.id)
+            .map(|prev| prev != &url_now)
+            .unwrap_or(true);
+
+        if needs_nav_update {
+            process_manager.send_message(
+                tab.id,
+                &vex_browser::IpcMessage::LoadUrl {
+                    tab_id: tab.id,
+                    url: tab.url.clone(),
+                },
+            );
+            nav_cache.insert(tab.id, url_now);
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -2150,6 +2780,7 @@ fn handle_content_click(
 fn compose_frame(
     tab_mgr: &vex_browser::TabManager,
     toolbar: &vex_browser::ToolbarLayout,
+    extension_actions: &[vex_browser::ExtBrowserAction],
     bookmarks: &vex_browser::BookmarkManager,
     find: &vex_browser::FindState,
     find_bar_visible: bool,
@@ -2207,6 +2838,7 @@ fn compose_frame(
         is_address_focused: address_bar_focused,
     };
     render_nav_bar(&mut dl, &nav_state, toolbar.nav_bar);
+    render_extension_action_bar(&mut dl, extension_actions, toolbar.nav_bar);
 
     // Cursor blink when address bar is focused.
     if address_bar_focused {

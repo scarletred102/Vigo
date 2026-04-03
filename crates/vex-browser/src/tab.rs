@@ -17,8 +17,35 @@ use vex_media::media_element::{MediaElement, MediaType};
 use vex_media::media_loading::MediaFormat;
 use vex_render::display_list::{DisplayList, ImageId};
 use vex_render::scroll::ScrollState;
+use vex_security::ResourceType;
 
 type SharedSessionStorage = vex_js::api::session_storage::SharedSessionStorage;
+
+const DEFAULT_ADBLOCK_LIST: &str = r#"
+# Phase-9 default tracker/ad domains
+doubleclick.net
+googlesyndication.com
+googleadservices.com
+googletagmanager.com
+googletagservices.com
+adservice.google.com
+facebook.net
+connect.facebook.net
+ads.twitter.com
+analytics.twitter.com
+hotjar.com
+segment.io
+mixpanel.com
+scorecardresearch.com
+taboola.com
+outbrain.com
+amazon-adsystem.com
+criteo.com
+quantserve.com
+adnxs.com
+tracker.example
+ads.example
+"#;
 
 /// Create a guaranteed-valid `about:blank` URL.
 ///
@@ -556,22 +583,41 @@ impl Tab {
             body: None,
         };
 
+        let privacy = privacy_layer_for_navigation();
+
         self.loading = LoadingState::Loading { progress: 0.1 };
 
-        match client.fetch(request).await {
+        match client
+            .fetch_filtered(request, |req| privacy.process_request(req))
+            .await
+        {
             Ok(response) => {
                 if response.status >= 400 {
                     let msg = format!("HTTP {} — {}", response.status, self.url);
                     self.load_error_page("Page Error", &msg, viewport);
                     return;
                 }
+
+                self.url = response.url.clone();
                 persist_response_cookies(&self.url, &response.headers);
+
+                let security_ctx = crate::secure_fetch::SecurityContext::new(
+                    &self.url,
+                    crate::secure_fetch::extract_csp(&response.headers),
+                );
                 self.loading = LoadingState::Loading { progress: 0.3 };
                 let html = String::from_utf8_lossy(&response.body).into_owned();
 
                 // Pre-fetch external resources (scripts and stylesheets)
                 // so that load_html can use them synchronously.
-                let resources = prefetch_external_resources(&client, &self.url, &html).await;
+                let resources = prefetch_external_resources(
+                    &client,
+                    &self.url,
+                    &html,
+                    &security_ctx,
+                    &privacy,
+                )
+                .await;
 
                 self.load_html_with_resources(&html, viewport, &resources);
                 tracing::info!("Tab {} loaded: {} ({})", self.id, self.url, self.title);
@@ -669,16 +715,18 @@ async fn prefetch_external_resources(
     client: &vex_net::HttpClient,
     base_url: &VexUrl,
     html: &str,
+    security_ctx: &crate::secure_fetch::SecurityContext,
+    privacy: &vex_privacy::PrivacyLayer,
 ) -> HashMap<String, String> {
     let doc = vex_html::parse_html(html);
-    let mut urls_to_fetch: Vec<(String, String)> = Vec::new(); // (original_attr, resolved_url)
+    let mut urls_to_fetch: Vec<(String, String, ResourceType)> = Vec::new(); // (original_attr, resolved_url, resource_type)
 
     // Discover <script src="...">.
     let scripts = vex_html::extract::extract_scripts(&doc);
     for script in &scripts {
         if let Some(ref url) = script.src {
             let resolved = resolve_resource_url(base_url, url);
-            urls_to_fetch.push((url.clone(), resolved));
+            urls_to_fetch.push((url.clone(), resolved, ResourceType::Script));
         }
     }
 
@@ -699,7 +747,7 @@ async fn prefetch_external_resources(
             if is_stylesheet {
                 if let Some(href_val) = href {
                     let resolved = resolve_resource_url(base_url, &href_val);
-                    urls_to_fetch.push((href_val, resolved));
+                    urls_to_fetch.push((href_val, resolved, ResourceType::Style));
                 }
             }
         }
@@ -713,7 +761,7 @@ async fn prefetch_external_resources(
 
     let mut resources = HashMap::new();
 
-    for (original, resolved_str) in &urls_to_fetch {
+    for (original, resolved_str, resource_type) in &urls_to_fetch {
         let url = match VexUrl::parse(resolved_str) {
             Ok(u) => u,
             Err(e) => {
@@ -722,14 +770,19 @@ async fn prefetch_external_resources(
             }
         };
 
-        let request = vex_net::Request {
+        let mut request = vex_net::Request {
             url: url.clone(),
             method: vex_net::Method::Get,
             headers: HashMap::new(),
             body: None,
         };
 
-        match client.fetch(request).await {
+        if let Err(e) = privacy.process_request(&mut request) {
+            tracing::warn!("Privacy layer blocked resource {resolved_str}: {e}");
+            continue;
+        }
+
+        match crate::secure_fetch::secure_fetch(client, request, security_ctx, *resource_type).await {
             Ok(response) if response.status < 400 => {
                 let content = String::from_utf8_lossy(&response.body).into_owned();
                 tracing::debug!("Pre-fetched {resolved_str} ({} bytes)", content.len());
@@ -744,7 +797,7 @@ async fn prefetch_external_resources(
                 tracing::warn!("HTTP {} fetching resource {resolved_str}", response.status);
             }
             Err(e) => {
-                tracing::warn!("Failed to fetch resource {resolved_str}: {e}");
+                tracing::warn!("Secure fetch rejected resource {resolved_str}: {e}");
             }
         }
     }
@@ -755,6 +808,12 @@ async fn prefetch_external_resources(
         urls_to_fetch.len()
     );
     resources
+}
+
+fn privacy_layer_for_navigation() -> vex_privacy::PrivacyLayer {
+    let config = vex_privacy::middleware::PrivacyConfig::default();
+    let adblock = vex_privacy::AdblockEngine::from_list(DEFAULT_ADBLOCK_LIST);
+    vex_privacy::PrivacyLayer::with_config(config, adblock)
 }
 
 /// Resolve a potentially relative URL against a base URL.
@@ -1249,5 +1308,25 @@ mod tests {
 
         assert_eq!(tab.media_format(video_id), Some(MediaFormat::Mp4));
         assert_eq!(tab.media_format(audio_id), Some(MediaFormat::Mp3));
+    }
+
+    #[test]
+    fn privacy_layer_blocks_tracker_domains() {
+        let privacy = privacy_layer_for_navigation();
+        let mut req = vex_net::Request::get("https://doubleclick.net/collect").unwrap();
+        let result = privacy.process_request(&mut req);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_set_cookie_header_extracts_flags() {
+        let raw = "sid=abc123; Path=/; HttpOnly; Secure; SameSite=None";
+        let cookie = parse_set_cookie_header(raw, "example.com", "/").expect("cookie parse");
+        assert_eq!(cookie.name, "sid");
+        assert_eq!(cookie.value, "abc123");
+        assert_eq!(cookie.path, "/");
+        assert!(cookie.http_only);
+        assert!(cookie.secure);
+        assert_eq!(cookie.same_site, "none");
     }
 }

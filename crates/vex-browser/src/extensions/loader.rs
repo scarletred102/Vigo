@@ -308,6 +308,17 @@ impl ExtensionLoader {
         actions
     }
 
+    /// Load popup HTML source for a browser action extension, if configured.
+    pub fn browser_action_popup_source(&self, id: &str) -> Option<String> {
+        let ext = self.extensions.get(id)?;
+        if !ext.is_active() {
+            return None;
+        }
+        let popup = ext.manifest.browser_action.as_ref()?.popup.as_ref()?;
+        let full_path = ext.manifest.root_dir.join(popup);
+        std::fs::read_to_string(full_path).ok()
+    }
+
     /// Read background worker source for an extension (Task 59).
     ///
     /// Returns `None` if no background worker is configured.
@@ -611,6 +622,37 @@ mod tests {
 
         // Enable/disable nonexistent returns false.
         assert!(!loader.enable("does-not-exist"));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn browser_action_popup_source_reads_popup_html() {
+        let tmp = std::env::temp_dir().join("vex_ext_test_popup");
+        let _ = fs::remove_dir_all(&tmp);
+        let ext_dir = tmp.join("popup-ext");
+        fs::create_dir_all(&ext_dir).unwrap();
+
+        fs::write(
+            ext_dir.join("manifest.json"),
+            r#"{
+                "manifest_version": 1,
+                "name": "popup-ext",
+                "version": "1.0.0",
+                "browser_action": {
+                    "default_popup": "popup.html"
+                }
+            }"#,
+        )
+        .unwrap();
+        fs::write(ext_dir.join("popup.html"), "<html>popup</html>").unwrap();
+
+        let mut loader = ExtensionLoader::new(tmp.clone());
+        loader.load_extension(&ext_dir).unwrap();
+        loader.enable("popup-ext");
+
+        let source = loader.browser_action_popup_source("popup-ext");
+        assert_eq!(source.as_deref(), Some("<html>popup</html>"));
 
         let _ = fs::remove_dir_all(&tmp);
     }
