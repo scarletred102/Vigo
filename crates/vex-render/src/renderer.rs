@@ -6,11 +6,14 @@
 //! Supports:
 //! - `FillRect` / `DrawBorder` — solid-color rectangles (instanced).
 //! - `DrawText` — alpha-tested glyph rendering from a glyph atlas.
+//! - `DrawImage` — textured quads from an image atlas.
 
 use wgpu::util::DeviceExt;
 
-use crate::display_list::{DisplayCommand, DisplayList, RenderBorderStyle};
+use crate::display_list::{DisplayCommand, DisplayList, ImageId, RenderBorderStyle};
 use crate::glyph_atlas::GlyphAtlas;
+use crate::image_atlas::ImageAtlas;
+use crate::image_decode::{decode_image, DecodedImage};
 use crate::privacy::RenderPrivacyConfig;
 
 /// Maximum rectangles per frame before the instance buffer grows.
@@ -34,6 +37,15 @@ struct TextInstance {
     rect: [f32; 4],  // x, y, width, height
     uv: [f32; 4],    // u0, v0, u1, v1
     color: [f32; 4], // r, g, b, a
+}
+
+/// Instance data for one image: rect + atlas UV + opacity.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct ImageInstance {
+    rect: [f32; 4],    // x, y, width, height
+    uv: [f32; 4],      // u0, v0, u1, v1
+    opacity: [f32; 4], // opacity in x, padding in yzw
 }
 
 /// Viewport uniform: [width, height, padding, padding].
@@ -71,6 +83,15 @@ pub struct Renderer {
     glyph_atlas: GlyphAtlas,
     atlas_texture: wgpu::Texture,
     atlas_bind_group: wgpu::BindGroup,
+
+    // ── Image pipeline ──
+    image_pipeline: wgpu::RenderPipeline,
+    image_buffer: wgpu::Buffer,
+    image_capacity: usize,
+    image_count: u32,
+    image_atlas: ImageAtlas,
+    image_texture: wgpu::Texture,
+    image_bind_group: wgpu::BindGroup,
 }
 
 impl Renderer {
@@ -192,8 +213,55 @@ impl Renderer {
             std::mem::size_of::<TextInstance>(),
         );
 
+        // ── Image atlas + pipeline ──
+        let image_atlas = ImageAtlas::new();
+        let (iw, ih) = image_atlas.dimensions();
+        let image_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("image-atlas"),
+            size: wgpu::Extent3d {
+                width: iw,
+                height: ih,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let image_view = image_texture.create_view(&Default::default());
+        let image_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("image-sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let image_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("image-atlas-bg"),
+            layout: &texture_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&image_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&image_sampler),
+                },
+            ],
+        });
+        let image_pipeline = create_image_pipeline(device, &viewport_bgl, &texture_bgl, format);
+        let image_buffer = create_instance_buffer(
+            device,
+            "image-instances",
+            INITIAL_MAX_RECTS,
+            std::mem::size_of::<ImageInstance>(),
+        );
+
         // Upload initial (blank) glyph atlas texture.
         upload_atlas_texture(queue, &atlas_texture, &glyph_atlas);
+        upload_image_atlas_texture(queue, &image_texture, &image_atlas);
 
         Self {
             viewport_buffer,
@@ -216,6 +284,13 @@ impl Renderer {
             glyph_atlas,
             atlas_texture,
             atlas_bind_group,
+            image_pipeline,
+            image_buffer,
+            image_capacity: INITIAL_MAX_RECTS,
+            image_count: 0,
+            image_atlas,
+            image_texture,
+            image_bind_group,
         }
     }
 
@@ -248,6 +323,28 @@ impl Renderer {
     #[must_use]
     pub fn is_font_allowed(&self, family: &str) -> bool {
         self.privacy.is_font_allowed(family)
+    }
+
+    /// Upload a decoded image into the CPU-side image atlas.
+    ///
+    /// Returns `true` if image was accepted by atlas packer.
+    pub fn upload_image(&mut self, id: ImageId, image: &DecodedImage) -> bool {
+        self.image_atlas.upload(id, image).is_some()
+    }
+
+    /// Decode and upload an image from raw bytes.
+    pub fn upload_image_bytes(&mut self, id: ImageId, bytes: &[u8]) -> Result<(), String> {
+        let decoded = decode_image(bytes).map_err(|e| format!("image decode: {e}"))?;
+        if self.upload_image(id, &decoded) {
+            Ok(())
+        } else {
+            Err("image atlas full or image rejected".to_string())
+        }
+    }
+
+    /// Number of cached images in the image atlas.
+    pub fn cached_image_count(&self) -> usize {
+        self.image_atlas.cached_count()
     }
 
     /// Upload display list data to GPU buffers.
@@ -283,37 +380,21 @@ impl Renderer {
             "rect-instances",
         );
 
+        // ── Image instances ──
+        let image_instances = collect_image_instances(dl, &self.image_atlas);
+        self.image_count = image_instances.len() as u32;
+        upload_instances(
+            device,
+            queue,
+            &image_instances,
+            &mut self.image_buffer,
+            &mut self.image_capacity,
+            "image-instances",
+        );
+
         // ── Text instances — shape each DrawText through the glyph atlas ──
         self.glyph_atlas.begin_frame();
-        let mut text_instances: Vec<TextInstance> = Vec::new();
-
-        for cmd in dl.commands() {
-            if let DisplayCommand::DrawText {
-                position,
-                text,
-                color,
-                font_size,
-                line_height,
-            } = cmd
-            {
-                let c = color.to_f32_array();
-                let positioned = self.glyph_atlas.prepare_text(
-                    text,
-                    position.x,
-                    position.y,
-                    *font_size,
-                    *line_height,
-                    c,
-                );
-                for pg in &positioned {
-                    text_instances.push(TextInstance {
-                        rect: pg.rect,
-                        uv: pg.uv,
-                        color: pg.color,
-                    });
-                }
-            }
-        }
+        let text_instances = collect_text_instances(dl, &mut self.glyph_atlas);
         self.text_count = text_instances.len() as u32;
         upload_instances(
             device,
@@ -328,6 +409,11 @@ impl Renderer {
         if self.glyph_atlas.is_dirty() {
             upload_atlas_texture(queue, &self.atlas_texture, &self.glyph_atlas);
             self.glyph_atlas.mark_clean();
+        }
+
+        if self.image_atlas.is_dirty() {
+            upload_image_atlas_texture(queue, &self.image_texture, &self.image_atlas);
+            self.image_atlas.mark_clean();
         }
 
         // Periodic LRU eviction (~every 5 seconds at 60fps).
@@ -360,6 +446,15 @@ impl Renderer {
             pass.set_bind_group(0, &self.viewport_bind_group, &[]);
             pass.set_vertex_buffer(0, self.rect_buffer.slice(..));
             pass.draw(0..6, 0..self.rect_count);
+        }
+
+        // Images in the middle layer.
+        if self.image_count > 0 {
+            pass.set_pipeline(&self.image_pipeline);
+            pass.set_bind_group(0, &self.viewport_bind_group, &[]);
+            pass.set_bind_group(1, &self.image_bind_group, &[]);
+            pass.set_vertex_buffer(0, self.image_buffer.slice(..));
+            pass.draw(0..6, 0..self.image_count);
         }
 
         // Text on top.
@@ -436,6 +531,72 @@ fn create_rect_pipeline(
             topology: wgpu::PrimitiveTopology::TriangleList,
             ..Default::default()
         },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview: None,
+        cache: None,
+    })
+}
+
+fn create_image_pipeline(
+    device: &wgpu::Device,
+    viewport_bgl: &wgpu::BindGroupLayout,
+    texture_bgl: &wgpu::BindGroupLayout,
+    format: wgpu::TextureFormat,
+) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("image-shader"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("shaders/image.wgsl").into()),
+    });
+
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("image-pipeline-layout"),
+        bind_group_layouts: &[viewport_bgl, texture_bgl],
+        push_constant_ranges: &[],
+    });
+
+    let instance_layout = wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<ImageInstance>() as wgpu::BufferAddress,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &[
+            wgpu::VertexAttribute {
+                offset: 0,
+                shader_location: 0,
+                format: wgpu::VertexFormat::Float32x4,
+            },
+            wgpu::VertexAttribute {
+                offset: 16,
+                shader_location: 1,
+                format: wgpu::VertexFormat::Float32x4,
+            },
+            wgpu::VertexAttribute {
+                offset: 32,
+                shader_location: 2,
+                format: wgpu::VertexFormat::Float32x4,
+            },
+        ],
+    };
+
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("image-pipeline"),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            buffers: &[instance_layout],
+            compilation_options: Default::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: Default::default(),
+        }),
+        primitive: wgpu::PrimitiveState::default(),
         depth_stencil: None,
         multisample: wgpu::MultisampleState::default(),
         multiview: None,
@@ -570,16 +731,56 @@ fn upload_atlas_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, atlas: &Gl
     );
 }
 
+fn upload_image_atlas_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, atlas: &ImageAtlas) {
+    let (w, h) = atlas.dimensions();
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        atlas.pixels(),
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(w * 4),
+            rows_per_image: Some(h),
+        },
+        wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
+    );
+}
+
 /// Extract `RectInstance` data from all `FillRect` and `DrawBorder` commands.
 ///
 /// Handles `PushOpacity` / `PopOpacity` by pre-multiplying alpha.
 fn collect_rect_instances(dl: &DisplayList) -> Vec<RectInstance> {
     let mut instances = Vec::with_capacity(dl.len());
     let mut opacity_stack: Vec<f32> = Vec::new();
+    let mut clip_stack: Vec<vex_core::geometry::Rect> = Vec::new();
     let mut current_opacity: f32 = 1.0;
 
     for cmd in dl.commands() {
         match cmd {
+            DisplayCommand::PushClip { rect } => {
+                let clipped = if let Some(top) = clip_stack.last().copied() {
+                    intersect_rect(top, *rect)
+                } else {
+                    Some(*rect)
+                };
+                if let Some(r) = clipped {
+                    clip_stack.push(r);
+                } else {
+                    // push empty sentinel by using zero-size rect
+                    clip_stack.push(vex_core::geometry::Rect::new(0.0, 0.0, 0.0, 0.0));
+                }
+            }
+            DisplayCommand::PopClip => {
+                clip_stack.pop();
+            }
             DisplayCommand::PushOpacity { opacity } => {
                 opacity_stack.push(current_opacity);
                 current_opacity *= opacity;
@@ -592,6 +793,14 @@ fn collect_rect_instances(dl: &DisplayList) -> Vec<RectInstance> {
                 color,
                 border_radius,
             } => {
+                let rect = if let Some(clip) = clip_stack.last().copied() {
+                    match intersect_rect(*rect, clip) {
+                        Some(r) => r,
+                        None => continue,
+                    }
+                } else {
+                    *rect
+                };
                 let mut c = color.to_f32_array();
                 c[3] *= current_opacity;
                 instances.push(RectInstance {
@@ -623,7 +832,7 @@ fn collect_rect_instances(dl: &DisplayList) -> Vec<RectInstance> {
                         );
                     }
                 }
-                emit_border_rects(rect, widths, &oc, styles, &mut instances);
+                emit_border_rects(rect, widths, &oc, styles, clip_stack.last().copied(), &mut instances);
             }
             // DrawText/DrawImage handled by separate pipelines.
             _ => {}
@@ -639,6 +848,7 @@ fn emit_border_rects(
     widths: &vex_core::geometry::Insets,
     colors: &[vex_core::color::Color; 4],
     styles: &[RenderBorderStyle; 4],
+    clip: Option<vex_core::geometry::Rect>,
     out: &mut Vec<RectInstance>,
 ) {
     let x = rect.origin.x;
@@ -648,35 +858,255 @@ fn emit_border_rects(
 
     // Top border.
     if widths.top > 0.0 && styles[0] != RenderBorderStyle::None {
-        out.push(RectInstance {
-            rect: [x, y, w, widths.top],
-            color: colors[0].to_f32_array(),
-            extra: [0.0, 0.0, 0.0, 0.0],
-        });
+        emit_border_edge(
+            vex_core::geometry::Rect::new(x, y, w, widths.top),
+            widths.top,
+            styles[0],
+            colors[0].to_f32_array(),
+            true,
+            clip,
+            out,
+        );
     }
     // Right border.
     if widths.right > 0.0 && styles[1] != RenderBorderStyle::None {
-        out.push(RectInstance {
-            rect: [x + w - widths.right, y, widths.right, h],
-            color: colors[1].to_f32_array(),
-            extra: [0.0, 0.0, 0.0, 0.0],
-        });
+        emit_border_edge(
+            vex_core::geometry::Rect::new(x + w - widths.right, y, widths.right, h),
+            widths.right,
+            styles[1],
+            colors[1].to_f32_array(),
+            false,
+            clip,
+            out,
+        );
     }
     // Bottom border.
     if widths.bottom > 0.0 && styles[2] != RenderBorderStyle::None {
-        out.push(RectInstance {
-            rect: [x, y + h - widths.bottom, w, widths.bottom],
-            color: colors[2].to_f32_array(),
-            extra: [0.0, 0.0, 0.0, 0.0],
-        });
+        emit_border_edge(
+            vex_core::geometry::Rect::new(x, y + h - widths.bottom, w, widths.bottom),
+            widths.bottom,
+            styles[2],
+            colors[2].to_f32_array(),
+            true,
+            clip,
+            out,
+        );
     }
     // Left border.
     if widths.left > 0.0 && styles[3] != RenderBorderStyle::None {
+        emit_border_edge(
+            vex_core::geometry::Rect::new(x, y, widths.left, h),
+            widths.left,
+            styles[3],
+            colors[3].to_f32_array(),
+            false,
+            clip,
+            out,
+        );
+    }
+}
+
+fn emit_border_edge(
+    rect: vex_core::geometry::Rect,
+    width: f32,
+    style: RenderBorderStyle,
+    color: [f32; 4],
+    horizontal: bool,
+    clip: Option<vex_core::geometry::Rect>,
+    out: &mut Vec<RectInstance>,
+) {
+    let mut emit = |r: vex_core::geometry::Rect| {
+        let rr = if let Some(c) = clip {
+            match intersect_rect(r, c) {
+                Some(v) => v,
+                None => return,
+            }
+        } else {
+            r
+        };
         out.push(RectInstance {
-            rect: [x, y, widths.left, h],
-            color: colors[3].to_f32_array(),
+            rect: [rr.origin.x, rr.origin.y, rr.size.width, rr.size.height],
+            color,
             extra: [0.0, 0.0, 0.0, 0.0],
         });
+    };
+
+    match style {
+        RenderBorderStyle::None => {}
+        RenderBorderStyle::Solid => emit(rect),
+        RenderBorderStyle::Dashed | RenderBorderStyle::Dotted => {
+            let base = if style == RenderBorderStyle::Dashed {
+                (width * 3.0).max(1.0)
+            } else {
+                width.max(1.0)
+            };
+            let gap = base;
+            if horizontal {
+                let mut x = rect.origin.x;
+                let end = rect.origin.x + rect.size.width;
+                while x < end {
+                    let seg = (end - x).min(base);
+                    emit(vex_core::geometry::Rect::new(x, rect.origin.y, seg, rect.size.height));
+                    x += base + gap;
+                }
+            } else {
+                let mut y = rect.origin.y;
+                let end = rect.origin.y + rect.size.height;
+                while y < end {
+                    let seg = (end - y).min(base);
+                    emit(vex_core::geometry::Rect::new(rect.origin.x, y, rect.size.width, seg));
+                    y += base + gap;
+                }
+            }
+        }
+    }
+}
+
+fn collect_text_instances(dl: &DisplayList, glyph_atlas: &mut GlyphAtlas) -> Vec<TextInstance> {
+    let mut instances = Vec::new();
+    let mut opacity_stack: Vec<f32> = Vec::new();
+    let mut clip_stack: Vec<vex_core::geometry::Rect> = Vec::new();
+    let mut current_opacity: f32 = 1.0;
+
+    for cmd in dl.commands() {
+        match cmd {
+            DisplayCommand::PushClip { rect } => {
+                let clipped = if let Some(top) = clip_stack.last().copied() {
+                    intersect_rect(top, *rect)
+                } else {
+                    Some(*rect)
+                };
+                if let Some(r) = clipped {
+                    clip_stack.push(r);
+                } else {
+                    clip_stack.push(vex_core::geometry::Rect::new(0.0, 0.0, 0.0, 0.0));
+                }
+            }
+            DisplayCommand::PopClip => {
+                clip_stack.pop();
+            }
+            DisplayCommand::PushOpacity { opacity } => {
+                opacity_stack.push(current_opacity);
+                current_opacity *= opacity;
+            }
+            DisplayCommand::PopOpacity => {
+                current_opacity = opacity_stack.pop().unwrap_or(1.0);
+            }
+            DisplayCommand::DrawText {
+                position,
+                text,
+                color,
+                font_size,
+                line_height,
+            } => {
+                if text.is_empty() {
+                    continue;
+                }
+
+                let est_w = *font_size * 0.6 * text.chars().count() as f32;
+                let text_rect = vex_core::geometry::Rect::new(
+                    position.x,
+                    position.y - *line_height * 0.8,
+                    est_w,
+                    *line_height,
+                );
+                if let Some(clip) = clip_stack.last().copied() {
+                    if !text_rect.intersects(&clip) {
+                        continue;
+                    }
+                }
+
+                let mut c = color.to_f32_array();
+                c[3] *= current_opacity;
+                let positioned = glyph_atlas.prepare_text(
+                    text,
+                    position.x,
+                    position.y,
+                    *font_size,
+                    *line_height,
+                    c,
+                );
+                for pg in &positioned {
+                    instances.push(TextInstance {
+                        rect: pg.rect,
+                        uv: pg.uv,
+                        color: pg.color,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    instances
+}
+
+fn collect_image_instances(dl: &DisplayList, atlas: &ImageAtlas) -> Vec<ImageInstance> {
+    let mut instances = Vec::new();
+    let mut opacity_stack: Vec<f32> = Vec::new();
+    let mut clip_stack: Vec<vex_core::geometry::Rect> = Vec::new();
+    let mut current_opacity: f32 = 1.0;
+
+    for cmd in dl.commands() {
+        match cmd {
+            DisplayCommand::PushClip { rect } => {
+                let clipped = if let Some(top) = clip_stack.last().copied() {
+                    intersect_rect(top, *rect)
+                } else {
+                    Some(*rect)
+                };
+                if let Some(r) = clipped {
+                    clip_stack.push(r);
+                } else {
+                    clip_stack.push(vex_core::geometry::Rect::new(0.0, 0.0, 0.0, 0.0));
+                }
+            }
+            DisplayCommand::PopClip => {
+                clip_stack.pop();
+            }
+            DisplayCommand::PushOpacity { opacity } => {
+                opacity_stack.push(current_opacity);
+                current_opacity *= opacity;
+            }
+            DisplayCommand::PopOpacity => {
+                current_opacity = opacity_stack.pop().unwrap_or(1.0);
+            }
+            DisplayCommand::DrawImage { rect, image_id } => {
+                let Some(entry) = atlas.get(*image_id) else {
+                    continue;
+                };
+                let rect = if let Some(clip) = clip_stack.last().copied() {
+                    match intersect_rect(*rect, clip) {
+                        Some(v) => v,
+                        None => continue,
+                    }
+                } else {
+                    *rect
+                };
+
+                instances.push(ImageInstance {
+                    rect: [rect.origin.x, rect.origin.y, rect.size.width, rect.size.height],
+                    uv: entry.uv,
+                    opacity: [current_opacity, 0.0, 0.0, 0.0],
+                });
+            }
+            _ => {}
+        }
+    }
+
+    instances
+}
+
+fn intersect_rect(a: vex_core::geometry::Rect, b: vex_core::geometry::Rect) -> Option<vex_core::geometry::Rect> {
+    let x1 = a.origin.x.max(b.origin.x);
+    let y1 = a.origin.y.max(b.origin.y);
+    let x2 = (a.origin.x + a.size.width).min(b.origin.x + b.size.width);
+    let y2 = (a.origin.y + a.size.height).min(b.origin.y + b.size.height);
+
+    if x2 <= x1 || y2 <= y1 {
+        None
+    } else {
+        Some(vex_core::geometry::Rect::new(x1, y1, x2 - x1, y2 - y1))
     }
 }
 
@@ -724,6 +1154,63 @@ mod tests {
 
         let instances = collect_rect_instances(&dl);
         assert_eq!(instances.len(), 4, "4 border sides → 4 rects");
+    }
+
+    #[test]
+    fn dashed_border_emits_multiple_segments() {
+        let mut dl = DisplayList::new();
+        dl.push(DisplayCommand::DrawBorder {
+            rect: Rect::new(0.0, 0.0, 100.0, 20.0),
+            widths: Insets::new(2.0, 0.0, 0.0, 0.0),
+            colors: [Color::BLACK; 4],
+            styles: [
+                RenderBorderStyle::Dashed,
+                RenderBorderStyle::None,
+                RenderBorderStyle::None,
+                RenderBorderStyle::None,
+            ],
+        });
+
+        let instances = collect_rect_instances(&dl);
+        assert!(instances.len() > 1, "dashed border should be segmented");
+    }
+
+    #[test]
+    fn clip_culls_rect_instances() {
+        let mut dl = DisplayList::new();
+        dl.push(DisplayCommand::PushClip {
+            rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+        });
+        dl.push(DisplayCommand::FillRect {
+            rect: Rect::new(20.0, 20.0, 10.0, 10.0),
+            color: Color::WHITE,
+            border_radius: 0.0,
+        });
+        dl.push(DisplayCommand::PopClip);
+
+        let instances = collect_rect_instances(&dl);
+        assert!(instances.is_empty(), "clipped-out rect should be culled");
+    }
+
+    #[test]
+    fn image_instances_collect_when_in_atlas() {
+        let mut dl = DisplayList::new();
+        dl.push(DisplayCommand::DrawImage {
+            rect: Rect::new(0.0, 0.0, 50.0, 40.0),
+            image_id: ImageId(7),
+        });
+
+        let mut atlas = ImageAtlas::new();
+        let img = DecodedImage {
+            width: 2,
+            height: 2,
+            pixels: vec![255; 16],
+        };
+        let _ = atlas.upload(ImageId(7), &img);
+
+        let instances = collect_image_instances(&dl, &atlas);
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].rect, [0.0, 0.0, 50.0, 40.0]);
     }
 
     #[test]

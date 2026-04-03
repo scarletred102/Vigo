@@ -6,6 +6,8 @@
 //! GPU rendering pipeline and platform windowing for the Vex browser engine.
 
 pub mod canvas2d;
+pub mod compositor;
+pub mod damage;
 pub mod display_list;
 pub mod event;
 pub mod form_painter;
@@ -22,6 +24,7 @@ pub mod privacy;
 pub mod renderer;
 pub mod screenshot;
 pub mod scroll;
+pub mod tiling;
 
 pub use display_list::DisplayList;
 pub use event::Event;
@@ -31,3 +34,7 @@ pub use painter::build_display_list;
 #[cfg(target_os = "windows")]
 pub use platform::Window;
 pub use privacy::RenderPrivacyConfig;
+
+pub use compositor::{build_layers, cull_fully_occluded, CompositorLayer, LayerReason};
+pub use damage::{compute_damage, merge_damage};
+pub use tiling::{Tile, TileGrid};

@@ -22,8 +22,8 @@ struct ImageData {
     @location(0) rect: vec4<f32>,
     // Atlas UV: u_min, v_min, u_max, v_max (normalised 0..1).
     @location(1) uv_rect: vec4<f32>,
-    // Opacity (packed into a vec4 for alignment; only .x used).
-    @location(2) opacity: f32,
+    // Opacity packed in x (yzw are padding).
+    @location(2) opacity: vec4<f32>,
 };
 
 @vertex
@@ -53,7 +53,7 @@ fn vs_main(
     var out: VertexOutput;
     out.position = vec4(ndc, 0.0, 1.0);
     out.uv = uv;
-    out.opacity = img.opacity;
+    out.opacity = img.opacity.x;
     return out;
 }
 

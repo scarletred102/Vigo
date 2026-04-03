@@ -35,7 +35,7 @@ pub enum RenderBorderStyle {
 }
 
 /// A single drawing command in the display list.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DisplayCommand {
     /// Fill a rectangle with a solid color.
     FillRect {
@@ -78,9 +78,22 @@ pub enum DisplayCommand {
 }
 
 /// An ordered list of display commands ready for GPU rendering.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct DisplayList {
     commands: Vec<DisplayCommand>,
+}
+
+/// Aggregate display-list command counts by category.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DisplayListStats {
+    pub fill_rects: usize,
+    pub borders: usize,
+    pub text_runs: usize,
+    pub images: usize,
+    pub push_clip: usize,
+    pub pop_clip: usize,
+    pub push_opacity: usize,
+    pub pop_opacity: usize,
 }
 
 impl DisplayList {
@@ -116,6 +129,66 @@ impl DisplayList {
     /// Iterate over commands in paint order.
     pub fn commands(&self) -> &[DisplayCommand] {
         &self.commands
+    }
+
+    /// Returns the union bounds of all geometric paint commands.
+    pub fn bounds(&self) -> Option<Rect> {
+        let mut out: Option<Rect> = None;
+        for cmd in &self.commands {
+            let Some(b) = command_bounds(cmd) else {
+                continue;
+            };
+            out = Some(match out {
+                Some(acc) => acc.union(&b),
+                None => b,
+            });
+        }
+        out
+    }
+
+    /// Compute per-command-type statistics.
+    pub fn stats(&self) -> DisplayListStats {
+        let mut s = DisplayListStats::default();
+        for cmd in &self.commands {
+            match cmd {
+                DisplayCommand::FillRect { .. } => s.fill_rects += 1,
+                DisplayCommand::DrawBorder { .. } => s.borders += 1,
+                DisplayCommand::DrawText { .. } => s.text_runs += 1,
+                DisplayCommand::DrawImage { .. } => s.images += 1,
+                DisplayCommand::PushClip { .. } => s.push_clip += 1,
+                DisplayCommand::PopClip => s.pop_clip += 1,
+                DisplayCommand::PushOpacity { .. } => s.push_opacity += 1,
+                DisplayCommand::PopOpacity => s.pop_opacity += 1,
+            }
+        }
+        s
+    }
+}
+
+/// Return geometric bounds for a display command if it occupies pixels.
+pub fn command_bounds(cmd: &DisplayCommand) -> Option<Rect> {
+    match cmd {
+        DisplayCommand::FillRect { rect, .. } => Some(*rect),
+        DisplayCommand::DrawBorder { rect, .. } => Some(*rect),
+        DisplayCommand::DrawImage { rect, .. } => Some(*rect),
+        DisplayCommand::DrawText {
+            position,
+            text,
+            font_size,
+            line_height,
+            ..
+        } => {
+            if text.is_empty() {
+                return None;
+            }
+            let w = (*font_size * 0.6 * text.chars().count() as f32).max(0.0);
+            let h = (*line_height).max(0.0);
+            Some(Rect::new(position.x, position.y - h * 0.8, w, h))
+        }
+        DisplayCommand::PushClip { .. }
+        | DisplayCommand::PopClip
+        | DisplayCommand::PushOpacity { .. }
+        | DisplayCommand::PopOpacity => None,
     }
 }
 
@@ -178,5 +251,43 @@ mod tests {
         });
         dl.push(DisplayCommand::PopOpacity);
         assert_eq!(dl.len(), 3);
+    }
+
+    #[test]
+    fn display_list_bounds_union() {
+        let mut dl = DisplayList::new();
+        dl.push(DisplayCommand::FillRect {
+            rect: Rect::new(10.0, 20.0, 30.0, 40.0),
+            color: Color::WHITE,
+            border_radius: 0.0,
+        });
+        dl.push(DisplayCommand::FillRect {
+            rect: Rect::new(50.0, 60.0, 10.0, 10.0),
+            color: Color::BLACK,
+            border_radius: 0.0,
+        });
+
+        let b = dl.bounds().expect("bounds");
+        assert_eq!(b.origin.x, 10.0);
+        assert_eq!(b.origin.y, 20.0);
+        assert_eq!(b.size.width, 50.0);
+        assert_eq!(b.size.height, 50.0);
+    }
+
+    #[test]
+    fn display_list_stats_counts_commands() {
+        let mut dl = DisplayList::new();
+        dl.push(DisplayCommand::PushOpacity { opacity: 0.5 });
+        dl.push(DisplayCommand::FillRect {
+            rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+            color: Color::WHITE,
+            border_radius: 0.0,
+        });
+        dl.push(DisplayCommand::PopOpacity);
+
+        let s = dl.stats();
+        assert_eq!(s.push_opacity, 1);
+        assert_eq!(s.fill_rects, 1);
+        assert_eq!(s.pop_opacity, 1);
     }
 }

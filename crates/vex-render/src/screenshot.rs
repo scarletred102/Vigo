@@ -20,10 +20,24 @@ use crate::renderer::Renderer;
 /// # Panics
 /// Panics if wgpu cannot find a suitable adapter (e.g. no GPU available).
 pub fn render_to_pixels(dl: &DisplayList, width: u32, height: u32) -> Vec<u8> {
+    try_render_to_pixels(dl, width, height)
+        .unwrap_or_else(|e| panic!("offscreen render failed: {e}"))
+}
+
+/// Fallible version of [`render_to_pixels`].
+pub fn try_render_to_pixels(
+    dl: &DisplayList,
+    width: u32,
+    height: u32,
+) -> Result<Vec<u8>, String> {
     pollster::block_on(render_to_pixels_async(dl, width, height))
 }
 
-async fn render_to_pixels_async(dl: &DisplayList, width: u32, height: u32) -> Vec<u8> {
+async fn render_to_pixels_async(
+    dl: &DisplayList,
+    width: u32,
+    height: u32,
+) -> Result<Vec<u8>, String> {
     // Create a headless device (no surface needed).
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::PRIMARY,
@@ -39,7 +53,7 @@ async fn render_to_pixels_async(dl: &DisplayList, width: u32, height: u32) -> Ve
         .await
     {
         Some(adapter) => adapter,
-        None => panic!("no GPU adapter for offscreen rendering"),
+        None => return Err("no GPU adapter for offscreen rendering".to_string()),
     };
 
     let (device, queue) = match adapter
@@ -53,7 +67,7 @@ async fn render_to_pixels_async(dl: &DisplayList, width: u32, height: u32) -> Ve
         .await
     {
         Ok(pair) => pair,
-        Err(error) => panic!("failed to create device for screenshot: {error}"),
+        Err(error) => return Err(format!("failed to create device for screenshot: {error}")),
     };
 
     let format = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -131,10 +145,10 @@ async fn render_to_pixels_async(dl: &DisplayList, width: u32, height: u32) -> Ve
     device.poll(wgpu::Maintain::Wait);
     let map_result = match rx.recv() {
         Ok(result) => result,
-        Err(error) => panic!("map_async channel closed: {error}"),
+        Err(error) => return Err(format!("map_async channel closed: {error}")),
     };
     if let Err(error) = map_result {
-        panic!("map_async failed: {error:?}");
+        return Err(format!("map_async failed: {error:?}"));
     }
 
     let mapped = slice.get_mapped_range();
@@ -149,7 +163,7 @@ async fn render_to_pixels_async(dl: &DisplayList, width: u32, height: u32) -> Ve
     drop(mapped);
     readback.unmap();
 
-    pixels
+    Ok(pixels)
 }
 
 /// Render a display list and save the result as a PNG file.
@@ -161,7 +175,7 @@ pub fn save_screenshot(
     height: u32,
     path: &Path,
 ) -> Result<(), String> {
-    let pixels = render_to_pixels(dl, width, height);
+    let pixels = try_render_to_pixels(dl, width, height)?;
     let img = image::RgbaImage::from_raw(width, height, pixels)
         .ok_or_else(|| "pixel buffer size mismatch".to_string())?;
     img.save(path)

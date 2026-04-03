@@ -192,6 +192,47 @@ Translate layout rectangles into hardware-accelerated pixels.
   - Separate pages into Layer Trees (for hardware-accelerated transforms).
   - Compositor Thread (`zig/compositor`): Stitch tiles together and send to the GPU via OpenGL/Vulkan for smooth 60fps scrolling.
 
+### Phase 5.5: Production Hardening Track (Graphics/Paint/Compositing Quality)
+Phase 5 is treated as a browser-grade rendering stack, not a basic draw pass.
+
+* **Goal:** High-fidelity, GPU-accelerated paint/compositing with practical browser-grade features: layered composition, damage tracking, tile scheduling, image/text correctness, and UX-focused scrolling behavior.
+* **Scope:** `crates/vex-render` (with integration hooks for compositor-facing subsystems).
+* **Status:** ✅ Completed (2026-04-02)
+
+#### Workstream A — Display List Intelligence
+- [x] Added display-list geometric introspection (`command_bounds`, `DisplayList::bounds`).
+- [x] Added command-category telemetry (`DisplayListStats`) to support renderer diagnostics and perf analysis.
+
+#### Workstream B — Compositor Infrastructure
+- [x] Added compositor layerization heuristics (`build_layers`) inspired by modern browser promotion rules (opacity, transform, positioned, filter, clip, animation).
+- [x] Added basic occlusion culling (`cull_fully_occluded`) for opaque top-layer coverage.
+- [x] Added tile-grid scheduler (`TileGrid`) for tiled raster/compositing workflows with dirty and viewport-priority tile selection.
+
+#### Workstream C — Damage Tracking & Partial Repaint
+- [x] Added display-list diff damage computation (`compute_damage`).
+- [x] Added damage merge compaction (`merge_damage`) for reduced redraw region count.
+
+#### Workstream D — Renderer Pipeline Upgrades
+- [x] Integrated **image rendering pipeline** (`DrawImage`) via GPU textured quads and CPU/GPU image atlas synchronization.
+- [x] Added image upload APIs (`upload_image`, `upload_image_bytes`) and atlas cache visibility (`cached_image_count`).
+- [x] Added clip-aware and opacity-aware instance extraction for rect/text/image paths.
+- [x] Improved border rendering fidelity with dashed/dotted segmentation instead of solid-only fallback.
+
+#### Workstream E — Painter Fidelity
+- [x] Added z-index-aware sibling paint ordering for improved stacking behavior.
+- [x] Integrated native-like form control painting path into main display-list painter flow.
+
+#### Workstream F — UX Features Users Expect
+- [x] Added smooth scrolling + kinetic fling model in `ScrollState` (`scroll_by_smooth`, `fling`, `tick`, animation state).
+- [x] Added fallible screenshot/offscreen APIs (`try_render_to_pixels`) to avoid hard panics in no-adapter/driver-failure scenarios.
+
+#### Workstream G — Phase 5 Quality Gates
+- [x] `cargo test -p vex-render` passes.
+- [x] `cargo clippy -p vex-render --all-targets -- -D warnings` passes.
+- [x] Cross-phase regression gates pass:
+  - `cargo test -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render`
+  - `cargo clippy -p vex-net -p vex-html -p vex-dom -p vex-css -p vex-layout -p vex-render --all-targets -- -D warnings`
+
 ## Phase 6: JavaScript Execution
 Embed a high-performance engine to parse and execute JS.
 * **Crate:** `crates/vex-js`

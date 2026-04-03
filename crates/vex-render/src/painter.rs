@@ -15,10 +15,12 @@ use vex_core::VexId;
 use vex_css::computed::ComputedStyle;
 use vex_css::values::box_model::{BorderStyle, Visibility};
 use vex_dom::node::NodeData;
+use vex_dom::ElementState;
 use vex_dom::Document;
 use vex_layout::LayoutBox;
 
 use crate::display_list::{DisplayCommand, DisplayList, ImageId, RenderBorderStyle};
+use crate::form_painter::paint_form_control;
 
 /// Build a display list from a laid-out tree.
 ///
@@ -99,6 +101,9 @@ fn paint_box(
 
     // 3. Text content.
     paint_text(layout_box, style, styles, document, dl);
+
+    // 3.5 Native-like form controls.
+    paint_form(layout_box, document, dl);
 
     // 4. Images: emit DrawImage for <img> elements with loaded images.
     if let Some(node_id) = layout_box.node_id {
@@ -236,9 +241,40 @@ fn paint_children(
     viewport: &Rect,
     dl: &mut DisplayList,
 ) {
-    for child in &layout_box.children {
-        paint_box(child, styles, document, images, viewport, dl);
+    let mut order: Vec<(usize, i32)> = layout_box
+        .children
+        .iter()
+        .enumerate()
+        .map(|(idx, child)| {
+            let z = child
+                .node_id
+                .and_then(|id| styles.get(&id))
+                .map(|s| if s.position.is_positioned() { s.z_index } else { 0 })
+                .unwrap_or(0);
+            (idx, z)
+        })
+        .collect();
+
+    order.sort_by_key(|(_, z)| *z);
+    for (idx, _) in order {
+        paint_box(&layout_box.children[idx], styles, document, images, viewport, dl);
     }
+}
+
+fn paint_form(layout_box: &LayoutBox, document: &Document, dl: &mut DisplayList) {
+    let Some(node_id) = layout_box.node_id else {
+        return;
+    };
+    let Some(state) = document.form_states().get(node_id) else {
+        return;
+    };
+
+    let focused = match &document.arena().get(node_id).data {
+        NodeData::Element(el) => el.state.contains(ElementState::FOCUS),
+        _ => false,
+    };
+
+    paint_form_control(state, layout_box.content_rect(), focused, dl, None);
 }
 
 /// Convert CSS border style to render border style.
@@ -348,6 +384,49 @@ mod tests {
         let dl = build_display_list(&root, &styles, &doc, viewport);
         // Root background + child background.
         assert_eq!(dl.len(), 2);
+    }
+
+    #[test]
+    fn children_paint_sorted_by_z_index() {
+        let child_low = make_box(1, Rect::new(0.0, 0.0, 50.0, 50.0));
+        let child_high = make_box(2, Rect::new(0.0, 0.0, 50.0, 50.0));
+        let mut root = make_box(0, Rect::new(0.0, 0.0, 100.0, 100.0));
+        root.children.push(child_high);
+        root.children.push(child_low);
+
+        let mut styles = HashMap::new();
+        styles.insert(VexId::new(0), make_style(Color::TRANSPARENT));
+
+        let s1 = ComputedStyle {
+            background_color: Color::rgb(10, 10, 10),
+            position: vex_css::values::position::Position::Relative,
+            z_index: 10,
+            ..Default::default()
+        };
+        let s2 = ComputedStyle {
+            background_color: Color::rgb(20, 20, 20),
+            position: vex_css::values::position::Position::Relative,
+            z_index: 1,
+            ..Default::default()
+        };
+        styles.insert(VexId::new(1), s1);
+        styles.insert(VexId::new(2), s2);
+
+        let doc = Document::new();
+        let dl = build_display_list(&root, &styles, &doc, Size::new(800.0, 600.0));
+
+        // Lower z-index (node 2) should paint before higher z-index (node 1).
+        let fill_cmds: Vec<_> = dl
+            .commands()
+            .iter()
+            .filter_map(|c| match c {
+                DisplayCommand::FillRect { color, .. } => Some(*color),
+                _ => None,
+            })
+            .collect();
+        assert!(fill_cmds.len() >= 2);
+        assert_eq!(fill_cmds[0], Color::rgb(20, 20, 20));
+        assert_eq!(fill_cmds[1], Color::rgb(10, 10, 10));
     }
 
     #[test]
