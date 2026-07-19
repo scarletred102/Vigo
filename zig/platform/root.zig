@@ -1,4 +1,4 @@
-// Copyright (c) Vigo Contributors
+﻿// Copyright (c) Vigo Contributors
 // SPDX-License-Identifier: MPL-2.0
 //
 // vex_platform — Native windowing, event loop, DPI, raw handles.
@@ -37,6 +37,10 @@ export fn vex_platform_get_raw_handle(handle: *anyopaque, out: *RawHandle) void 
 
 export fn vex_platform_set_title(handle: *anyopaque, title: [*:0]const u8) void {
     window.setTitle(@ptrCast(@alignCast(handle)), title);
+}
+
+export fn vex_platform_set_fullscreen(handle: *anyopaque, is_enabled: bool) bool {
+    return window.setFullscreen(@ptrCast(@alignCast(handle)), is_enabled);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────

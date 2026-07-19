@@ -36,6 +36,7 @@ const HBRUSH = *opaque {};
 const HCURSOR = *opaque {};
 const HICON = *opaque {};
 const HMENU = *opaque {};
+const HMONITOR = *opaque {};
 const PAINTSTRUCT = extern struct {
     hdc: ?HDC = null,
     fErase: BOOL = 0,
@@ -43,6 +44,12 @@ const PAINTSTRUCT = extern struct {
     fRestore: BOOL = 0,
     fIncUpdate: BOOL = 0,
     rgbReserved: [32]u8 = std.mem.zeroes([32]u8),
+};
+const MONITORINFO = extern struct {
+    cbSize: u32 = @sizeOf(MONITORINFO),
+    rcMonitor: RECT = .{},
+    rcWork: RECT = .{},
+    dwFlags: u32 = 0,
 };
 
 // ── Win32 constants ───────────────────────────────────────────────
@@ -66,6 +73,7 @@ const WM_PAINT: UINT = 0x000F;
 
 const WS_OVERLAPPEDWINDOW: u32 = 0x00CF0000;
 const WS_VISIBLE: u32 = 0x10000000;
+const WS_POPUP: u32 = 0x80000000;
 const CW_USEDEFAULT: i32 = @bitCast(@as(u32, 0x80000000));
 const CS_HREDRAW: UINT = 0x0002;
 const CS_VREDRAW: UINT = 0x0001;
@@ -73,6 +81,11 @@ const COLOR_WINDOW: c_int = 5;
 const IDC_ARROW: [*:0]align(1) const u16 = @ptrFromInt(32512);
 const PM_REMOVE: UINT = 0x0001;
 const WHEEL_DELTA: i16 = 120;
+const GWL_STYLE: c_int = -16;
+const MONITOR_DEFAULTTONEAREST: u32 = 2;
+const SWP_NOZORDER: u32 = 0x0004;
+const SWP_NOOWNERZORDER: u32 = 0x0200;
+const SWP_FRAMECHANGED: u32 = 0x0020;
 
 // ── Win32 externs ─────────────────────────────────────────────────
 
@@ -129,6 +142,12 @@ extern "user32" fn EndPaint(HWND, *const PAINTSTRUCT) callconv(.winapi) BOOL;
 extern "user32" fn GetDpiForWindow(HWND) callconv(.winapi) UINT;
 extern "user32" fn GetKeyState(c_int) callconv(.winapi) i16;
 extern "user32" fn SetWindowTextW(HWND, [*:0]const u16) callconv(.winapi) BOOL;
+extern "user32" fn GetWindowLongPtrW(HWND, c_int) callconv(.winapi) windows.LONG_PTR;
+extern "user32" fn SetWindowLongPtrW(HWND, c_int, windows.LONG_PTR) callconv(.winapi) windows.LONG_PTR;
+extern "user32" fn GetWindowRect(HWND, *RECT) callconv(.winapi) BOOL;
+extern "user32" fn SetWindowPos(HWND, ?HWND, c_int, c_int, c_int, c_int, u32) callconv(.winapi) BOOL;
+extern "user32" fn MonitorFromWindow(HWND, u32) callconv(.winapi) ?HMONITOR;
+extern "user32" fn GetMonitorInfoW(HMONITOR, *MONITORINFO) callconv(.winapi) BOOL;
 extern "kernel32" fn GetModuleHandleW(?[*:0]const u16) callconv(.winapi) ?HINSTANCE;
 
 // ── Virtual key codes for modifier detection ──────────────────────
@@ -153,6 +172,9 @@ const MAX_EVENTS = 64;
 var event_ring: [MAX_EVENTS]Event = @splat(Event{});
 var ring_head: usize = 0;
 var ring_tail: usize = 0;
+var fullscreen_active = false;
+var fullscreen_style: windows.LONG_PTR = 0;
+var fullscreen_rect = RECT{};
 
 fn pushEvent(e: Event) void {
     event_ring[ring_head] = e;
@@ -367,4 +389,47 @@ pub fn setTitle(hwnd: HWND, title: [*:0]const u8) void {
     buf[i] = 0;
     const wide_ptr: [*:0]const u16 = @ptrCast(&buf);
     _ = SetWindowTextW(hwnd, wide_ptr);
+}
+
+/// Toggle borderless fullscreen for the primary browser window.
+/// The previous window rectangle and style are retained so F11 restores the
+/// exact placement the user had before entering fullscreen.
+pub fn setFullscreen(hwnd: HWND, is_enabled: bool) bool {
+    if (is_enabled == fullscreen_active) {
+        return true;
+    }
+
+    if (is_enabled) {
+        var monitor_info = MONITORINFO{};
+        const monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) orelse return false;
+        if (GetWindowRect(hwnd, &fullscreen_rect) == 0 or GetMonitorInfoW(monitor, &monitor_info) == 0) {
+            return false;
+        }
+        fullscreen_style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        _ = SetWindowLongPtrW(hwnd, GWL_STYLE, @intCast(WS_POPUP | WS_VISIBLE));
+        if (SetWindowPos(
+            hwnd,
+            null,
+            monitor_info.rcMonitor.left,
+            monitor_info.rcMonitor.top,
+            monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
+            monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
+            SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
+        ) == 0) return false;
+        fullscreen_active = true;
+        return true;
+    }
+
+    _ = SetWindowLongPtrW(hwnd, GWL_STYLE, fullscreen_style);
+    if (SetWindowPos(
+        hwnd,
+        null,
+        fullscreen_rect.left,
+        fullscreen_rect.top,
+        fullscreen_rect.right - fullscreen_rect.left,
+        fullscreen_rect.bottom - fullscreen_rect.top,
+        SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
+    ) == 0) return false;
+    fullscreen_active = false;
+    return true;
 }

@@ -146,6 +146,14 @@ impl Window {
             platform_ffi::vex_platform_set_title(self.handle, buf.as_ptr());
         }
     }
+
+    /// Enter or leave borderless fullscreen mode.
+    ///
+    /// Returns `false` if the platform could not update the native window.
+    pub fn set_fullscreen(&self, enabled: bool) -> bool {
+        // SAFETY: `self.handle` remains valid for the lifetime of this window.
+        unsafe { platform_ffi::vex_platform_set_fullscreen(self.handle, enabled) }
+    }
 }
 
 impl Drop for Window {

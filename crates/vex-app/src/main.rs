@@ -90,6 +90,7 @@ fn run() {
         settings.window_height,
     )
     .expect("failed to create window");
+    let mut native_fullscreen = false;
     tracing::info!("Window created ({}×{})", window.width(), window.height());
 
     let mut gpu = GpuContext::new(&window).expect("failed to init GPU");
@@ -665,6 +666,24 @@ fn run() {
                                         "closed"
                                     }
                                 );
+                            } else if matches!(
+                                action,
+                                vex_browser::ui::shortcuts::BrowserAction::Fullscreen
+                            ) {
+                                let requested = !native_fullscreen;
+                                if window.set_fullscreen(requested) {
+                                    native_fullscreen = requested;
+                                    tracing::info!(
+                                        "Fullscreen {}",
+                                        if native_fullscreen {
+                                            "enabled"
+                                        } else {
+                                            "disabled"
+                                        }
+                                    );
+                                } else {
+                                    tracing::error!("Could not toggle fullscreen mode");
+                                }
                             } else {
                                 handle_browser_action(
                                     action,
