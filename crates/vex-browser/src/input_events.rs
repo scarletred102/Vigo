@@ -505,8 +505,12 @@ mod tests {
             .with_modifiers(ModifierState::with_ctrl());
         assert_eq!(undo.to_input_type(), Some(InputType::HistoryUndo));
 
-        let redo = KeyboardEvent::new(KeyEventType::KeyDown, "z", "KeyZ")
-            .with_modifiers(ModifierState { ctrl: true, shift: true, ..Default::default() });
+        let redo =
+            KeyboardEvent::new(KeyEventType::KeyDown, "z", "KeyZ").with_modifiers(ModifierState {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            });
         assert_eq!(redo.to_input_type(), Some(InputType::HistoryRedo));
 
         let plain = KeyboardEvent::new(KeyEventType::KeyDown, "a", "KeyA");

@@ -10,9 +10,9 @@
 use vex_core::geometry::Rect;
 
 /// Heights (in logical pixels) for each chrome region.
-pub const TAB_BAR_HEIGHT: f32 = 40.0;
-pub const NAV_BAR_HEIGHT: f32 = 40.0;
-pub const BOOKMARK_BAR_HEIGHT: f32 = 32.0;
+pub const TAB_BAR_HEIGHT: f32 = 48.0;
+pub const NAV_BAR_HEIGHT: f32 = 50.0;
+pub const BOOKMARK_BAR_HEIGHT: f32 = 34.0;
 pub const FIND_BAR_HEIGHT: f32 = 40.0;
 
 /// Accent line between chrome and content.

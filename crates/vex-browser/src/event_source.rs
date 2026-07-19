@@ -249,7 +249,9 @@ pub fn parse_sse_stream(text: &str, current_id: &str) -> Vec<SseEvent> {
         // Parse field
         let (field, value) = if let Some(colon_pos) = line.find(':') {
             let field = &line[..colon_pos];
-            let value = line[colon_pos + 1..].strip_prefix(' ').unwrap_or(&line[colon_pos + 1..]);
+            let value = line[colon_pos + 1..]
+                .strip_prefix(' ')
+                .unwrap_or(&line[colon_pos + 1..]);
             (field, value)
         } else {
             (line, "")

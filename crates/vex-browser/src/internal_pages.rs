@@ -5,7 +5,7 @@
 //!
 //! Each function returns an HTML string that gets loaded into a tab
 //! via `Tab::load_html()`. Pages are styled consistently using the
-//! Vigo purple-dark theme.
+//! Vigo clean-light product theme.
 
 use crate::bookmarks::Bookmark;
 use crate::downloads::Download;
@@ -14,63 +14,75 @@ use crate::history::HistoryRecord;
 /// CSS shared by all internal pages.
 const INTERNAL_CSS: &str = r#"
 body {
-    background: #0b0d14;
-    color: #e8ebf6;
+    background: #f4f7fb;
+    color: #1d2433;
     font-family: system-ui, -apple-system, sans-serif;
     margin: 0;
-    padding: 32px;
+    padding: 28px;
     line-height: 1.6;
 }
-h1 { color: #c7b8ff; margin-top: 0; font-size: 34px; line-height: 1.2; }
-h2 { color: #a9b7ff; margin: 0 0 10px; }
-a { color: #9aa8ff; text-decoration: none; }
+.page {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+h1 { color: #1f293d; margin: 0 0 8px; font-size: 34px; line-height: 1.2; }
+h2 { color: #33425f; margin: 0 0 10px; }
+a { color: #2c66e2; text-decoration: none; }
 a:hover { text-decoration: underline; }
-table { border-collapse: collapse; width: 100%; margin: 16px 0; }
-th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #252a3a; }
-th { color: #a9b7ff; }
 .card {
-    background: #141826;
+    background: #ffffff;
+    border: 1px solid #d8e2f1;
     border-radius: 12px;
     padding: 20px 22px;
     margin: 14px 0;
 }
 .hero {
-    background: #121624;
+    background: linear-gradient(145deg, #ffffff 0%, #f6f9ff 100%);
+    border: 1px solid #d5dff0;
     border-radius: 14px;
     padding: 24px;
     margin-bottom: 18px;
 }
 .hero p {
-    color: #b8bfd9;
+    color: #556380;
     margin: 8px 0 0;
 }
 .grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
+    display: block;
 }
 .grid-item {
-    background: #171c2b;
+    display: block;
+    background: #ffffff;
+    border: 1px solid #d7e1f0;
     border-radius: 10px;
-    padding: 14px;
-    width: 220px;
+    padding: 14px 16px;
     cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    transition: transform .08s ease, box-shadow .08s ease, border-color .08s ease;
+    margin: 0 0 12px;
 }
-.grid-item:hover { background: #202740; }
-.grid-item h3 { margin: 0 0 4px; color: #d2d9ff; font-size: 14px; }
-.grid-item p { margin: 0; color: #8f98bd; font-size: 12px; }
-.empty { color: #7c84a5; font-style: italic; }
+.grid-item:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(36, 66, 120, 0.08);
+    border-color: #b9cbed;
+    text-decoration: none;
+}
+.grid-item h3 { margin: 0 0 4px; color: #28344f; font-size: 14px; }
+.grid-item p { margin: 0; color: #65779a; font-size: 12px; }
+.empty { color: #7a88a2; font-style: italic; }
 input[type="text"], input[type="search"] {
-    background: #121624;
-    color: #e8ebf6;
-    border: 1px solid #2b3147;
+    background: #ffffff;
+    color: #1f2a3f;
+    border: 1px solid #c8d7ed;
     border-radius: 8px;
     padding: 8px 12px;
     font-size: 14px;
     width: 300px;
 }
+.input-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .btn {
-    background: #6c63ff;
+    background: #366ce5;
     color: #fff;
     border: none;
     border-radius: 8px;
@@ -79,7 +91,31 @@ input[type="text"], input[type="search"] {
     font-size: 14px;
 }
 .section { margin-bottom: 32px; }
-.muted { color: #9ca4c8; }
+.muted { color: #66778f; }
+.record {
+    background: #ffffff;
+    border: 1px solid #d8e2f1;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 10px 0;
+}
+.record-title { display: block; color: #2c66e2; font-size: 16px; }
+.record-meta { color: #65779a; font-size: 13px; margin-top: 4px; }
+.setting-row { border-top: 1px solid #dde5f2; padding: 12px 0; }
+.setting-row:first-child { border-top: none; padding-top: 0; }
+.setting-label { color: #33425f; font-weight: 600; }
+.setting-value { color: #65779a; margin-top: 3px; }
+.kpi {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    background: #e8f0ff;
+    color: #2d5fcc;
+    border: 1px solid #c6d8fb;
+    border-radius: 999px;
+    padding: 2px 10px;
+    margin-right: 6px;
+}
 "#;
 
 /// Generate the new tab page.
@@ -89,19 +125,25 @@ pub fn newtab_page() -> String {
         r#"<!DOCTYPE html>
 <html><head><title>New Tab</title><style>{INTERNAL_CSS}</style></head>
 <body>
+<div class="page">
 <div class="hero">
     <h1>Vigo Browser</h1>
     <p>Fast, private browsing powered by the Vex engine.</p>
-    <p class="muted">Type an address above or open one of the internal pages below.</p>
+    <p class="muted">Type an address above or use quick actions below.</p>
+    <div style="margin-top:10px">
+        <span class="kpi">Privacy by default</span>
+        <span class="kpi">Native Rust engine</span>
+        <span class="kpi">Multi-layer isolation</span>
+    </div>
 </div>
 
 <div class="section">
     <h2>Quick access</h2>
   <div class="grid">
-        <div class="grid-item"><h3>History</h3><p>vex://history</p></div>
-        <div class="grid-item"><h3>Bookmarks</h3><p>vex://bookmarks</p></div>
-        <div class="grid-item"><h3>Downloads</h3><p>vex://downloads</p></div>
-        <div class="grid-item"><h3>Settings</h3><p>vex://settings</p></div>
+        <a class="grid-item" href="vex://history"><h3>History</h3><p>vex://history</p></a>
+        <a class="grid-item" href="vex://bookmarks"><h3>Bookmarks</h3><p>vex://bookmarks</p></a>
+        <a class="grid-item" href="vex://downloads"><h3>Downloads</h3><p>vex://downloads</p></a>
+        <a class="grid-item" href="vex://settings"><h3>Settings</h3><p>vex://settings</p></a>
   </div>
 </div>
 
@@ -109,6 +151,7 @@ pub fn newtab_page() -> String {
     <h2>About this build</h2>
     <p>Rust + Zig browser engine with native UI chrome and privacy defaults.</p>
     <p class="muted">If a page fails to load, check URL format or try another site.</p>
+</div>
 </div>
 </body></html>"#
     )
@@ -121,35 +164,31 @@ pub fn settings_page() -> String {
         r#"<!DOCTYPE html>
 <html><head><title>Settings — Vigo</title><style>{INTERNAL_CSS}</style></head>
 <body>
+<div class="page">
 <h1>Settings</h1>
 
 <div class="card">
   <h2>General</h2>
-  <table>
-    <tr><td>Search Engine</td><td>DuckDuckGo</td></tr>
-    <tr><td>Default Zoom</td><td>100%</td></tr>
-    <tr><td>Home Page</td><td>vex://newtab</td></tr>
-  </table>
+  <div class="setting-row"><div class="setting-label">Search Engine</div><div class="setting-value">DuckDuckGo</div></div>
+  <div class="setting-row"><div class="setting-label">Default Zoom</div><div class="setting-value">100%</div></div>
+  <div class="setting-row"><div class="setting-label">Home Page</div><div class="setting-value">vex://newtab</div></div>
 </div>
 
 <div class="card">
   <h2>Privacy &amp; Security</h2>
-  <table>
-    <tr><td>Canvas Fingerprint Protection</td><td>Enabled</td></tr>
-    <tr><td>WebGL Masking</td><td>Enabled</td></tr>
-    <tr><td>Font Restriction</td><td>Web-safe only</td></tr>
-    <tr><td>HTTPS-Only Mode</td><td>Enabled</td></tr>
-    <tr><td>Tracking Parameter Stripping</td><td>Enabled</td></tr>
-  </table>
+  <div class="setting-row"><div class="setting-label">Canvas Fingerprint Protection</div><div class="setting-value">Enabled</div></div>
+  <div class="setting-row"><div class="setting-label">WebGL Masking</div><div class="setting-value">Enabled</div></div>
+  <div class="setting-row"><div class="setting-label">Font Restriction</div><div class="setting-value">Web-safe only</div></div>
+  <div class="setting-row"><div class="setting-label">HTTPS-Only Mode</div><div class="setting-value">Enabled</div></div>
+  <div class="setting-row"><div class="setting-label">Tracking Parameter Stripping</div><div class="setting-value">Enabled</div></div>
 </div>
 
 <div class="card">
   <h2>About</h2>
-  <table>
-    <tr><td>Engine</td><td>Vex (Vigo Engine X)</td></tr>
-    <tr><td>Version</td><td>0.1.0</td></tr>
-    <tr><td>License</td><td>MPL-2.0</td></tr>
-  </table>
+  <div class="setting-row"><div class="setting-label">Engine</div><div class="setting-value">Vex (Vigo Engine X)</div></div>
+  <div class="setting-row"><div class="setting-label">Version</div><div class="setting-value">0.1.0</div></div>
+  <div class="setting-row"><div class="setting-label">License</div><div class="setting-value">MPL-2.0</div></div>
+</div>
 </div>
 </body></html>"#
     )
@@ -158,14 +197,14 @@ pub fn settings_page() -> String {
 /// Generate the history page from a list of entries.
 #[must_use]
 pub fn history_page(records: &[HistoryRecord]) -> String {
-    let mut rows = String::new();
+    let mut records_html = String::new();
     if records.is_empty() {
-        rows.push_str(r#"<tr><td colspan="3" class="empty">No history yet.</td></tr>"#);
+        records_html.push_str(r#"<div class="record empty">No history yet.</div>"#);
     } else {
-        for entry in records.iter().rev().take(200) {
-            rows.push_str(&format!(
-                "<tr><td><a href=\"{}\">{}</a></td><td>{}</td><td>{}</td></tr>\n",
-                entry.url,
+        for entry in records.iter().take(200) {
+            records_html.push_str(&format!(
+                "<div class=\"record\"><a class=\"record-title\" href=\"{}\">{}</a><div class=\"record-meta\">{} · visited {}</div></div>\n",
+                html_escape(&entry.url),
                 html_escape(&entry.title),
                 html_escape(&entry.url),
                 entry.visited_at,
@@ -177,11 +216,10 @@ pub fn history_page(records: &[HistoryRecord]) -> String {
         r#"<!DOCTYPE html>
 <html><head><title>History — Vigo</title><style>{INTERNAL_CSS}</style></head>
 <body>
-<h1>📖 History</h1>
-<table>
-  <thead><tr><th>Title</th><th>URL</th><th>Visited</th></tr></thead>
-  <tbody>{rows}</tbody>
-</table>
+<div class="page">
+<h1>History</h1>
+{records_html}
+</div>
 </body></html>"#
     )
 }
@@ -189,14 +227,16 @@ pub fn history_page(records: &[HistoryRecord]) -> String {
 /// Generate the bookmarks page.
 #[must_use]
 pub fn bookmarks_page(bookmarks: &[Bookmark]) -> String {
-    let mut rows = String::new();
+    let mut records_html = String::new();
     if bookmarks.is_empty() {
-        rows.push_str(r#"<tr><td colspan="2" class="empty">No bookmarks yet. Press Ctrl+D to add one.</td></tr>"#);
+        records_html.push_str(
+            r#"<div class="record empty">No bookmarks yet. Press Ctrl+D to add one.</div>"#,
+        );
     } else {
         for b in bookmarks {
-            rows.push_str(&format!(
-                "<tr><td><a href=\"{}\">{}</a></td><td>{}</td></tr>\n",
-                b.url,
+            records_html.push_str(&format!(
+                "<div class=\"record\"><a class=\"record-title\" href=\"{}\">{}</a><div class=\"record-meta\">{}</div></div>\n",
+                html_escape(&b.url),
                 html_escape(&b.title),
                 html_escape(&b.url),
             ));
@@ -207,11 +247,10 @@ pub fn bookmarks_page(bookmarks: &[Bookmark]) -> String {
         r#"<!DOCTYPE html>
 <html><head><title>Bookmarks — Vigo</title><style>{INTERNAL_CSS}</style></head>
 <body>
-<h1>🔖 Bookmarks</h1>
-<table>
-  <thead><tr><th>Title</th><th>URL</th></tr></thead>
-  <tbody>{rows}</tbody>
-</table>
+<div class="page">
+<h1>Bookmarks</h1>
+{records_html}
+</div>
 </body></html>"#
     )
 }
@@ -219,14 +258,14 @@ pub fn bookmarks_page(bookmarks: &[Bookmark]) -> String {
 /// Generate the downloads page.
 #[must_use]
 pub fn downloads_page(downloads: &[Download]) -> String {
-    let mut rows = String::new();
+    let mut records_html = String::new();
     if downloads.is_empty() {
-        rows.push_str(r#"<tr><td colspan="3" class="empty">No downloads yet.</td></tr>"#);
+        records_html.push_str(r#"<div class="record empty">No downloads yet.</div>"#);
     } else {
         for d in downloads {
             let status = format!("{:?}", d.state);
-            rows.push_str(&format!(
-                "<tr><td>{}</td><td>{}</td><td>{}</td></tr>\n",
+            records_html.push_str(&format!(
+                "<div class=\"record\"><div class=\"setting-label\">{}</div><div class=\"record-meta\">{} · {}</div></div>\n",
                 html_escape(&d.filename),
                 html_escape(&d.url),
                 status,
@@ -238,11 +277,10 @@ pub fn downloads_page(downloads: &[Download]) -> String {
         r#"<!DOCTYPE html>
 <html><head><title>Downloads — Vigo</title><style>{INTERNAL_CSS}</style></head>
 <body>
-<h1>⬇️ Downloads</h1>
-<table>
-  <thead><tr><th>File</th><th>URL</th><th>Status</th></tr></thead>
-  <tbody>{rows}</tbody>
-</table>
+<div class="page">
+<h1>Downloads</h1>
+{records_html}
+</div>
 </body></html>"#
     )
 }
@@ -287,6 +325,7 @@ mod tests {
         let html = settings_page();
         assert!(html.contains("Vex (Vigo Engine X)"));
         assert!(html.contains("MPL-2.0"));
+        assert!(!html.contains("<table>"));
     }
 
     #[test]
@@ -318,6 +357,7 @@ mod tests {
     fn downloads_empty() {
         let html = downloads_page(&[]);
         assert!(html.contains("No downloads yet"));
+        assert!(!html.contains("<table>"));
     }
 
     #[test]

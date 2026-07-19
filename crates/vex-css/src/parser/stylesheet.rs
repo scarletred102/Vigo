@@ -359,9 +359,9 @@ fn parse_keyframes_rule(css: &str, pos: &mut usize) -> Option<KeyframeRule> {
                 match s {
                     "from" => Some(0.0),
                     "to" => Some(1.0),
-                    _ => s.strip_suffix('%').and_then(|n| {
-                        n.trim().parse::<f32>().ok().map(|v| v / 100.0)
-                    }),
+                    _ => s
+                        .strip_suffix('%')
+                        .and_then(|n| n.trim().parse::<f32>().ok().map(|v| v / 100.0)),
                 }
             })
             .collect();

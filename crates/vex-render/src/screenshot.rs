@@ -25,11 +25,7 @@ pub fn render_to_pixels(dl: &DisplayList, width: u32, height: u32) -> Vec<u8> {
 }
 
 /// Fallible version of [`render_to_pixels`].
-pub fn try_render_to_pixels(
-    dl: &DisplayList,
-    width: u32,
-    height: u32,
-) -> Result<Vec<u8>, String> {
+pub fn try_render_to_pixels(dl: &DisplayList, width: u32, height: u32) -> Result<Vec<u8>, String> {
     pollster::block_on(render_to_pixels_async(dl, width, height))
 }
 

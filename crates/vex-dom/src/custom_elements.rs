@@ -207,9 +207,9 @@ impl CustomElementRegistry {
         builtin_name: &str,
         is_value: &str,
     ) -> Option<&CustomElementDefinition> {
-        self.definitions.get(is_value).filter(|def| {
-            def.extends.as_deref() == Some(builtin_name)
-        })
+        self.definitions
+            .get(is_value)
+            .filter(|def| def.extends.as_deref() == Some(builtin_name))
     }
 }
 

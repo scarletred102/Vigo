@@ -610,14 +610,9 @@ impl Tab {
 
                 // Pre-fetch external resources (scripts and stylesheets)
                 // so that load_html can use them synchronously.
-                let resources = prefetch_external_resources(
-                    &client,
-                    &self.url,
-                    &html,
-                    &security_ctx,
-                    &privacy,
-                )
-                .await;
+                let resources =
+                    prefetch_external_resources(&client, &self.url, &html, &security_ctx, &privacy)
+                        .await;
 
                 self.load_html_with_resources(&html, viewport, &resources);
                 tracing::info!("Tab {} loaded: {} ({})", self.id, self.url, self.title);
@@ -669,13 +664,8 @@ impl Tab {
                 }
             };
 
-            let layout_root = vex_layout::reflow_document(
-                &doc,
-                &styles,
-                viewport,
-                self.layout.as_ref(),
-                &plan,
-            );
+            let layout_root =
+                vex_layout::reflow_document(&doc, &styles, viewport, self.layout.as_ref(), &plan);
             let dl = vex_render::build_display_list_with_images(
                 &layout_root,
                 &styles,
@@ -782,7 +772,8 @@ async fn prefetch_external_resources(
             continue;
         }
 
-        match crate::secure_fetch::secure_fetch(client, request, security_ctx, *resource_type).await {
+        match crate::secure_fetch::secure_fetch(client, request, security_ctx, *resource_type).await
+        {
             Ok(response) if response.status < 400 => {
                 let content = String::from_utf8_lossy(&response.body).into_owned();
                 tracing::debug!("Pre-fetched {resolved_str} ({} bytes)", content.len());
@@ -843,7 +834,11 @@ fn persist_response_cookies(url: &VexUrl, headers: &HashMap<String, String>) {
     };
 
     let domain = url.host().unwrap_or("localhost");
-    let path = if url.path().is_empty() { "/" } else { url.path() };
+    let path = if url.path().is_empty() {
+        "/"
+    } else {
+        url.path()
+    };
 
     let storage_root = "target/vigo/storage";
     if let Err(e) = std::fs::create_dir_all(storage_root) {
@@ -867,7 +862,11 @@ fn persist_response_cookies(url: &VexUrl, headers: &HashMap<String, String>) {
     }
 }
 
-fn parse_set_cookie_header(raw: &str, default_domain: &str, default_path: &str) -> Option<vex_storage::PersistentCookie> {
+fn parse_set_cookie_header(
+    raw: &str,
+    default_domain: &str,
+    default_path: &str,
+) -> Option<vex_storage::PersistentCookie> {
     let parts: Vec<&str> = raw.split(';').collect();
     let name_value = parts.first()?;
     let (name, value) = name_value.split_once('=')?;
@@ -914,10 +913,7 @@ fn discover_media_nodes(
     let mut elements = HashMap::new();
     let mut formats = HashMap::new();
 
-    for (tag, media_type) in [
-        ("video", MediaType::Video),
-        ("audio", MediaType::Audio),
-    ] {
+    for (tag, media_type) in [("video", MediaType::Video), ("audio", MediaType::Audio)] {
         for node_id in doc.get_elements_by_tag_name(tag) {
             let src = media_src_for_node(doc, node_id)
                 .map(|raw| resolve_resource_url(base_url, &raw))
@@ -1265,7 +1261,10 @@ mod tests {
 
     #[test]
     fn session_storage_persists_across_same_tab_navigation() {
-        let mut tab = Tab::new(TabId::new(1), VexUrl::parse("https://example.com/a").unwrap());
+        let mut tab = Tab::new(
+            TabId::new(1),
+            VexUrl::parse("https://example.com/a").unwrap(),
+        );
         tab.load_html("<html><body></body></html>", Size::new(800.0, 600.0));
         tab.runtime
             .as_mut()

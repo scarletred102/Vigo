@@ -209,9 +209,7 @@ fn clone_with_memo(
         StructuredValue::Object(props) => {
             let cloned: Result<Vec<_>, _> = props
                 .iter()
-                .map(|(k, v)| {
-                    clone_with_memo(v, _memo, depth + 1).map(|cv| (k.clone(), cv))
-                })
+                .map(|(k, v)| clone_with_memo(v, _memo, depth + 1).map(|cv| (k.clone(), cv)))
                 .collect();
             Ok(StructuredValue::Object(cloned?))
         }
@@ -427,12 +425,10 @@ mod tests {
     fn clone_nested() {
         let val = StructuredValue::Object(vec![(
             "data".into(),
-            StructuredValue::Array(vec![
-                StructuredValue::Map(vec![(
-                    StructuredValue::String("key".into()),
-                    StructuredValue::Number(42.0),
-                )]),
-            ]),
+            StructuredValue::Array(vec![StructuredValue::Map(vec![(
+                StructuredValue::String("key".into()),
+                StructuredValue::Number(42.0),
+            )])]),
         )]);
         let cloned = structured_clone(&val).unwrap();
         assert_eq!(cloned, val);
@@ -505,9 +501,10 @@ mod tests {
 
     #[test]
     fn clone_map_and_set() {
-        let map = StructuredValue::Map(vec![
-            (StructuredValue::String("a".into()), StructuredValue::Number(1.0)),
-        ]);
+        let map = StructuredValue::Map(vec![(
+            StructuredValue::String("a".into()),
+            StructuredValue::Number(1.0),
+        )]);
         assert_eq!(structured_clone(&map).unwrap(), map);
 
         let set = StructuredValue::Set(vec![

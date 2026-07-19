@@ -111,6 +111,9 @@ mod tests {
         );
 
         // Different viewport + forced reflow should produce different geometry.
-        assert_ne!(next.dimensions.content.size.width, previous.dimensions.content.size.width);
+        assert_ne!(
+            next.dimensions.content.size.width,
+            previous.dimensions.content.size.width
+        );
     }
 }

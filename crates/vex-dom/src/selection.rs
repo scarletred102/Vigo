@@ -57,10 +57,7 @@ impl Range {
     /// Create a collapsed range at a single boundary point.
     pub fn collapsed(node: VexId, offset: u32) -> Self {
         let bp = BoundaryPoint::new(node, offset);
-        Self {
-            start: bp,
-            end: bp,
-        }
+        Self { start: bp, end: bp }
     }
 
     /// Create a range from explicit start and end points.

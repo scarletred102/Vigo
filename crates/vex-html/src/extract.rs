@@ -210,7 +210,10 @@ mod tests {
         let doc = parse_html("<script>\n  console.log('x')\n</script>");
         let scripts = extract_scripts(&doc);
         assert_eq!(scripts.len(), 1);
-        assert_eq!(scripts[0].inline_content.as_deref(), Some("console.log('x')"));
+        assert_eq!(
+            scripts[0].inline_content.as_deref(),
+            Some("console.log('x')")
+        );
     }
 
     #[test]

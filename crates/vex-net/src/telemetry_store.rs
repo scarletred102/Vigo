@@ -80,10 +80,7 @@ mod tests {
 
     #[test]
     fn telemetry_store_writes_record_and_stats() {
-        let temp = std::env::temp_dir().join(format!(
-            "vigo-telemetry-test-{}",
-            std::process::id()
-        ));
+        let temp = std::env::temp_dir().join(format!("vigo-telemetry-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&temp);
 
         let store = TelemetryStore::new(&temp).expect("create store");

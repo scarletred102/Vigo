@@ -173,7 +173,10 @@ mod tests {
     #[test]
     fn parse_pac_directive() {
         let r = parse_pac_result("PROXY proxy.local:8080; DIRECT");
-        assert_eq!(r, Some(ProxyDirective::Proxy("http://proxy.local:8080".to_string())));
+        assert_eq!(
+            r,
+            Some(ProxyDirective::Proxy("http://proxy.local:8080".to_string()))
+        );
 
         let r = parse_pac_result("DIRECT");
         assert_eq!(r, Some(ProxyDirective::Direct));

@@ -228,10 +228,7 @@ impl WebUrl {
 
     /// Produce the origin string.
     pub fn origin(&self) -> String {
-        let port_str = self
-            .port
-            .map(|p| format!(":{p}"))
-            .unwrap_or_default();
+        let port_str = self.port.map(|p| format!(":{p}")).unwrap_or_default();
         format!("{}://{}{}", self.scheme, self.host, port_str)
     }
 

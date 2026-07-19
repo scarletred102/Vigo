@@ -152,9 +152,7 @@ impl TextDecoder {
                     Ok(String::from_utf8_lossy(input).into_owned())
                 }
             }
-            Encoding::Latin1 => {
-                Ok(input.iter().map(|&b| b as char).collect())
-            }
+            Encoding::Latin1 => Ok(input.iter().map(|&b| b as char).collect()),
             Encoding::Ascii => {
                 if self.fatal && input.iter().any(|&b| b > 127) {
                     Err(DecodeError {

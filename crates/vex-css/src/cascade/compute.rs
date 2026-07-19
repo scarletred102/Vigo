@@ -11,9 +11,10 @@ use vex_dom::{Document, NodeData};
 use crate::cascade::inheritance::apply_inheritance;
 use crate::cascade::matching::{collect_inline_declarations, collect_matching_declarations};
 use crate::cascade::resolve::resolve_cascade;
-use crate::cascade::value_resolution::resolve_property;
+use crate::cascade::value_resolution::{resolve_line_height, resolve_property};
 use crate::computed::ComputedStyle;
 use crate::parser::Stylesheet;
+use crate::properties::Property;
 use crate::ua_stylesheet;
 
 /// Default root font-size in pixels (matches browser spec default).
@@ -119,6 +120,22 @@ fn compute_recursive(
             computed.apply(prop);
         }
 
+        // General length resolution uses the parent font size, which is right
+        // for inherited font-size values but wrong for line-height. Unitless
+        // and percentage line-heights are based on this element's final font
+        // size, so resolve them after font-size has been applied.
+        if let Some(Property::LineHeight(line_height)) = winning_props
+            .iter()
+            .find(|property| matches!(property, Property::LineHeight(_)))
+        {
+            computed.apply(&Property::LineHeight(resolve_line_height(
+                line_height,
+                computed.font_size,
+                root_font_size,
+                viewport,
+            )));
+        }
+
         styles.insert(node_id, computed);
     }
 
@@ -202,6 +219,24 @@ mod tests {
         if let Some(body_style) = bodies.first().and_then(|id| styles.get(id)) {
             assert_eq!(body_style.display, Display::Block);
         }
+    }
+
+    #[test]
+    fn unitless_line_height_uses_each_elements_font_size() {
+        let doc =
+            vex_html::parse_html("<html><body><h1>Vigo</h1><p>Readable text</p></body></html>");
+        let css = parse_stylesheet(
+            "body { font-size: 20px; line-height: 1.5; } h1 { font-size: 34px; line-height: 1.2; }",
+        );
+        let styles = compute_styles(&doc, &[css], Size::new(1280.0, 720.0));
+
+        let body = doc.get_elements_by_tag_name("body")[0];
+        let h1 = doc.get_elements_by_tag_name("h1")[0];
+        let p = doc.get_elements_by_tag_name("p")[0];
+
+        assert!((styles[&body].line_height - 30.0).abs() < f32::EPSILON);
+        assert!((styles[&h1].line_height - 40.8).abs() < 0.001);
+        assert!((styles[&p].line_height - 30.0).abs() < f32::EPSILON);
     }
 
     #[test]

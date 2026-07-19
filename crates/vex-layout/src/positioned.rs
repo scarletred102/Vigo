@@ -85,8 +85,7 @@ fn apply_relative(layout_box: &mut LayoutBox, style: Option<&ComputedStyle>) {
         0.0
     };
 
-    layout_box.dimensions.content.origin.x += dx;
-    layout_box.dimensions.content.origin.y += dy;
+    layout_box.translate_subtree(dx, dy);
 }
 
 /// Absolute positioning: placed relative to the nearest positioned ancestor.
@@ -100,13 +99,16 @@ fn apply_absolute(layout_box: &mut LayoutBox, style: Option<&ComputedStyle>, con
     let p = &layout_box.dimensions.padding;
     let b = &layout_box.dimensions.border;
 
+    let old_origin = layout_box.dimensions.content.origin;
+    let mut target_x = old_origin.x;
+    let mut target_y = old_origin.y;
+
     // Horizontal
     if !style.left.is_nan() {
-        layout_box.dimensions.content.origin.x =
-            containing.origin.x + style.left + m.left + p.left + b.left;
+        target_x = containing.origin.x + style.left + m.left + p.left + b.left;
     } else if !style.right.is_nan() {
         let content_w = layout_box.dimensions.content.size.width;
-        layout_box.dimensions.content.origin.x = containing.origin.x + containing.size.width
+        target_x = containing.origin.x + containing.size.width
             - style.right
             - content_w
             - m.right
@@ -116,11 +118,10 @@ fn apply_absolute(layout_box: &mut LayoutBox, style: Option<&ComputedStyle>, con
 
     // Vertical
     if !style.top.is_nan() {
-        layout_box.dimensions.content.origin.y =
-            containing.origin.y + style.top + m.top + p.top + b.top;
+        target_y = containing.origin.y + style.top + m.top + p.top + b.top;
     } else if !style.bottom.is_nan() {
         let content_h = layout_box.dimensions.content.size.height;
-        layout_box.dimensions.content.origin.y = containing.origin.y + containing.size.height
+        target_y = containing.origin.y + containing.size.height
             - style.bottom
             - content_h
             - m.bottom
@@ -141,6 +142,8 @@ fn apply_absolute(layout_box: &mut LayoutBox, style: Option<&ComputedStyle>, con
             style.top + style.bottom + m.top + m.bottom + p.top + p.bottom + b.top + b.bottom;
         layout_box.dimensions.content.size.height = (containing.size.height - used).max(0.0);
     }
+
+    layout_box.translate_subtree(target_x - old_origin.x, target_y - old_origin.y);
 }
 
 /// Fixed positioning: placed relative to the viewport.
@@ -189,8 +192,8 @@ fn apply_sticky(
     x = x.clamp(containing.origin.x, max_x.max(containing.origin.x));
     y = y.clamp(containing.origin.y, max_y.max(containing.origin.y));
 
-    layout_box.dimensions.content.origin.x = x;
-    layout_box.dimensions.content.origin.y = y;
+    let old_origin = layout_box.dimensions.content.origin;
+    layout_box.translate_subtree(x - old_origin.x, y - old_origin.y);
 }
 
 #[cfg(test)]

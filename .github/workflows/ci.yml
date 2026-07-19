@@ -2,21 +2,20 @@ name: CI
 
 on:
   push:
-    branches: [main, code1]
+    branches: [main]
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  rust:
-    name: Rust (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+  verify:
+    name: Verify (Windows)
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +25,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
       - name: Cache cargo registry & build
         uses: actions/cache@v4
         with:
@@ -35,47 +39,25 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install Zig (Windows)
-        if: runner.os == 'Windows'
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.13.0
-
-      - name: Build Zig platform library (Windows)
-        if: runner.os == 'Windows'
+      - name: Build Zig platform library
         working-directory: zig
         run: zig build
 
-      - name: Check
-        run: cargo check --workspace
-
-      - name: Test
-        run: cargo test --workspace
-
-      - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
+      - name: Test Zig platform library
+        working-directory: zig
+        run: zig build test
 
       - name: Format check
         run: cargo fmt --all -- --check
 
-  kpi-gate:
-    name: KPI Gate (windows)
-    runs-on: windows-latest
+      - name: Check
+        run: cargo check --workspace
 
-    steps:
-      - uses: actions/checkout@v4
+      - name: Test Rust workspace
+        run: cargo test --workspace
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry & build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run KPI gate
         shell: pwsh
@@ -87,27 +69,3 @@ jobs:
         with:
           name: kpi-report-windows
           path: target/kpi-report.json
-
-  zig:
-    name: Zig (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.13.0
-
-      - name: Build
-        working-directory: zig
-        run: zig build
-
-      - name: Test
-        working-directory: zig
-        run: zig build test

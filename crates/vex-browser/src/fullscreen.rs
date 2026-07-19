@@ -330,9 +330,7 @@ impl ScreenOrientation {
                 OrientationLock::LandscapeSecondary => {
                     orientation == OrientationType::LandscapeSecondary
                 }
-                OrientationLock::PortraitPrimary => {
-                    orientation == OrientationType::PortraitPrimary
-                }
+                OrientationLock::PortraitPrimary => orientation == OrientationType::PortraitPrimary,
                 OrientationLock::PortraitSecondary => {
                     orientation == OrientationType::PortraitSecondary
                 }

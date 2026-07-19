@@ -18,15 +18,24 @@ pub enum CryptoAlgorithm {
     /// AES-CBC (128/256 bit)
     AesCbc { length: u16 },
     /// RSA-OAEP
-    RsaOaep { modulus_length: u32, hash: HashAlgorithm },
+    RsaOaep {
+        modulus_length: u32,
+        hash: HashAlgorithm,
+    },
     /// RSASSA-PKCS1-v1_5
-    RsassaPkcs1V15 { modulus_length: u32, hash: HashAlgorithm },
+    RsassaPkcs1V15 {
+        modulus_length: u32,
+        hash: HashAlgorithm,
+    },
     /// ECDSA
     Ecdsa { named_curve: EcCurve },
     /// ECDH
     Ecdh { named_curve: EcCurve },
     /// HMAC
-    Hmac { hash: HashAlgorithm, length: Option<u32> },
+    Hmac {
+        hash: HashAlgorithm,
+        length: Option<u32>,
+    },
     /// PBKDF2
     Pbkdf2,
     /// HKDF
@@ -301,13 +310,11 @@ impl SubtleCrypto {
     }
 
     /// Export a key.
-    pub fn export_key(
-        &self,
-        format: KeyFormat,
-        key: &CryptoKey,
-    ) -> Result<Vec<u8>, CryptoError> {
+    pub fn export_key(&self, format: KeyFormat, key: &CryptoKey) -> Result<Vec<u8>, CryptoError> {
         if !key.extractable {
-            return Err(CryptoError::InvalidKey("Key is not extractable".to_string()));
+            return Err(CryptoError::InvalidKey(
+                "Key is not extractable".to_string(),
+            ));
         }
         if format != KeyFormat::Raw {
             return Err(CryptoError::NotSupported(format!(
@@ -341,11 +348,7 @@ impl SubtleCrypto {
     }
 
     /// Encrypt data.
-    pub fn encrypt(
-        &self,
-        key: &CryptoKey,
-        data: &[u8],
-    ) -> Result<Vec<u8>, CryptoError> {
+    pub fn encrypt(&self, key: &CryptoKey, data: &[u8]) -> Result<Vec<u8>, CryptoError> {
         if !key.usages.contains(&KeyUsage::Encrypt) {
             return Err(CryptoError::InvalidKey(
                 "Key does not support encrypt".to_string(),
@@ -361,11 +364,7 @@ impl SubtleCrypto {
     }
 
     /// Decrypt data.
-    pub fn decrypt(
-        &self,
-        key: &CryptoKey,
-        data: &[u8],
-    ) -> Result<Vec<u8>, CryptoError> {
+    pub fn decrypt(&self, key: &CryptoKey, data: &[u8]) -> Result<Vec<u8>, CryptoError> {
         if !key.usages.contains(&KeyUsage::Decrypt) {
             return Err(CryptoError::InvalidKey(
                 "Key does not support decrypt".to_string(),
@@ -623,8 +622,14 @@ mod tests {
 
     #[test]
     fn hash_algorithm_from_label() {
-        assert_eq!(HashAlgorithm::from_label("SHA-256"), Some(HashAlgorithm::Sha256));
-        assert_eq!(HashAlgorithm::from_label("sha-512"), Some(HashAlgorithm::Sha512));
+        assert_eq!(
+            HashAlgorithm::from_label("SHA-256"),
+            Some(HashAlgorithm::Sha256)
+        );
+        assert_eq!(
+            HashAlgorithm::from_label("sha-512"),
+            Some(HashAlgorithm::Sha512)
+        );
         assert_eq!(HashAlgorithm::from_label("md5"), None);
     }
 

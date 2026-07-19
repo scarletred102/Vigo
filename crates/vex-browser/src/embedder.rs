@@ -352,7 +352,10 @@ mod tests {
         bus.push_command(EmbedderCommand::NewTab(None));
 
         assert!(matches!(bus.pop_command(), Some(EmbedderCommand::Shutdown)));
-        assert!(matches!(bus.pop_command(), Some(EmbedderCommand::NewTab(None))));
+        assert!(matches!(
+            bus.pop_command(),
+            Some(EmbedderCommand::NewTab(None))
+        ));
         assert!(bus.pop_command().is_none());
     }
 

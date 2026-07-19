@@ -127,11 +127,7 @@ pub fn check_validity(state: &InputState, constraints: &ValidationConstraints) -
                     validity.type_mismatch = true;
                 }
             }
-            InputType::Url => {
-                if !is_valid_url(value) {
-                    validity.type_mismatch = true;
-                }
-            }
+            InputType::Url if !is_valid_url(value) => validity.type_mismatch = true,
             _ => {}
         }
     }

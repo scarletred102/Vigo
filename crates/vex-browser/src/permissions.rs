@@ -245,11 +245,7 @@ impl PermissionManager {
     }
 
     /// Bulk set permissions for an origin.
-    pub fn set_bulk(
-        &mut self,
-        origin: &str,
-        permissions: Vec<(PermissionName, PermissionState)>,
-    ) {
+    pub fn set_bulk(&mut self, origin: &str, permissions: Vec<(PermissionName, PermissionState)>) {
         let map = self.permissions.entry(origin.to_string()).or_default();
         for (name, state) in permissions {
             map.insert(name, state);
@@ -319,7 +315,11 @@ mod tests {
     #[test]
     fn set_and_query() {
         let mut manager = PermissionManager::new();
-        manager.set(ORIGIN, PermissionName::Notifications, PermissionState::Granted);
+        manager.set(
+            ORIGIN,
+            PermissionName::Notifications,
+            PermissionState::Granted,
+        );
         assert_eq!(
             manager.query(ORIGIN, &PermissionName::Notifications),
             PermissionState::Granted
@@ -354,11 +354,19 @@ mod tests {
     fn request_permission() {
         let mut manager = PermissionManager::new();
         // Request with user response
-        let state = manager.request(ORIGIN, PermissionName::Geolocation, Some(PermissionState::Granted));
+        let state = manager.request(
+            ORIGIN,
+            PermissionName::Geolocation,
+            Some(PermissionState::Granted),
+        );
         assert_eq!(state, PermissionState::Granted);
 
         // Second request — already granted, user response ignored
-        let state = manager.request(ORIGIN, PermissionName::Geolocation, Some(PermissionState::Denied));
+        let state = manager.request(
+            ORIGIN,
+            PermissionName::Geolocation,
+            Some(PermissionState::Denied),
+        );
         assert_eq!(state, PermissionState::Granted);
     }
 
@@ -372,7 +380,11 @@ mod tests {
     #[test]
     fn revoke() {
         let mut manager = PermissionManager::new();
-        manager.set(ORIGIN, PermissionName::Notifications, PermissionState::Granted);
+        manager.set(
+            ORIGIN,
+            PermissionName::Notifications,
+            PermissionState::Granted,
+        );
         manager.revoke(ORIGIN, &PermissionName::Notifications);
         assert_eq!(
             manager.query(ORIGIN, &PermissionName::Notifications),
@@ -383,7 +395,11 @@ mod tests {
     #[test]
     fn revoke_all() {
         let mut manager = PermissionManager::new();
-        manager.set(ORIGIN, PermissionName::Geolocation, PermissionState::Granted);
+        manager.set(
+            ORIGIN,
+            PermissionName::Geolocation,
+            PermissionState::Granted,
+        );
         manager.set(ORIGIN, PermissionName::Camera, PermissionState::Denied);
         manager.revoke_all(ORIGIN);
         assert_eq!(
@@ -395,7 +411,11 @@ mod tests {
     #[test]
     fn is_allowed() {
         let mut manager = PermissionManager::new();
-        manager.set(ORIGIN, PermissionName::Notifications, PermissionState::Granted);
+        manager.set(
+            ORIGIN,
+            PermissionName::Notifications,
+            PermissionState::Granted,
+        );
         assert!(manager.is_allowed(ORIGIN, &PermissionName::Notifications));
         assert!(!manager.is_allowed(ORIGIN, &PermissionName::Camera));
     }
@@ -403,7 +423,11 @@ mod tests {
     #[test]
     fn get_origin_permissions() {
         let mut manager = PermissionManager::new();
-        manager.set(ORIGIN, PermissionName::Geolocation, PermissionState::Granted);
+        manager.set(
+            ORIGIN,
+            PermissionName::Geolocation,
+            PermissionState::Granted,
+        );
         manager.set(ORIGIN, PermissionName::Camera, PermissionState::Denied);
 
         let perms = manager.get_origin_permissions(ORIGIN);

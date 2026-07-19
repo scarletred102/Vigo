@@ -213,8 +213,7 @@ impl NotificationCenter {
         if self.active.len() >= self.max_active {
             if let Some(oldest) = self.active.first() {
                 let oldest_id = oldest.id;
-                self.events
-                    .push_back(NotificationEvent::Close(oldest_id));
+                self.events.push_back(NotificationEvent::Close(oldest_id));
             }
             self.active.remove(0);
         }
@@ -317,7 +316,10 @@ mod tests {
             NotificationPermission::Granted
         );
         assert_eq!(NotificationPermission::Granted.as_str(), "granted");
-        assert_eq!(NotificationPermission::parse("unknown"), NotificationPermission::Default);
+        assert_eq!(
+            NotificationPermission::parse("unknown"),
+            NotificationPermission::Default
+        );
     }
 
     #[test]

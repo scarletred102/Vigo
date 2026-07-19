@@ -354,14 +354,23 @@ mod tests {
 
     #[test]
     fn scroll_snap_align_parse() {
-        assert_eq!(ScrollSnapAlign::parse("start"), Some(ScrollSnapAlign::Start));
-        assert_eq!(ScrollSnapAlign::parse("center"), Some(ScrollSnapAlign::Center));
+        assert_eq!(
+            ScrollSnapAlign::parse("start"),
+            Some(ScrollSnapAlign::Start)
+        );
+        assert_eq!(
+            ScrollSnapAlign::parse("center"),
+            Some(ScrollSnapAlign::Center)
+        );
         assert_eq!(ScrollSnapAlign::parse("invalid"), None);
     }
 
     #[test]
     fn scroll_snap_stop_parse() {
-        assert_eq!(ScrollSnapStop::parse("normal"), Some(ScrollSnapStop::Normal));
+        assert_eq!(
+            ScrollSnapStop::parse("normal"),
+            Some(ScrollSnapStop::Normal)
+        );
         assert_eq!(
             ScrollSnapStop::parse("always"),
             Some(ScrollSnapStop::Always)

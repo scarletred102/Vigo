@@ -250,7 +250,9 @@ impl FetchHeaders {
     /// Get the first value for a header.
     pub fn get(&self, name: &str) -> Option<&str> {
         let key = name.to_ascii_lowercase();
-        self.map.get(&key).and_then(|v| v.first().map(|s| s.as_str()))
+        self.map
+            .get(&key)
+            .and_then(|v| v.first().map(|s| s.as_str()))
     }
 
     /// Get all values for a header, joined by ", ".
@@ -311,7 +313,8 @@ impl FetchHeaders {
                 | "transfer-encoding"
                 | "upgrade"
                 | "via"
-        ) || lower.starts_with("proxy-") || lower.starts_with("sec-")
+        ) || lower.starts_with("proxy-")
+            || lower.starts_with("sec-")
     }
 }
 
@@ -358,10 +361,7 @@ impl BodyContent {
             Self::Text(s) => s.as_bytes().to_vec(),
             Self::Bytes(b) => b.clone(),
             Self::FormData(map) => {
-                let pairs: Vec<String> = map
-                    .iter()
-                    .map(|(k, v)| format!("{k}={v}"))
-                    .collect();
+                let pairs: Vec<String> = map.iter().map(|(k, v)| format!("{k}={v}")).collect();
                 pairs.join("&").into_bytes()
             }
         }
@@ -374,10 +374,7 @@ impl BodyContent {
             Self::Text(s) => Some(s.clone()),
             Self::Bytes(b) => String::from_utf8(b.clone()).ok(),
             Self::FormData(map) => {
-                let pairs: Vec<String> = map
-                    .iter()
-                    .map(|(k, v)| format!("{k}={v}"))
-                    .collect();
+                let pairs: Vec<String> = map.iter().map(|(k, v)| format!("{k}={v}")).collect();
                 Some(pairs.join("&"))
             }
         }
@@ -664,7 +661,10 @@ mod tests {
         h.append("Accept", "text/html");
         h.append("Accept", "application/json");
         assert_eq!(h.get("accept"), Some("text/html"));
-        assert_eq!(h.get_all("accept"), Some("text/html, application/json".to_string()));
+        assert_eq!(
+            h.get_all("accept"),
+            Some("text/html, application/json".to_string())
+        );
     }
 
     #[test]
@@ -747,7 +747,10 @@ mod tests {
         assert_eq!(req.method, RequestMethod::Post);
         assert!(req.has_body());
         assert!(req.method_allows_body());
-        assert_eq!(req.headers.get("content-type"), Some("text/plain;charset=UTF-8"));
+        assert_eq!(
+            req.headers.get("content-type"),
+            Some("text/plain;charset=UTF-8")
+        );
     }
 
     #[test]
@@ -784,7 +787,10 @@ mod tests {
         let resp = FetchResponse::redirect("https://example.com/new", 301).unwrap();
         assert_eq!(resp.status, 301);
         assert!(resp.redirected);
-        assert_eq!(resp.headers.get("location"), Some("https://example.com/new"));
+        assert_eq!(
+            resp.headers.get("location"),
+            Some("https://example.com/new")
+        );
     }
 
     #[test]
@@ -805,14 +811,23 @@ mod tests {
 
     #[test]
     fn request_mode_roundtrip() {
-        for mode in [RequestMode::Cors, RequestMode::NoCors, RequestMode::SameOrigin, RequestMode::Navigate] {
+        for mode in [
+            RequestMode::Cors,
+            RequestMode::NoCors,
+            RequestMode::SameOrigin,
+            RequestMode::Navigate,
+        ] {
             assert_eq!(RequestMode::from_name(mode.as_str()), Some(mode));
         }
     }
 
     #[test]
     fn credentials_roundtrip() {
-        for cred in [RequestCredentials::Omit, RequestCredentials::SameOrigin, RequestCredentials::Include] {
+        for cred in [
+            RequestCredentials::Omit,
+            RequestCredentials::SameOrigin,
+            RequestCredentials::Include,
+        ] {
             assert_eq!(RequestCredentials::from_name(cred.as_str()), Some(cred));
         }
     }

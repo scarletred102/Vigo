@@ -257,7 +257,10 @@ impl Navigation {
             .map(|e| e.url.clone())
             .unwrap_or_default();
         self.current_index -= 1;
-        self.transition = Some(NavigationTransition::new(NavigationType::Traverse, &from_url));
+        self.transition = Some(NavigationTransition::new(
+            NavigationType::Traverse,
+            &from_url,
+        ));
         self.finish_transition();
         self.update_can_go();
         let url = self
@@ -277,7 +280,10 @@ impl Navigation {
             .map(|e| e.url.clone())
             .unwrap_or_default();
         self.current_index += 1;
-        self.transition = Some(NavigationTransition::new(NavigationType::Traverse, &from_url));
+        self.transition = Some(NavigationTransition::new(
+            NavigationType::Traverse,
+            &from_url,
+        ));
         self.finish_transition();
         self.update_can_go();
         let url = self
@@ -295,7 +301,10 @@ impl Navigation {
             .map(|e| e.url.clone())
             .unwrap_or_default();
         self.current_index = target_idx as i32;
-        self.transition = Some(NavigationTransition::new(NavigationType::Traverse, &from_url));
+        self.transition = Some(NavigationTransition::new(
+            NavigationType::Traverse,
+            &from_url,
+        ));
         self.finish_transition();
         self.update_can_go();
         let url = self

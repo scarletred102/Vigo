@@ -313,7 +313,10 @@ mod tests {
     #[test]
     fn event_type_str() {
         assert_eq!(PointerEventType::PointerDown.as_str(), "pointerdown");
-        assert_eq!(PointerEventType::LostPointerCapture.as_str(), "lostpointercapture");
+        assert_eq!(
+            PointerEventType::LostPointerCapture.as_str(),
+            "lostpointercapture"
+        );
     }
 
     #[test]

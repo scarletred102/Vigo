@@ -99,6 +99,25 @@ impl LayoutBox {
     pub fn margin_box(&self) -> Rect {
         self.dimensions.margin_box()
     }
+
+    /// Move this box, its clipping region, and every descendant together.
+    ///
+    /// Layout passes position a container after its children may already have
+    /// been laid out. Keeping the subtree in the same coordinate space avoids
+    /// children rendering at their former origin when the parent is moved.
+    pub fn translate_subtree(&mut self, dx: f32, dy: f32) {
+        self.dimensions.content.origin.x += dx;
+        self.dimensions.content.origin.y += dy;
+
+        if let Some(clip) = self.clip_rect.as_mut() {
+            clip.origin.x += dx;
+            clip.origin.y += dy;
+        }
+
+        for child in &mut self.children {
+            child.translate_subtree(dx, dy);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -132,6 +151,26 @@ mod tests {
         assert_eq!(b.node_id, Some(VexId::new(5)));
         assert_eq!(b.box_type, BoxType::Block);
         assert!(b.children.is_empty());
+    }
+
+    #[test]
+    fn translating_a_box_moves_its_entire_subtree() {
+        let mut parent = LayoutBox::new(Some(VexId::new(1)), BoxType::Block);
+        parent.dimensions.content = Rect::new(10.0, 20.0, 100.0, 50.0);
+        parent.clip_rect = Some(Rect::new(10.0, 20.0, 100.0, 50.0));
+
+        let mut child = LayoutBox::new(Some(VexId::new(2)), BoxType::Block);
+        child.dimensions.content = Rect::new(15.0, 25.0, 40.0, 20.0);
+        parent.children.push(child);
+
+        parent.translate_subtree(30.0, 40.0);
+
+        assert_eq!(parent.dimensions.content.origin, Point::new(40.0, 60.0));
+        assert_eq!(parent.clip_rect.unwrap().origin, Point::new(40.0, 60.0));
+        assert_eq!(
+            parent.children[0].dimensions.content.origin,
+            Point::new(45.0, 65.0)
+        );
     }
 
     #[test]

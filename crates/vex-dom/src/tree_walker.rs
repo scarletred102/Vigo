@@ -182,10 +182,7 @@ impl TreeWalker {
                 if node == self.root {
                     return None;
                 }
-                match arena.get(node).parent {
-                    Some(parent) => node = parent,
-                    None => return None,
-                }
+                node = arena.get(node).parent?;
                 if node == self.root {
                     return None;
                 }
@@ -231,7 +228,10 @@ impl NodeIterator {
     pub fn next_node(&mut self, arena: &NodeArena) -> Option<VexId> {
         if self.pointer_before_reference {
             self.pointer_before_reference = false;
-            if self.what_to_show.accepts(&arena.get(self.reference_node).data) {
+            if self
+                .what_to_show
+                .accepts(&arena.get(self.reference_node).data)
+            {
                 return Some(self.reference_node);
             }
         }

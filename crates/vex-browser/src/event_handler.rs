@@ -222,7 +222,9 @@ fn apply_default_form_click(shared_doc: &SharedDocument, target_id: VexId) -> bo
                 let NodeData::Element(ref el) = node.data else {
                     continue;
                 };
-                if !el.tag_name.eq_ignore_ascii_case("input") || element_input_type(el) != InputType::Radio {
+                if !el.tag_name.eq_ignore_ascii_case("input")
+                    || element_input_type(el) != InputType::Radio
+                {
                     continue;
                 }
                 let name = el

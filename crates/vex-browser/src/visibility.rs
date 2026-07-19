@@ -212,8 +212,14 @@ mod tests {
 
     #[test]
     fn visibility_state_parse() {
-        assert_eq!(VisibilityState::from_name("visible"), Some(VisibilityState::Visible));
-        assert_eq!(VisibilityState::from_name("hidden"), Some(VisibilityState::Hidden));
+        assert_eq!(
+            VisibilityState::from_name("visible"),
+            Some(VisibilityState::Visible)
+        );
+        assert_eq!(
+            VisibilityState::from_name("hidden"),
+            Some(VisibilityState::Hidden)
+        );
         assert_eq!(VisibilityState::from_name("invalid"), None);
     }
 

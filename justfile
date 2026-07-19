@@ -26,8 +26,12 @@ release:
 zig-build:
     cd zig && zig build
 
-# Build everything (Rust + Zig)
-all: build zig-build
+# Run Zig unit tests
+zig-test:
+    cd zig && zig build test
+
+# Build everything (Zig libraries must exist before Rust links the app)
+all: zig-build build
 
 # ───── Test ─────
 
@@ -57,8 +61,8 @@ fmt:
 fmt-check:
     cargo fmt --all -- --check
 
-# Run all quality checks (format + lint + test)
-ci: fmt-check lint test
+# Run all quality checks (Zig build/test + Rust format/lint/test)
+ci: zig-build zig-test fmt-check lint test
 
 # ───── Run ─────
 

@@ -12,9 +12,7 @@ use boa_engine::property::Attribute;
 use boa_engine::{js_string, Context, JsNativeError, JsValue, NativeFunction};
 use vex_dom::Namespace;
 
-use super::element::{
-    build_element_proxy, build_element_proxy_with_events_rooted,
-};
+use super::element::{build_element_proxy, build_element_proxy_with_events_rooted};
 use super::events::EventBridge;
 use crate::dom_bridge::SharedDocument;
 use crate::GcRootSet;
@@ -270,11 +268,7 @@ pub fn register_with_events(
                 Ok(Some(vex_id)) => {
                     drop(doc_ref);
                     Ok(build_element_proxy_with_events_rooted(
-                        vex_id,
-                        &doc_qs,
-                        &br_qs,
-                        &roots_qs,
-                        ctx,
+                        vex_id, &doc_qs, &br_qs, &roots_qs, ctx,
                     ))
                 }
                 Ok(None) => Ok(JsValue::null()),
@@ -302,11 +296,7 @@ pub fn register_with_events(
                     let arr = boa_engine::object::builtins::JsArray::new(ctx);
                     for vex_id in ids {
                         let proxy = build_element_proxy_with_events_rooted(
-                            vex_id,
-                            &doc_qsa,
-                            &br_qsa,
-                            &roots_qsa,
-                            ctx,
+                            vex_id, &doc_qsa, &br_qsa, &roots_qsa, ctx,
                         );
                         arr.push(proxy, ctx)?;
                     }
@@ -332,11 +322,7 @@ pub fn register_with_events(
 
             let vex_id = doc_ce.borrow_mut().create_element(&tag, Namespace::Html);
             Ok(build_element_proxy_with_events_rooted(
-                vex_id,
-                &doc_ce,
-                &br_ce,
-                &roots_ce,
-                ctx,
+                vex_id, &doc_ce, &br_ce, &roots_ce, ctx,
             ))
         })
     };
@@ -353,11 +339,7 @@ pub fn register_with_events(
 
             let vex_id = doc_ctn.borrow_mut().create_text(&text);
             Ok(build_element_proxy_with_events_rooted(
-                vex_id,
-                &doc_ctn,
-                &br_ctn,
-                &roots_ctn,
-                ctx,
+                vex_id, &doc_ctn, &br_ctn, &roots_ctn, ctx,
             ))
         })
     };

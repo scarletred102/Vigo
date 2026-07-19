@@ -13,12 +13,23 @@ const windows = std.os.windows;
 
 const HWND = windows.HWND;
 const HINSTANCE = windows.HINSTANCE;
-const LRESULT = windows.LRESULT;
-const WPARAM = windows.WPARAM;
+// Zig 0.16 removed these two legacy aliases from `std.os.windows`.
+// Their Win32 definitions are pointer-sized signed/unsigned integers, which
+// have remained available as `LONG_PTR` and `ULONG_PTR` across supported Zig
+// versions.
+const LRESULT = windows.LONG_PTR;
+const WPARAM = windows.ULONG_PTR;
 const LPARAM = windows.LPARAM;
 const UINT = c_uint;
-const BOOL = windows.BOOL;
-const RECT = windows.RECT;
+// Keep these ABI-only C definitions local. Zig 0.16 replaced the old integer
+// `BOOL` and stopped exporting `RECT`, while the Win32 ABI itself is unchanged.
+const BOOL = c_int;
+const RECT = extern struct {
+    left: i32 = 0,
+    top: i32 = 0,
+    right: i32 = 0,
+    bottom: i32 = 0,
+};
 
 const HDC = *opaque {};
 const HBRUSH = *opaque {};

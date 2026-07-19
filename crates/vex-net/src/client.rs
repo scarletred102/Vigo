@@ -22,13 +22,13 @@ use reqwest::Method as ReqwestMethod;
 use tracing::{debug, warn};
 use vex_core::{VexError, VexResult, VexUrl};
 
+use crate::alt_svc::AltSvcCache;
 use crate::cache::{HttpCache, INTERNAL_PARTITION_HEADER};
 use crate::cookies::CookieJar;
 use crate::decompress;
 use crate::disk_cache::{DiskCache, DiskCacheConfig};
 use crate::dns::{DnsMode, DnsResolver, HyperDnsResolver};
 use crate::hsts::HstsStore;
-use crate::alt_svc::AltSvcCache;
 use crate::http3::{validate_http3_attempt, Http3Config, HttpVersionPreference};
 use crate::proxy::{ProxyConfig, ProxyDirective};
 use crate::security_policy::TransportSecurityPolicy;
@@ -116,9 +116,9 @@ struct CookieStorePersistence {
 /// The main HTTP client.
 pub struct HttpClient {
     inner: Client<
-        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector<
-            HyperDnsResolver,
-        >>,
+        hyper_rustls::HttpsConnector<
+            hyper_util::client::legacy::connect::HttpConnector<HyperDnsResolver>,
+        >,
         Full<Bytes>,
     >,
     config: ClientConfig,
@@ -147,14 +147,13 @@ impl HttpClient {
         validate_http3_attempt(&config.http3, config.http_version_preference)?;
 
         let cookies = CookieJar::new();
-        let cookie_persistence =
-            match (&config.cookie_store_path, &config.cookie_store_password) {
-                (Some(path), Some(password)) => Some(CookieStorePersistence {
-                    path: path.clone(),
-                    password: password.clone(),
-                }),
-                _ => None,
-            };
+        let cookie_persistence = match (&config.cookie_store_path, &config.cookie_store_password) {
+            (Some(path), Some(password)) => Some(CookieStorePersistence {
+                path: path.clone(),
+                password: password.clone(),
+            }),
+            _ => None,
+        };
 
         if let Some(persistence) = cookie_persistence.as_ref() {
             if persistence.path.exists() {
@@ -334,7 +333,10 @@ impl HttpClient {
             .await;
 
         indexed_results.sort_by_key(|(idx, _)| *idx);
-        indexed_results.into_iter().map(|(_, result)| result).collect()
+        indexed_results
+            .into_iter()
+            .map(|(_, result)| result)
+            .collect()
     }
 
     /// Fetch many requests with bounded concurrency and cooperative cancellation.
@@ -373,7 +375,10 @@ impl HttpClient {
             .await;
 
         indexed_results.sort_by_key(|(idx, _)| *idx);
-        indexed_results.into_iter().map(|(_, result)| result).collect()
+        indexed_results
+            .into_iter()
+            .map(|(_, result)| result)
+            .collect()
     }
 
     /// Fetch a URL after running the request through a filter.
@@ -425,11 +430,11 @@ impl HttpClient {
             {
                 Ok(resp) => resp,
                 Err(err) if current_method == Method::Get => {
-                    let stale = self
-                        .cache
-                        .lock()
-                        .ok()
-                        .and_then(|cache| cache.get_stale_if_error(&current_url, &current_headers).cloned());
+                    let stale = self.cache.lock().ok().and_then(|cache| {
+                        cache
+                            .get_stale_if_error(&current_url, &current_headers)
+                            .cloned()
+                    });
 
                     if let Some(stale) = stale {
                         warn!(url = %current_url, "network failure served from stale-if-error cache: {err}");
@@ -538,8 +543,10 @@ impl HttpClient {
                 .and_then(|cache| cache.preferred(url, "h3").cloned())
                 .is_some();
 
-        let use_http3 = matches!(self.config.http_version_preference, HttpVersionPreference::Http3)
-            || (self.config.http3.alt_svc_upgrade && alt_svc_prefers_h3);
+        let use_http3 = matches!(
+            self.config.http_version_preference,
+            HttpVersionPreference::Http3
+        ) || (self.config.http3.alt_svc_upgrade && alt_svc_prefers_h3);
         let use_reqwest_transport = should_use_reqwest_transport(&proxy_directive, use_http3);
 
         if use_reqwest_transport {
@@ -1578,15 +1585,16 @@ mod tests {
             false
         ));
         assert!(should_use_reqwest_transport(&ProxyDirective::Direct, true));
-        assert!(!should_use_reqwest_transport(&ProxyDirective::Direct, false));
+        assert!(!should_use_reqwest_transport(
+            &ProxyDirective::Direct,
+            false
+        ));
     }
 
     #[test]
     fn client_loads_encrypted_cookie_store() {
-        let path = std::env::temp_dir().join(format!(
-            "vigo-cookie-store-{}.bin",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("vigo-cookie-store-{}.bin", std::process::id()));
 
         let seed_jar = CookieJar::new();
         let url = VexUrl::parse("https://example.com/").unwrap();

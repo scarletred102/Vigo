@@ -94,9 +94,18 @@ impl EffectAllowed {
             Self::Copy => matches!(effect, DropEffect::Copy | DropEffect::None),
             Self::Move => matches!(effect, DropEffect::Move | DropEffect::None),
             Self::Link => matches!(effect, DropEffect::Link | DropEffect::None),
-            Self::CopyLink => matches!(effect, DropEffect::Copy | DropEffect::Link | DropEffect::None),
-            Self::CopyMove => matches!(effect, DropEffect::Copy | DropEffect::Move | DropEffect::None),
-            Self::LinkMove => matches!(effect, DropEffect::Link | DropEffect::Move | DropEffect::None),
+            Self::CopyLink => matches!(
+                effect,
+                DropEffect::Copy | DropEffect::Link | DropEffect::None
+            ),
+            Self::CopyMove => matches!(
+                effect,
+                DropEffect::Copy | DropEffect::Move | DropEffect::None
+            ),
+            Self::LinkMove => matches!(
+                effect,
+                DropEffect::Link | DropEffect::Move | DropEffect::None
+            ),
             Self::All | Self::Uninitialized => true,
         }
     }
@@ -570,7 +579,17 @@ mod tests {
 
     #[test]
     fn effect_allowed_roundtrip() {
-        for name in &["none", "copy", "copyLink", "copyMove", "link", "linkMove", "move", "all", "uninitialized"] {
+        for name in &[
+            "none",
+            "copy",
+            "copyLink",
+            "copyMove",
+            "link",
+            "linkMove",
+            "move",
+            "all",
+            "uninitialized",
+        ] {
             let e = EffectAllowed::parse(name);
             assert_eq!(e.as_str(), *name);
         }
@@ -650,7 +669,15 @@ mod tests {
 
     #[test]
     fn event_type_parse_roundtrip() {
-        for name in &["dragstart", "drag", "dragenter", "dragover", "dragleave", "drop", "dragend"] {
+        for name in &[
+            "dragstart",
+            "drag",
+            "dragenter",
+            "dragover",
+            "dragleave",
+            "drop",
+            "dragend",
+        ] {
             let t = DragEventType::parse(name).unwrap();
             assert_eq!(t.as_str(), *name);
         }
@@ -703,8 +730,12 @@ mod tests {
 
         // Drop
         let end_events = ctrl.drag_end(id(2), 50.0, 50.0);
-        assert!(end_events.iter().any(|e| e.event_type == DragEventType::Drop));
-        assert!(end_events.iter().any(|e| e.event_type == DragEventType::DragEnd));
+        assert!(end_events
+            .iter()
+            .any(|e| e.event_type == DragEventType::Drop));
+        assert!(end_events
+            .iter()
+            .any(|e| e.event_type == DragEventType::DragEnd));
         assert_eq!(ctrl.phase, DragPhase::Idle);
     }
 
@@ -728,7 +759,9 @@ mod tests {
         let events = ctrl.drag_end(id(99), 0.0, 0.0);
         // Should have dragend but NO drop
         assert!(!events.iter().any(|e| e.event_type == DragEventType::Drop));
-        assert!(events.iter().any(|e| e.event_type == DragEventType::DragEnd));
+        assert!(events
+            .iter()
+            .any(|e| e.event_type == DragEventType::DragEnd));
     }
 
     #[test]
@@ -760,12 +793,18 @@ mod tests {
 
         // Move to first target
         let events = ctrl.drag_move(id(2), 10.0, 10.0);
-        assert!(events.iter().any(|e| e.event_type == DragEventType::DragEnter && e.target == id(2)));
+        assert!(events
+            .iter()
+            .any(|e| e.event_type == DragEventType::DragEnter && e.target == id(2)));
 
         // Move to second target — should get dragleave from first
         let events = ctrl.drag_move(id(3), 20.0, 20.0);
-        assert!(events.iter().any(|e| e.event_type == DragEventType::DragLeave && e.target == id(2)));
-        assert!(events.iter().any(|e| e.event_type == DragEventType::DragEnter && e.target == id(3)));
+        assert!(events
+            .iter()
+            .any(|e| e.event_type == DragEventType::DragLeave && e.target == id(2)));
+        assert!(events
+            .iter()
+            .any(|e| e.event_type == DragEventType::DragEnter && e.target == id(3)));
     }
 
     #[test]

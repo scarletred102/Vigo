@@ -129,10 +129,7 @@ impl BroadcastHub {
     pub fn register(&mut self, channel: BroadcastChannel) -> ChannelEndpointId {
         let id = channel.id;
         let name = channel.name.clone();
-        self.channels
-            .entry(name)
-            .or_default()
-            .push(id);
+        self.channels.entry(name).or_default().push(id);
         self.endpoints.insert(id, channel);
         id
     }

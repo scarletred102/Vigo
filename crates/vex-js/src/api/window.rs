@@ -676,12 +676,20 @@ mod tests {
         let fetch = ctx
             .eval(boa_engine::Source::from_bytes("typeof window.fetch"))
             .unwrap();
-        assert_eq!(fetch.as_string().unwrap().to_std_string_escaped(), "function");
+        assert_eq!(
+            fetch.as_string().unwrap().to_std_string_escaped(),
+            "function"
+        );
 
         let micro = ctx
-            .eval(boa_engine::Source::from_bytes("typeof window.queueMicrotask"))
+            .eval(boa_engine::Source::from_bytes(
+                "typeof window.queueMicrotask",
+            ))
             .unwrap();
-        assert_eq!(micro.as_string().unwrap().to_std_string_escaped(), "function");
+        assert_eq!(
+            micro.as_string().unwrap().to_std_string_escaped(),
+            "function"
+        );
     }
 
     #[test]

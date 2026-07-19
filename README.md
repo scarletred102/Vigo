@@ -1,181 +1,90 @@
 # Vigo Browser
 
-> A privacy-first web browser built from scratch.
-> Powered by the **Vex** engine — no Chromium, no Gecko, no WebKit.
+> An experimental, privacy-oriented browser built from scratch in Rust and Zig.
+> Powered by the Vex engine — not Chromium, Gecko, or WebKit.
 
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](LICENSE)
 
-## What Is This?
+## Status
 
-Vigo is an open-source web browser with its own rendering engine, written in **Rust** (~70%) and **Zig** (~30%). Every layer — from HTML parsing to GPU compositing — is built from the ground up. No forking, no embedding, no shortcuts.
+Vigo is pre-release software, currently validated on Windows. It is an independent engine project, not a production-browser replacement yet.
 
-**Why?** The web deserves more than three engines. Vigo is an independent alternative built on modern languages with privacy as a core design principle, not a bolt-on.
+The current build can:
 
-## Current Status
+- load HTTP(S) pages through the Vex fetch, HTML, CSS, layout, JavaScript, and GPU-rendering pipeline;
+- open and navigate tabs with back/forward/reload controls and address-bar search;
+- persist browsing history and bookmarks, and display them in built-in pages;
+- provide find-in-page, browser settings, DevTools scaffolding, and extension loading; and
+- build the native window/platform layer from Zig.
 
-Vigo is in active development. The engine can fetch HTTPS pages, parse HTML, build a DOM, compute CSS styles, lay out content, execute JavaScript, and render through a GPU pipeline. The browser shell includes tabs, address bar navigation, DevTools panels, downloads, find-in-page, and extension loading.
+Some important boundaries are still incomplete:
 
-| Phase | Status | What |
-|------:|--------|------|
-| 0 | ✅ Done | Project scaffold, build system, CI |
-| 1 | ✅ Done | Core types, Zig platform layer, wgpu window |
-| 2 | ✅ Done | HTTP/2 + TLS 1.3, DNS/DoH, cookies, decompression |
-| 3 | ✅ Done | HTML5 parser (html5ever), full DOM tree, selectors |
-| 4 | ✅ Done | CSS tokenizer/parser, cascade, computed styles |
-| 5 | ✅ Done | Block, inline, flex, positioned layout, stacking |
-| 6 | ✅ Done | GPU rendering pipeline (display lists, shaders) |
-| 7 | ✅ Done | JavaScript engine integration (Boa) |
-| 8 | ✅ Done | Browser toolbar (tabs, URL bar, navigation) |
-| 9 | ✅ Done | Media pipeline + DRM fallback |
-| 10 | ✅ Done | Security hardening and storage APIs |
-| 11 | 🔶 In Progress | Extensions and DevTools depth/coverage |
+- Download UI is present, but navigation does not yet queue or transfer files to disk.
+- Renderer-process management currently uses a single-process sandbox policy hook; it is not a hardened process sandbox.
+- The WebView/DRM fallback is scaffolded rather than a complete integration.
+- Web-platform compatibility is incomplete, so many sites will not behave like they do in mature browsers.
 
-**Workspace tests and Zig tests are part of routine local/CI validation.**
-
-See [PLAN.md](PLAN.md) for the full architecture plan and [TASKS.md](TASKS.md) for the task breakdown.
+The current limitations above define the public release boundary.
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│                  vex-app (binary)                    │
-├──────────┬──────────┬───────────┬───────────────────┤
-│ vex-net  │ vex-html │ vex-css   │ vex-layout        │
-│ HTTP/2   │ html5ever│ cascade   │ block/inline/flex  │
-│ TLS 1.3  │ TreeSink │ selectors │ positioned/stacking│
-│ DNS/DoH  │          │ computed  │ text (cosmic-text) │
-├──────────┤ vex-dom  ├───────────┼───────────────────┤
-│vex-privacy│ arena   │ vex-render│ vex-js (planned)  │
-│ adblock  │ queries  │ wgpu GPU  │ Boa engine        │
-│ tracking │ events   │ Zig FFI   │                   │
-├──────────┴──────────┴───────────┴───────────────────┤
-│              vex-core (types, geometry, errors)       │
-├─────────────────────────────────────────────────────┤
-│          Zig: platform · compositor · alloc · text   │
-│          Win32 windowing · arena/pool/frame allocs   │
-└─────────────────────────────────────────────────────┘
+```text
+vex-app                         Native browser shell
+  ├── vex-browser               Tabs, history, bookmarks, UI, DevTools, extensions
+  ├── vex-net                   HTTP, TLS, DNS, cookies, cache, privacy filtering
+  ├── vex-html / vex-dom        HTML parser and DOM
+  ├── vex-css / vex-layout      Cascade, styles, block/inline/flex layout
+  ├── vex-js                    Boa JavaScript integration and browser APIs
+  ├── vex-render                wgpu display-list rendering and Rust/Zig FFI
+  ├── vex-security / privacy    CSP, CORS, HTTPS, tracker and ad filtering
+  └── vex-storage / media       Web storage and media pipeline components
+
+zig/                            Win32 platform layer and allocation primitives
+sync-server/                    Optional Go/SQLite sync backend
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full crate dependency graph.
-
-## Project Structure
-
-```
-crates/              16 Rust crates
-  vex-core/          Shared types: geometry, color, URL, errors
-  vex-net/           HTTP client, TLS 1.3, DNS/DoH, cookies
-  vex-dom/           Arena-allocated DOM tree, selectors, events
-  vex-html/          HTML5 parser (html5ever TreeSink)
-  vex-css/           CSS tokenizer, parser, cascade, computed styles
-  vex-layout/        Block, inline, flex, positioned, stacking
-  vex-render/        GPU context (wgpu), Zig FFI bridge
-  vex-privacy/       Ad blocking, tracker stripping, HTTPS-only
-  vex-js/            JavaScript engine (Boa) + browser Web APIs
-  vex-media/         Audio/video pipeline, playback controls, streaming
-  vex-storage/       Cookies, localStorage, sessionStorage, IndexedDB
-  vex-security/      SOP, CORS, CSP enforcement
-  vex-crypto/        ChaCha20-Poly1305, Argon2id, Ed25519, X25519
-  vex-sync/          E2E sync client primitives
-  vex-browser/       Tab management, navigation, UI, DevTools, extensions
-  vex-app/           Binary entry point
-
-zig/                 5 Zig modules → static libs → C ABI → Rust FFI
-  platform/          Native windowing (Win32) + event loop
-  alloc/             Arena, pool, frame allocators (22 tests)
-  compositor/        GPU compositor — planned
-  media/             Codec FFI — planned
-  text/              Text rasterization — planned
-
-sync-server/         Go + SQLite zero-knowledge sync backend
-docs/                Architecture, coding standards, FFI conventions
-specs/               Product specs (PRD, engine strategy, security, etc.)
-```
-
-## Building
+## Build on Windows
 
 ### Prerequisites
 
-| Tool | Version | Install |
-|------|---------|---------|
-| Rust | 1.75+ | [rustup.rs](https://rustup.rs) |
-| Zig | 0.15+ | [ziglang.org](https://ziglang.org/download/) or `winget install zig.zig` |
-| MSVC Build Tools | 2022 | [VS Build Tools](https://visualstudio.microsoft.com/downloads/) (Windows) |
+| Tool | Version |
+| --- | --- |
+| Rust | Stable (the project declares Rust 1.75+) |
+| Zig | 0.16.0 (locally validated) |
+| MSVC Build Tools | Visual Studio 2022 or newer |
 
-### Build & Run
+### Build and run
 
-```bash
-# 1. Build Zig static libraries
-cd zig && zig build && cd ..
+```powershell
+cd zig
+zig build
+cd ..
 
-# 2. Build Rust workspace (links Zig libs automatically)
 cargo build -p vex-app
-
-# 3. Run — opens a 1280×720 GPU-accelerated window
 cargo run -p vex-app
 ```
 
-### Test
+### Validate
 
-```bash
-# All workspace tests
+```powershell
 cargo test --workspace
 
-# Zig tests (22 passing)
-cd zig && zig build test
+cd zig
+zig build test
+cd ..
 
-# Network-dependent tests (requires internet)
-cargo test --workspace -- --ignored
-
-# Clippy
-cargo clippy --workspace --all-targets
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
 ```
+
+The repository includes a Windows CI workflow that runs these checks. Zig source files use LF line endings for compatibility with Windows CI.
 
 ## Contributing
 
-Contributions are welcome! Vigo is licensed under the [Mozilla Public License 2.0](LICENSE), the same license family used by Firefox and Servo.
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), use a branch based on `main`, and include focused tests with behavior changes.
 
-### Quick Start
-
-1. Fork the repo and create a branch
-2. Build and run the tests (see above)
-3. Make your changes — follow the style guides in [`docs/`](docs/)
-4. Every `.rs` file should start with:
-   ```rust
-   // Copyright (c) Vigo Contributors
-   // SPDX-License-Identifier: MPL-2.0
-   ```
-5. Open a PR against `main`
-
-### Areas Where Help Is Needed
-
-- **Web compatibility**: run against more real-world sites and reduce breakage
-- **Cross-platform support**: macOS (Cocoa) and Linux (X11/Wayland) windowing
-- **Performance**: profile and optimize layout/render/JS hot paths
-- **Hardening**: strengthen process isolation and sandbox boundaries
-- **DevTools and extensions**: expand API coverage and debugging ergonomics
-
-## Design Principles
-
-- **Privacy first** — Ad blocking, tracker stripping, and HTTPS enforcement are built into the network stack, not extensions.
-- **No monoculture** — An independent engine. No Blink, no Gecko, no WebKit.
-- **Modern languages** — Rust for safety + Zig for performance-critical paths. No C/C++.
-- **Clean code** — Readable, well-tested, not over-engineered. Easy to contribute to.
-
-## Analogous Projects
-
-| Project | Language | Notes |
-|---------|----------|-------|
-| [Servo](https://servo.org/) | Rust | Mozilla/Linux Foundation browser engine |
-| [Ladybird](https://ladybird.org/) | C++ | From-scratch engine (SerenityOS) |
-| [Boa](https://boajs.dev/) | Rust | JavaScript engine (used by Vigo) |
-| [Vigo](https://github.com/scarletred102/Vigo) | Rust + Zig | This project |
+Please report vulnerabilities privately according to [SECURITY.md](SECURITY.md). Community participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-This project is licensed under the [Mozilla Public License 2.0](LICENSE).
-
-```
-This Source Code Form is subject to the terms of the Mozilla Public
-License, v. 2.0. If a copy of the MPL was not distributed with this
-file, You can obtain one at https://mozilla.org/MPL/2.0/.
-```
+Vigo is licensed under the [Mozilla Public License 2.0](LICENSE).

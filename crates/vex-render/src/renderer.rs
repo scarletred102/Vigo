@@ -832,7 +832,14 @@ fn collect_rect_instances(dl: &DisplayList) -> Vec<RectInstance> {
                         );
                     }
                 }
-                emit_border_rects(rect, widths, &oc, styles, clip_stack.last().copied(), &mut instances);
+                emit_border_rects(
+                    rect,
+                    widths,
+                    &oc,
+                    styles,
+                    clip_stack.last().copied(),
+                    &mut instances,
+                );
             }
             // DrawText/DrawImage handled by separate pipelines.
             _ => {}
@@ -946,7 +953,12 @@ fn emit_border_edge(
                 let end = rect.origin.x + rect.size.width;
                 while x < end {
                     let seg = (end - x).min(base);
-                    emit(vex_core::geometry::Rect::new(x, rect.origin.y, seg, rect.size.height));
+                    emit(vex_core::geometry::Rect::new(
+                        x,
+                        rect.origin.y,
+                        seg,
+                        rect.size.height,
+                    ));
                     x += base + gap;
                 }
             } else {
@@ -954,7 +966,12 @@ fn emit_border_edge(
                 let end = rect.origin.y + rect.size.height;
                 while y < end {
                     let seg = (end - y).min(base);
-                    emit(vex_core::geometry::Rect::new(rect.origin.x, y, rect.size.width, seg));
+                    emit(vex_core::geometry::Rect::new(
+                        rect.origin.x,
+                        y,
+                        rect.size.width,
+                        seg,
+                    ));
                     y += base + gap;
                 }
             }
@@ -1085,7 +1102,12 @@ fn collect_image_instances(dl: &DisplayList, atlas: &ImageAtlas) -> Vec<ImageIns
                 };
 
                 instances.push(ImageInstance {
-                    rect: [rect.origin.x, rect.origin.y, rect.size.width, rect.size.height],
+                    rect: [
+                        rect.origin.x,
+                        rect.origin.y,
+                        rect.size.width,
+                        rect.size.height,
+                    ],
                     uv: entry.uv,
                     opacity: [current_opacity, 0.0, 0.0, 0.0],
                 });
@@ -1097,7 +1119,10 @@ fn collect_image_instances(dl: &DisplayList, atlas: &ImageAtlas) -> Vec<ImageIns
     instances
 }
 
-fn intersect_rect(a: vex_core::geometry::Rect, b: vex_core::geometry::Rect) -> Option<vex_core::geometry::Rect> {
+fn intersect_rect(
+    a: vex_core::geometry::Rect,
+    b: vex_core::geometry::Rect,
+) -> Option<vex_core::geometry::Rect> {
     let x1 = a.origin.x.max(b.origin.x);
     let y1 = a.origin.y.max(b.origin.y);
     let x2 = (a.origin.x + a.size.width).min(b.origin.x + b.size.width);

@@ -30,11 +30,11 @@ const MIN_TAB_WIDTH: f32 = 120.0;
 /// Absolute minimum width allowed under extreme tab counts.
 const ABS_MIN_TAB_WIDTH: f32 = 56.0;
 /// Padding between tabs.
-const TAB_GAP: f32 = 6.0;
+const TAB_GAP: f32 = 7.0;
 /// Tab height.
-const TAB_HEIGHT: f32 = 32.0;
+const TAB_HEIGHT: f32 = 36.0;
 /// Top offset for tabs within the tab bar.
-const TAB_TOP: f32 = 4.0;
+const TAB_TOP: f32 = 6.0;
 /// Width of the new-tab (+) button.
 const NEW_TAB_BTN_WIDTH: f32 = 32.0;
 /// Left/right padding inside the tab strip.
@@ -67,10 +67,27 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
         let x =
             tab_bar_rect.origin.x + TAB_STRIP_PADDING + (geom.tab_width + TAB_GAP) * slot as f32;
         let y = tab_bar_rect.origin.y + TAB_TOP;
+        let tab_rect = Rect::new(x, y, geom.tab_width, TAB_HEIGHT);
+
+        // Tab shell.
+        dl.push(DisplayCommand::FillRect {
+            rect: tab_rect,
+            color: if is_active {
+                theme::ADDRESS_BORDER_FOCUSED
+            } else {
+                theme::CHROME_BORDER
+            },
+            border_radius: 9.0,
+        });
 
         // Tab background.
         dl.push(DisplayCommand::FillRect {
-            rect: Rect::new(x, y, geom.tab_width, TAB_HEIGHT),
+            rect: Rect::new(
+                x + 1.0,
+                y + 1.0,
+                (geom.tab_width - 2.0).max(0.0),
+                TAB_HEIGHT - 2.0,
+            ),
             color: if is_active {
                 ACTIVE_TAB_BG
             } else {
@@ -79,10 +96,15 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
             border_radius: 8.0,
         });
 
-        // Active tab top accent.
+        // Active tab accent.
         if is_active {
             dl.push(DisplayCommand::FillRect {
-                rect: Rect::new(x + 8.0, y + 2.0, (geom.tab_width - 16.0).max(0.0), 2.0),
+                rect: Rect::new(
+                    x + 10.0,
+                    y + TAB_HEIGHT - 4.0,
+                    (geom.tab_width - 20.0).max(0.0),
+                    2.0,
+                ),
                 color: TAB_ACTIVE_ACCENT,
                 border_radius: 1.0,
             });
@@ -95,7 +117,7 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
             color: if is_active {
                 theme::TAB_ICON
             } else {
-                Color::rgb(132, 132, 132)
+                Color::rgb(111, 130, 168)
             },
             font_size: 12.0,
             line_height: 14.0,
@@ -110,23 +132,36 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
         };
         let title = truncate_title(&raw_title, max_text_width);
         dl.push(DisplayCommand::DrawText {
-            position: Point::new(x + 18.0, y + 8.0),
+            position: Point::new(x + 18.0, y + 8.3),
             text: title,
             color: if is_active {
                 TAB_TEXT_COLOR
             } else {
                 INACTIVE_TAB_TEXT
             },
-            font_size: 12.0,
+            font_size: if is_active { 12.5 } else { 12.0 },
             line_height: 16.0,
+        });
+
+        // Close button chip.
+        let close_x = x + geom.tab_width - 20.0;
+        let close_y = y + 7.0;
+        dl.push(DisplayCommand::FillRect {
+            rect: Rect::new(close_x, close_y, 14.0, 14.0),
+            color: if is_active {
+                Color::rgb(48, 65, 102)
+            } else {
+                Color::rgb(34, 48, 77)
+            },
+            border_radius: 7.0,
         });
 
         // Close button (×).
         dl.push(DisplayCommand::DrawText {
-            position: Point::new(x + geom.tab_width - 18.0, y + 7.0),
+            position: Point::new(x + geom.tab_width - 16.0, y + 6.8),
             text: "×".into(),
             color: CLOSE_BTN_COLOR,
-            font_size: 14.0,
+            font_size: 12.0,
             line_height: 18.0,
         });
     }
@@ -136,14 +171,24 @@ pub fn render_tab_bar(dl: &mut DisplayList, tabs: &[Tab], active_index: usize, t
     let plus_y = tab_bar_rect.origin.y + TAB_TOP;
     dl.push(DisplayCommand::FillRect {
         rect: Rect::new(plus_x, plus_y, NEW_TAB_BTN_WIDTH, TAB_HEIGHT),
-        color: INACTIVE_TAB_BG,
+        color: theme::ADDRESS_BORDER_FOCUSED,
         border_radius: 8.0,
     });
+    dl.push(DisplayCommand::FillRect {
+        rect: Rect::new(
+            plus_x + 1.0,
+            plus_y + 1.0,
+            NEW_TAB_BTN_WIDTH - 2.0,
+            TAB_HEIGHT - 2.0,
+        ),
+        color: Color::rgb(36, 51, 83),
+        border_radius: 7.0,
+    });
     dl.push(DisplayCommand::DrawText {
-        position: Point::new(plus_x + 10.0, plus_y + 7.0),
+        position: Point::new(plus_x + 10.0, plus_y + 6.8),
         text: "+".into(),
         color: NEW_TAB_BTN_COLOR,
-        font_size: 16.0,
+        font_size: 15.0,
         line_height: 18.0,
     });
 }

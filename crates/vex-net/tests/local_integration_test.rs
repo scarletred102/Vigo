@@ -17,7 +17,9 @@ struct LocalServer {
 
 impl LocalServer {
     async fn spawn(responses: Vec<Vec<u8>>) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind localhost");
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind localhost");
         let addr = listener.local_addr().expect("local addr");
         let requests = Arc::new(StdMutex::new(Vec::new()));
         let requests_bg = Arc::clone(&requests);
@@ -49,10 +51,7 @@ impl LocalServer {
     }
 
     fn requests(&self) -> Vec<String> {
-        self.requests
-            .lock()
-            .map(|v| v.clone())
-            .unwrap_or_default()
+        self.requests.lock().map(|v| v.clone()).unwrap_or_default()
     }
 }
 
@@ -112,7 +111,9 @@ async fn local_cache_revalidation_sends_if_none_match() {
     let requests = server.requests();
     assert!(requests.len() >= 2);
     assert!(
-        requests[1].to_ascii_lowercase().contains("if-none-match: \"v1\""),
+        requests[1]
+            .to_ascii_lowercase()
+            .contains("if-none-match: \"v1\""),
         "expected conditional revalidation request, got:\n{}",
         requests[1]
     );

@@ -202,7 +202,9 @@ impl ShadowDomManager {
 
     /// Get the shadow root for a host element (open only).
     pub fn get_shadow_root(&self, host: VexId) -> Option<&ShadowRoot> {
-        self.shadows.get(&host).filter(|s| s.mode == ShadowRootMode::Open)
+        self.shadows
+            .get(&host)
+            .filter(|s| s.mode == ShadowRootMode::Open)
     }
 
     /// Get the shadow root for a host element (any mode — internal use).
@@ -426,10 +428,20 @@ mod tests {
     #[test]
     fn hosts_list() {
         let mut mgr = ShadowDomManager::new();
-        mgr.attach_shadow(VexId::new(1), "div", VexId::new(100), ShadowRootInit::default())
-            .unwrap();
-        mgr.attach_shadow(VexId::new(2), "span", VexId::new(200), ShadowRootInit::default())
-            .unwrap();
+        mgr.attach_shadow(
+            VexId::new(1),
+            "div",
+            VexId::new(100),
+            ShadowRootInit::default(),
+        )
+        .unwrap();
+        mgr.attach_shadow(
+            VexId::new(2),
+            "span",
+            VexId::new(200),
+            ShadowRootInit::default(),
+        )
+        .unwrap();
 
         let hosts = mgr.hosts();
         assert_eq!(hosts.len(), 2);

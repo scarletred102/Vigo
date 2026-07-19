@@ -525,11 +525,9 @@ mod tests {
 
     #[test]
     fn transform_stream_with_transform() {
-        let mut ts = TransformStream::with_transform(|chunk| {
-            match chunk {
-                StreamChunk::Text(s) => StreamChunk::Text(s.to_uppercase()),
-                other => other,
-            }
+        let mut ts = TransformStream::with_transform(|chunk| match chunk {
+            StreamChunk::Text(s) => StreamChunk::Text(s.to_uppercase()),
+            other => other,
         });
         ts.write(StreamChunk::Text("hello".into())).unwrap();
         let chunk = ts.read().unwrap();

@@ -71,13 +71,12 @@ fn parse_tag_for_hint(tag: &str) -> Option<SpeculativePreloadHint> {
 
     if lower.starts_with("script") {
         let src = extract_attr(trimmed, "src")?;
-        let kind = if extract_attr(trimmed, "type")
-            .is_some_and(|t| t.eq_ignore_ascii_case("module"))
-        {
-            PreloadKind::ModuleScript
-        } else {
-            PreloadKind::Script
-        };
+        let kind =
+            if extract_attr(trimmed, "type").is_some_and(|t| t.eq_ignore_ascii_case("module")) {
+                PreloadKind::ModuleScript
+            } else {
+                PreloadKind::Script
+            };
         return Some(SpeculativePreloadHint { url: src, kind });
     }
 
@@ -162,8 +161,12 @@ mod tests {
     fn finds_script_and_stylesheet_hints() {
         let mut s = SpeculativePreloadScanner::new();
         let hints = s.feed(b"<script src='/a.js'></script><link rel='stylesheet' href='/a.css'>");
-        assert!(hints.iter().any(|h| h.url == "/a.js" && h.kind == PreloadKind::Script));
-        assert!(hints.iter().any(|h| h.url == "/a.css" && h.kind == PreloadKind::Style));
+        assert!(hints
+            .iter()
+            .any(|h| h.url == "/a.js" && h.kind == PreloadKind::Script));
+        assert!(hints
+            .iter()
+            .any(|h| h.url == "/a.css" && h.kind == PreloadKind::Style));
     }
 
     #[test]

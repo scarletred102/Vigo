@@ -7,7 +7,9 @@
 use selectors::attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstraint};
 use selectors::bloom::BloomFilter;
 use selectors::context::MatchingContext;
-use selectors::matching::{matches_selector_list as selectors_matches_selector_list, ElementSelectorFlags};
+use selectors::matching::{
+    matches_selector_list as selectors_matches_selector_list, ElementSelectorFlags,
+};
 use selectors::OpaqueElement;
 
 use crate::arena::NodeArena;

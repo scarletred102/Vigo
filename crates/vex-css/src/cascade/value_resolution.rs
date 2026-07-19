@@ -18,6 +18,30 @@ pub fn resolve_value(
     length.resolve(parent_font_size, root_font_size, viewport, containing)
 }
 
+/// Resolve a CSS `line-height` against the element's computed font size.
+///
+/// Unitless values are represented as `em` by the declaration parser. CSS
+/// percentages for line-height are also relative to the element font size,
+/// rather than to the containing block width used by general lengths.
+pub fn resolve_line_height(
+    length: &LengthValue,
+    element_font_size: f32,
+    root_font_size: f32,
+    viewport: Size,
+) -> LengthValue {
+    let pixels = match length {
+        LengthValue::Px(value) => *value,
+        LengthValue::Em(multiplier) => multiplier * element_font_size,
+        LengthValue::Rem(multiplier) => multiplier * root_font_size,
+        LengthValue::Percent(percent) => percent / 100.0 * element_font_size,
+        LengthValue::Vw(percent) => percent / 100.0 * viewport.width,
+        LengthValue::Vh(percent) => percent / 100.0 * viewport.height,
+        LengthValue::Auto | LengthValue::Zero => 0.0,
+    };
+
+    LengthValue::Px(pixels)
+}
+
 /// Resolve all length-based properties in a Property to pixel values.
 pub fn resolve_property(
     property: &Property,
@@ -204,6 +228,18 @@ mod tests {
     fn resolve_px_passthrough() {
         let v = resolve_value(&LengthValue::Px(42.0), 16.0, 16.0, VP, 800.0);
         assert_eq!(v, 42.0);
+    }
+
+    #[test]
+    fn resolve_unitless_line_height_against_element_font_size() {
+        let value = resolve_line_height(&LengthValue::Em(1.5), 24.0, 16.0, VP);
+        assert_eq!(value, LengthValue::Px(36.0));
+    }
+
+    #[test]
+    fn resolve_percent_line_height_against_element_font_size() {
+        let value = resolve_line_height(&LengthValue::Percent(125.0), 24.0, 16.0, VP);
+        assert_eq!(value, LengthValue::Px(30.0));
     }
 
     #[test]

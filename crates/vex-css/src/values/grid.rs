@@ -88,7 +88,10 @@ impl TrackList {
                 continue;
             }
 
-            if let Some(stripped) = buf.strip_prefix("repeat(").and_then(|s| s.strip_suffix(')')) {
+            if let Some(stripped) = buf
+                .strip_prefix("repeat(")
+                .and_then(|s| s.strip_suffix(')'))
+            {
                 // repeat(3, 1fr) or repeat(2, 100px)
                 if let Some((count_str, size_str)) = stripped.split_once(',') {
                     if let Ok(count) = count_str.trim().parse::<usize>() {
@@ -122,7 +125,10 @@ fn parse_single_track(input: &str) -> TrackSize {
     }
 
     // minmax(a, b)
-    if let Some(inner) = input.strip_prefix("minmax(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = input
+        .strip_prefix("minmax(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         if let Some((a, b)) = inner.split_once(',') {
             return TrackSize::MinMax(
                 Box::new(parse_single_track(a.trim())),

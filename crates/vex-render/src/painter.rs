@@ -15,8 +15,8 @@ use vex_core::VexId;
 use vex_css::computed::ComputedStyle;
 use vex_css::values::box_model::{BorderStyle, Visibility};
 use vex_dom::node::NodeData;
-use vex_dom::ElementState;
 use vex_dom::Document;
+use vex_dom::ElementState;
 use vex_layout::LayoutBox;
 
 use crate::display_list::{DisplayCommand, DisplayList, ImageId, RenderBorderStyle};
@@ -249,7 +249,13 @@ fn paint_children(
             let z = child
                 .node_id
                 .and_then(|id| styles.get(&id))
-                .map(|s| if s.position.is_positioned() { s.z_index } else { 0 })
+                .map(|s| {
+                    if s.position.is_positioned() {
+                        s.z_index
+                    } else {
+                        0
+                    }
+                })
                 .unwrap_or(0);
             (idx, z)
         })
@@ -257,7 +263,14 @@ fn paint_children(
 
     order.sort_by_key(|(_, z)| *z);
     for (idx, _) in order {
-        paint_box(&layout_box.children[idx], styles, document, images, viewport, dl);
+        paint_box(
+            &layout_box.children[idx],
+            styles,
+            document,
+            images,
+            viewport,
+            dl,
+        );
     }
 }
 

@@ -35,8 +35,6 @@ pub enum TimingFunction {
     Steps(u32, StepPosition),
 }
 
-
-
 impl TimingFunction {
     /// Evaluate the easing at progress `t` ∈ [0, 1], returning the output value.
     pub fn evaluate(&self, t: f32) -> f32 {
@@ -212,8 +210,11 @@ impl KeyframeRule {
             offset: offset.clamp(0.0, 1.0),
             declarations,
         });
-        self.keyframes
-            .sort_by(|a, b| a.offset.partial_cmp(&b.offset).unwrap_or(std::cmp::Ordering::Equal));
+        self.keyframes.sort_by(|a, b| {
+            a.offset
+                .partial_cmp(&b.offset)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     /// Get the two keyframes surrounding a given progress value.
@@ -436,7 +437,10 @@ mod tests {
 
     #[test]
     fn timing_parse_keywords() {
-        assert_eq!(TimingFunction::parse("linear"), Some(TimingFunction::Linear));
+        assert_eq!(
+            TimingFunction::parse("linear"),
+            Some(TimingFunction::Linear)
+        );
         assert_eq!(TimingFunction::parse("ease"), Some(TimingFunction::Ease));
         assert_eq!(
             TimingFunction::parse("ease-in-out"),

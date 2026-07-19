@@ -188,16 +188,18 @@ fn layout_block_children(
                 cursor_y += collapsed - prev_margin_bottom;
 
                 // Position child
-                child.dimensions.content.origin.x = layout_box.dimensions.content.origin.x
+                let target_x = layout_box.dimensions.content.origin.x
                     + child.dimensions.margin.left
                     + child.dimensions.padding.left
                     + child.dimensions.border.left;
 
-                child.dimensions.content.origin.y = layout_box.dimensions.content.origin.y
+                let target_y = layout_box.dimensions.content.origin.y
                     + cursor_y
                     + child.dimensions.margin.top
                     + child.dimensions.padding.top
                     + child.dimensions.border.top;
+                let old_origin = child.dimensions.content.origin;
+                child.translate_subtree(target_x - old_origin.x, target_y - old_origin.y);
 
                 // Advance cursor
                 cursor_y += child.dimensions.margin_box().size.height;
@@ -206,9 +208,10 @@ fn layout_block_children(
             BoxType::Inline | BoxType::InlineBlock => {
                 // Inline children in a block context get treated as a single line
                 // (proper inline layout is handled by inline.rs)
-                child.dimensions.content.origin.x = layout_box.dimensions.content.origin.x;
-                child.dimensions.content.origin.y =
-                    layout_box.dimensions.content.origin.y + cursor_y;
+                let target_x = layout_box.dimensions.content.origin.x;
+                let target_y = layout_box.dimensions.content.origin.y + cursor_y;
+                let old_origin = child.dimensions.content.origin;
+                child.translate_subtree(target_x - old_origin.x, target_y - old_origin.y);
                 cursor_y += child.dimensions.margin_box().size.height;
                 prev_margin_bottom = 0.0;
             }

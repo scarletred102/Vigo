@@ -67,9 +67,7 @@ pub fn build_indexed_db_with_dir(base_dir: &str, origin: &str, context: &mut Con
         NativeFunction::from_closure(move |_this, args, ctx| {
             let name = args
                 .first()
-                .ok_or_else(|| {
-                    JsNativeError::typ().with_message("indexedDB.open requires a name")
-                })?
+                .ok_or_else(|| JsNativeError::typ().with_message("indexedDB.open requires a name"))?
                 .to_string(ctx)?
                 .to_std_string_escaped();
             let version = args.get(1).and_then(|v| v.as_number()).unwrap_or(1.0) as u32;

@@ -40,4 +40,6 @@ pub use multicol::{
 };
 pub use position::Position;
 pub use text::{Overflow, TextAlign, TextDecoration, VerticalAlign, WhiteSpace};
-pub use transform::{FilterFunction, FilterList, TransformFunction, TransformList, TransformOrigin};
+pub use transform::{
+    FilterFunction, FilterList, TransformFunction, TransformList, TransformOrigin,
+};

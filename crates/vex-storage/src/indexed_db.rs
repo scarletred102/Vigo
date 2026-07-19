@@ -214,9 +214,7 @@ impl IdbDatabase {
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<Vec<_>, _>>()?;
 
-        let insert_sql = format!(
-            "INSERT OR REPLACE INTO [{table}] (idx_key, pk) VALUES (?1, ?2)"
-        );
+        let insert_sql = format!("INSERT OR REPLACE INTO [{table}] (idx_key, pk) VALUES (?1, ?2)");
         for (pk, json_str) in &rows {
             if let Ok(val) = serde_json::from_str::<JsonValue>(json_str) {
                 if let Some(idx_val) = extract_key_path(&val, key_path) {
@@ -252,9 +250,8 @@ impl IdbDatabase {
                 Ok((key, val_str))
             })?
             .filter_map(|r| {
-                r.ok().and_then(|(k, v)| {
-                    serde_json::from_str(&v).ok().map(|parsed| (k, parsed))
-                })
+                r.ok()
+                    .and_then(|(k, v)| serde_json::from_str(&v).ok().map(|parsed| (k, parsed)))
             })
             .collect();
         Ok(results)
@@ -267,9 +264,7 @@ impl IdbDatabase {
         range: Option<&KeyRange>,
     ) -> StorageResult<Vec<(String, JsonValue)>> {
         validate_name(store)?;
-        let (where_clause, bind_params) = range
-            .map(|r| r.to_sql_clause("key"))
-            .unwrap_or_default();
+        let (where_clause, bind_params) = range.map(|r| r.to_sql_clause("key")).unwrap_or_default();
 
         let sql = if where_clause.is_empty() {
             format!("SELECT key, value FROM [{store}] ORDER BY key")
@@ -278,8 +273,10 @@ impl IdbDatabase {
         };
 
         let mut stmt = self.conn.prepare(&sql)?;
-        let refs: Vec<&dyn rusqlite::types::ToSql> =
-            bind_params.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+        let refs: Vec<&dyn rusqlite::types::ToSql> = bind_params
+            .iter()
+            .map(|s| s as &dyn rusqlite::types::ToSql)
+            .collect();
         let results: Vec<(String, JsonValue)> = stmt
             .query_map(refs.as_slice(), |row| {
                 let key: String = row.get(0)?;
@@ -287,9 +284,8 @@ impl IdbDatabase {
                 Ok((key, val_str))
             })?
             .filter_map(|r| {
-                r.ok().and_then(|(k, v)| {
-                    serde_json::from_str(&v).ok().map(|parsed| (k, parsed))
-                })
+                r.ok()
+                    .and_then(|(k, v)| serde_json::from_str(&v).ok().map(|parsed| (k, parsed)))
             })
             .collect();
         Ok(results)
@@ -507,9 +503,7 @@ impl<'a> IdbTransaction<'a> {
         direction: CursorDirection,
     ) -> StorageResult<IdbCursor> {
         validate_name(store)?;
-        let (where_clause, bind_params) = range
-            .map(|r| r.to_sql_clause("key"))
-            .unwrap_or_default();
+        let (where_clause, bind_params) = range.map(|r| r.to_sql_clause("key")).unwrap_or_default();
 
         let order = match direction {
             CursorDirection::Next | CursorDirection::NextUnique => "ASC",
@@ -519,14 +513,14 @@ impl<'a> IdbTransaction<'a> {
         let sql = if where_clause.is_empty() {
             format!("SELECT key, value FROM [{store}] ORDER BY key {order}")
         } else {
-            format!(
-                "SELECT key, value FROM [{store}] WHERE {where_clause} ORDER BY key {order}"
-            )
+            format!("SELECT key, value FROM [{store}] WHERE {where_clause} ORDER BY key {order}")
         };
 
         let mut stmt = self.conn.prepare(&sql)?;
-        let refs: Vec<&dyn rusqlite::types::ToSql> =
-            bind_params.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+        let refs: Vec<&dyn rusqlite::types::ToSql> = bind_params
+            .iter()
+            .map(|s| s as &dyn rusqlite::types::ToSql)
+            .collect();
         let rows: Vec<(String, JsonValue)> = stmt
             .query_map(refs.as_slice(), |row| {
                 let key: String = row.get(0)?;
@@ -534,9 +528,8 @@ impl<'a> IdbTransaction<'a> {
                 Ok((key, val_str))
             })?
             .filter_map(|r| {
-                r.ok().and_then(|(k, v)| {
-                    serde_json::from_str(&v).ok().map(|parsed| (k, parsed))
-                })
+                r.ok()
+                    .and_then(|(k, v)| serde_json::from_str(&v).ok().map(|parsed| (k, parsed)))
             })
             .collect();
 
@@ -603,7 +596,9 @@ impl IdbCursor {
 
     /// Current (key, value) pair.
     pub fn current(&self) -> Option<(&str, &JsonValue)> {
-        self.records.get(self.position).map(|(k, v)| (k.as_str(), v))
+        self.records
+            .get(self.position)
+            .map(|(k, v)| (k.as_str(), v))
     }
 
     /// Advance the cursor by one position.
@@ -780,10 +775,7 @@ mod tests {
         tx.abort().unwrap();
 
         // Abort should restore original state.
-        assert_eq!(
-            db.get("data", "existing").unwrap(),
-            Some(json!("keep"))
-        );
+        assert_eq!(db.get("data", "existing").unwrap(), Some(json!("keep")));
         assert!(db.get("data", "new_key").unwrap().is_none());
     }
 
@@ -862,7 +854,8 @@ mod tests {
         let mut db = IdbDatabase::open_in_memory("curdb", 1).unwrap();
         db.create_object_store("items").unwrap();
         for c in ['a', 'b', 'c', 'd', 'e'] {
-            db.put("items", &c.to_string(), &json!(c.to_string())).unwrap();
+            db.put("items", &c.to_string(), &json!(c.to_string()))
+                .unwrap();
         }
 
         let range = KeyRange::bound("b", "d", false, false);
@@ -918,7 +911,8 @@ mod tests {
     fn get_all_with_range() {
         let db = db();
         for c in ['a', 'b', 'c', 'd', 'e'] {
-            db.put("items", &c.to_string(), &json!(c.to_string())).unwrap();
+            db.put("items", &c.to_string(), &json!(c.to_string()))
+                .unwrap();
         }
 
         let range = KeyRange::bound("b", "d", false, true);
@@ -939,9 +933,12 @@ mod tests {
     #[test]
     fn create_and_query_index() {
         let db = db();
-        db.put("items", "1", &json!({"name": "Alice", "age": 30})).unwrap();
-        db.put("items", "2", &json!({"name": "Bob", "age": 25})).unwrap();
-        db.put("items", "3", &json!({"name": "Alice", "age": 35})).unwrap();
+        db.put("items", "1", &json!({"name": "Alice", "age": 30}))
+            .unwrap();
+        db.put("items", "2", &json!({"name": "Bob", "age": 25}))
+            .unwrap();
+        db.put("items", "3", &json!({"name": "Alice", "age": 35}))
+            .unwrap();
 
         db.create_index("items", "by_name", "name", false).unwrap();
         let results = db.get_by_index("items", "by_name", "Alice").unwrap();
@@ -955,7 +952,8 @@ mod tests {
         let mut db = IdbDatabase::open_in_memory("curdb", 1).unwrap();
         db.create_object_store("items").unwrap();
         for c in ['a', 'b', 'c', 'd', 'e'] {
-            db.put("items", &c.to_string(), &json!(c.to_string())).unwrap();
+            db.put("items", &c.to_string(), &json!(c.to_string()))
+                .unwrap();
         }
 
         let tx = db.transaction(TransactionMode::ReadOnly).unwrap();

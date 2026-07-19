@@ -172,8 +172,11 @@ impl JsRuntime {
                 );
                 crate::api::local_storage::shared_local_storage_in_memory()
             });
-        let local_storage =
-            crate::api::local_storage::build_local_storage(&local_store, &origin, &mut self.context);
+        let local_storage = crate::api::local_storage::build_local_storage(
+            &local_store,
+            &origin,
+            &mut self.context,
+        );
         self.register_global_and_window_property("localStorage", local_storage);
 
         // sessionStorage (origin + tab scoped in-memory storage)
@@ -198,8 +201,8 @@ impl JsRuntime {
 
         // document.cookie
         let cookie_db = format!("{storage_root}/cookies.sqlite3");
-        let cookie_store = crate::api::document::shared_cookie_store(&cookie_db)
-            .unwrap_or_else(|e| {
+        let cookie_store =
+            crate::api::document::shared_cookie_store(&cookie_db).unwrap_or_else(|e| {
                 tracing::warn!(
                     target: "vex_js::runtime",
                     error = %e,
@@ -618,11 +621,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("time should be monotonic")
             .as_nanos();
-        format!(
-            "target/tmp/{label}_{}_{}",
-            std::process::id(),
-            stamp
-        )
+        format!("target/tmp/{label}_{}_{}", std::process::id(), stamp)
     }
 
     fn make_min_doc() -> SharedDocument {
@@ -713,11 +712,16 @@ mod tests {
     #[test]
     fn queue_microtask_runs_after_sync_script() {
         let mut rt = JsRuntime::new();
-        rt.execute("var order = []; order.push('sync'); queueMicrotask(() => order.push('micro'));")
-            .unwrap();
+        rt.execute(
+            "var order = []; order.push('sync'); queueMicrotask(() => order.push('micro'));",
+        )
+        .unwrap();
 
         let result = rt.eval("order.join(',')").unwrap();
-        assert_eq!(result.as_string().unwrap().to_std_string_escaped(), "sync,micro");
+        assert_eq!(
+            result.as_string().unwrap().to_std_string_escaped(),
+            "sync,micro"
+        );
     }
 
     #[test]
@@ -742,7 +746,10 @@ mod tests {
 
         rt.run_pending_timers();
         let result = rt.eval("out.join(',')").unwrap();
-        assert_eq!(result.as_string().unwrap().to_std_string_escaped(), "timer,micro");
+        assert_eq!(
+            result.as_string().unwrap().to_std_string_escaped(),
+            "timer,micro"
+        );
     }
 
     #[test]
@@ -755,16 +762,28 @@ mod tests {
         rt.register_page_storage_apis_with_root("https://example.com/page", 7, None, &root);
 
         let has_local = rt.eval("typeof localStorage").unwrap();
-        assert_eq!(has_local.as_string().unwrap().to_std_string_escaped(), "object");
+        assert_eq!(
+            has_local.as_string().unwrap().to_std_string_escaped(),
+            "object"
+        );
 
         let has_session = rt.eval("typeof sessionStorage").unwrap();
-        assert_eq!(has_session.as_string().unwrap().to_std_string_escaped(), "object");
+        assert_eq!(
+            has_session.as_string().unwrap().to_std_string_escaped(),
+            "object"
+        );
 
         let has_indexed = rt.eval("typeof indexedDB").unwrap();
-        assert_eq!(has_indexed.as_string().unwrap().to_std_string_escaped(), "object");
+        assert_eq!(
+            has_indexed.as_string().unwrap().to_std_string_escaped(),
+            "object"
+        );
 
         let has_cookie = rt.eval("typeof document.cookie").unwrap();
-        assert_eq!(has_cookie.as_string().unwrap().to_std_string_escaped(), "string");
+        assert_eq!(
+            has_cookie.as_string().unwrap().to_std_string_escaped(),
+            "string"
+        );
     }
 
     #[test]

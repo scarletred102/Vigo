@@ -220,7 +220,8 @@ mod tests {
     fn parse_html_bytes_with_content_type_charset() {
         // café in windows-1252 uses 0xE9.
         let bytes = b"<html><body><p>caf\xE9</p></body></html>";
-        let doc = parse_html_bytes_with_content_type(bytes, Some("text/html; charset=windows-1252"));
+        let doc =
+            parse_html_bytes_with_content_type(bytes, Some("text/html; charset=windows-1252"));
         let p = doc.get_elements_by_tag_name("p");
         assert_eq!(p.len(), 1);
         assert_eq!(doc.text_content(p[0]), "café");

@@ -160,10 +160,9 @@ impl WebSocket {
             .body(())
             .map_err(|e| WsError::ConnectionFailed(e.to_string()))?;
 
-        let (ws_stream, response) =
-            tokio_tungstenite::connect_async(request)
-                .await
-                .map_err(|e| WsError::ConnectionFailed(e.to_string()))?;
+        let (ws_stream, response) = tokio_tungstenite::connect_async(request)
+            .await
+            .map_err(|e| WsError::ConnectionFailed(e.to_string()))?;
 
         // Extract negotiated protocol.
         self.protocol = response
@@ -329,12 +328,12 @@ fn ws_to_tungstenite(msg: WsMessage) -> tungstenite::Message {
         WsMessage::Binary(b) => tungstenite::Message::Binary(b),
         WsMessage::Ping(p) => tungstenite::Message::Ping(p),
         WsMessage::Pong(p) => tungstenite::Message::Pong(p),
-        WsMessage::Close(Some(f)) => tungstenite::Message::Close(Some(
-            tungstenite::protocol::CloseFrame {
+        WsMessage::Close(Some(f)) => {
+            tungstenite::Message::Close(Some(tungstenite::protocol::CloseFrame {
                 code: tungstenite::protocol::frame::coding::CloseCode::from(f.code),
                 reason: f.reason.into(),
-            },
-        )),
+            }))
+        }
         WsMessage::Close(None) => tungstenite::Message::Close(None),
     }
 }

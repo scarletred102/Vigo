@@ -106,7 +106,11 @@ fn request_animation_frame(
     Ok(JsValue::from(id))
 }
 
-fn cancel_animation_frame(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+fn cancel_animation_frame(
+    _: &JsValue,
+    args: &[JsValue],
+    context: &mut Context,
+) -> JsResult<JsValue> {
     clear_timeout(&JsValue::undefined(), args, context)
 }
 
@@ -327,9 +331,8 @@ mod tests {
         let mut rt = JsRuntime::new();
         register(rt.context_mut());
 
-        let result = rt.eval(
-            "var id = requestAnimationFrame(function(ts) {}); cancelAnimationFrame(id);",
-        );
+        let result =
+            rt.eval("var id = requestAnimationFrame(function(ts) {}); cancelAnimationFrame(id);");
         assert!(result.is_ok());
     }
 
@@ -339,6 +342,9 @@ mod tests {
         register(rt.context_mut());
 
         let result = rt.eval("typeof queueMicrotask").unwrap();
-        assert_eq!(result.as_string().unwrap().to_std_string_escaped(), "function");
+        assert_eq!(
+            result.as_string().unwrap().to_std_string_escaped(),
+            "function"
+        );
     }
 }

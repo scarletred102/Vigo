@@ -426,7 +426,9 @@ mod tests {
         assert!(mgr.post_message(id, WorkerMessage::new("hello")));
 
         // Simulate worker reply
-        mgr.get_mut(id).unwrap().send_to_main(WorkerMessage::new("reply"));
+        mgr.get_mut(id)
+            .unwrap()
+            .send_to_main(WorkerMessage::new("reply"));
         let reply = mgr.receive_message(id).unwrap();
         assert_eq!(reply.data, "reply");
     }

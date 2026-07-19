@@ -24,7 +24,10 @@ pub struct Http3Config {
 }
 
 /// Validate whether HTTP/3 may be attempted under current config.
-pub fn validate_http3_attempt(config: &Http3Config, preference: HttpVersionPreference) -> VexResult<()> {
+pub fn validate_http3_attempt(
+    config: &Http3Config,
+    preference: HttpVersionPreference,
+) -> VexResult<()> {
     if preference == HttpVersionPreference::Http3 && !config.enabled {
         return Err(VexError::Network(
             "HTTP/3 requested but not enabled in client config".to_string(),

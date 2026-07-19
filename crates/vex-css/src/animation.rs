@@ -142,11 +142,7 @@ impl AnimationInstance {
             AnimationDirection::AlternateReverse => iteration % 2 == 0,
         };
 
-        let directed = if reversed {
-            1.0 - progress
-        } else {
-            progress
-        };
+        let directed = if reversed { 1.0 - progress } else { progress };
 
         self.timing_function.evaluate(directed)
     }
@@ -272,7 +268,12 @@ impl AnimationEngine {
     }
 
     /// Check whether a property should be transitioned on the given element.
-    pub fn should_transition(&self, _element_id: VexId, property: &str, transition_prop: &TransitionProperty) -> bool {
+    pub fn should_transition(
+        &self,
+        _element_id: VexId,
+        property: &str,
+        transition_prop: &TransitionProperty,
+    ) -> bool {
         match transition_prop {
             TransitionProperty::All => is_animatable(property),
             TransitionProperty::None => false,
@@ -406,8 +407,8 @@ mod tests {
     fn animation_basic_progress() {
         let mut anim = AnimationInstance::new(
             "fade",
-            1.0,  // 1 second
-            0.0,  // no delay
+            1.0, // 1 second
+            0.0, // no delay
             TimingFunction::Linear,
             AnimationIterationCount::Number(1.0),
             AnimationDirection::Normal,
@@ -542,14 +543,16 @@ mod tests {
 
     #[test]
     fn transition_basic() {
-        let mut trans = TransitionInstance::new("opacity", 0.0, 1.0, 1.0, 0.0, TimingFunction::Linear);
+        let mut trans =
+            TransitionInstance::new("opacity", 0.0, 1.0, 1.0, 0.0, TimingFunction::Linear);
         let v = trans.tick(0.5);
         assert!((v - 0.5).abs() < 0.01);
     }
 
     #[test]
     fn transition_with_delay() {
-        let mut trans = TransitionInstance::new("opacity", 0.0, 1.0, 1.0, 0.5, TimingFunction::Linear);
+        let mut trans =
+            TransitionInstance::new("opacity", 0.0, 1.0, 1.0, 0.5, TimingFunction::Linear);
         let v = trans.tick(0.3);
         assert!((v - 0.0).abs() < 0.01); // Still in delay
 
@@ -559,7 +562,8 @@ mod tests {
 
     #[test]
     fn transition_finishes() {
-        let mut trans = TransitionInstance::new("width", 100.0, 200.0, 0.5, 0.0, TimingFunction::Linear);
+        let mut trans =
+            TransitionInstance::new("width", 100.0, 200.0, 0.5, 0.0, TimingFunction::Linear);
         let v = trans.tick(0.6);
         assert!((v - 200.0).abs() < 0.01);
         assert!(trans.finished);
@@ -567,7 +571,8 @@ mod tests {
 
     #[test]
     fn transition_ease_in() {
-        let mut trans = TransitionInstance::new("opacity", 0.0, 1.0, 1.0, 0.0, TimingFunction::EaseIn);
+        let mut trans =
+            TransitionInstance::new("opacity", 0.0, 1.0, 1.0, 0.0, TimingFunction::EaseIn);
         let v = trans.tick(0.5);
         // Ease-in is slow at start, so at 50% time, should be < 50% value
         assert!(v < 0.5);

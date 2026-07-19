@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use vex_core::{VexError, VexResult, VexUrl};
 
 use crate::cache::{
-    parse_cache_control, CachedResponse, CacheDirectives, INTERNAL_PARTITION_HEADER,
+    parse_cache_control, CacheDirectives, CachedResponse, INTERNAL_PARTITION_HEADER,
 };
 
 #[derive(Debug, Clone)]
@@ -189,7 +189,8 @@ impl DiskCache {
         if let Some(cc) = response_headers.get("cache-control") {
             meta.directives = parse_cache_control(cc);
         }
-        meta.freshness_lifetime_secs = compute_freshness_lifetime_secs(&meta.headers, &meta.directives);
+        meta.freshness_lifetime_secs =
+            compute_freshness_lifetime_secs(&meta.headers, &meta.directives);
         meta.stored_unix_secs = now_unix_secs();
 
         self.persist_index()?;
@@ -217,12 +218,7 @@ impl DiskCache {
     }
 
     fn evict_tiered_if_needed(&mut self) -> VexResult<()> {
-        let mut total = self
-            .index
-            .entries
-            .values()
-            .map(|m| m.body_len)
-            .sum::<u64>();
+        let mut total = self.index.entries.values().map(|m| m.body_len).sum::<u64>();
         if total <= self.cfg.max_bytes {
             return Ok(());
         }

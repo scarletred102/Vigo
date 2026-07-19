@@ -314,11 +314,7 @@ impl WebShare {
                 return false;
             }
             for file in &data.files {
-                if !self
-                    .allowed_file_types
-                    .iter()
-                    .any(|t| t == &file.mime_type)
-                {
+                if !self.allowed_file_types.iter().any(|t| t == &file.mime_type) {
                     return false;
                 }
             }
@@ -383,8 +379,11 @@ mod tests {
 
     #[test]
     fn metadata_artwork() {
-        let meta =
-            MediaMetadata::new("Song").add_artwork("https://example.com/art.png", Some("256x256"), Some("image/png"));
+        let meta = MediaMetadata::new("Song").add_artwork(
+            "https://example.com/art.png",
+            Some("256x256"),
+            Some("image/png"),
+        );
         assert_eq!(meta.artwork.len(), 1);
         assert_eq!(meta.artwork[0].src, "https://example.com/art.png");
     }
@@ -393,10 +392,7 @@ mod tests {
     fn playback_state() {
         let mut session = MediaSession::new();
         session.set_playback_state(MediaSessionPlaybackState::Playing);
-        assert_eq!(
-            session.playback_state(),
-            MediaSessionPlaybackState::Playing
-        );
+        assert_eq!(session.playback_state(), MediaSessionPlaybackState::Playing);
     }
 
     #[test]
@@ -465,7 +461,9 @@ mod tests {
         let share = WebShare::new(true);
         assert!(share.can_share());
 
-        let data = ShareData::new().with_title("Test").with_url("https://example.com");
+        let data = ShareData::new()
+            .with_title("Test")
+            .with_url("https://example.com");
         assert!(share.can_share_data(&data));
     }
 

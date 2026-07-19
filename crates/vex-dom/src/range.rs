@@ -217,7 +217,12 @@ pub struct StaticRange {
 }
 
 impl StaticRange {
-    pub fn new(start_container: VexId, start_offset: u32, end_container: VexId, end_offset: u32) -> Self {
+    pub fn new(
+        start_container: VexId,
+        start_offset: u32,
+        end_container: VexId,
+        end_offset: u32,
+    ) -> Self {
         Self {
             start_container,
             start_offset,

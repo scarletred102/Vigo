@@ -253,7 +253,11 @@ mod tests {
     fn push_state_adds_entry() {
         let mut h = SessionHistory::new();
         h.navigate("https://a.com", "A");
-        h.push_state(Some(r#"{"page": 2}"#.into()), "A Page 2", "https://a.com/page/2");
+        h.push_state(
+            Some(r#"{"page": 2}"#.into()),
+            "A Page 2",
+            "https://a.com/page/2",
+        );
 
         assert_eq!(h.length(), 2);
         assert_eq!(h.current_url(), Some("https://a.com/page/2"));

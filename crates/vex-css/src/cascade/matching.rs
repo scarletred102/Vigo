@@ -3,12 +3,14 @@
 
 //! Declaration matching: collect all CSS declarations that apply to an element.
 
-use vex_core::VexId;
 use vex_core::Size;
+use vex_core::VexId;
 use vex_dom::{matches_selector_list, NodeArena};
 
 use crate::cascade::origin::Origin;
-use crate::cascade::specificity::{estimate_specificity, specificity_from_selector_list, Specificity};
+use crate::cascade::specificity::{
+    estimate_specificity, specificity_from_selector_list, Specificity,
+};
 use crate::media::{evaluate_media, parse_media_condition};
 use crate::parser::Stylesheet;
 use crate::properties::{Declaration, Property};
@@ -137,7 +139,12 @@ mod tests {
             "@media (max-width: 600px) { .mobile { color: red; } } .mobile { color: blue; }",
         );
 
-        let wide = collect_matching_declarations(div, arena, std::slice::from_ref(&css), Size::new(1200.0, 800.0));
+        let wide = collect_matching_declarations(
+            div,
+            arena,
+            std::slice::from_ref(&css),
+            Size::new(1200.0, 800.0),
+        );
         let narrow = collect_matching_declarations(div, arena, &[css], Size::new(500.0, 800.0));
 
         // Narrow should include extra declaration from media rule.

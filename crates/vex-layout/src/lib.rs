@@ -165,4 +165,31 @@ mod tests {
         let tree = layout_document(&doc, &styles, Size::new(800.0, 600.0));
         assert!(any_inline_with_width(&tree));
     }
+
+    #[test]
+    fn nested_block_descendants_follow_their_positioned_parent() {
+        fn find_box(root: &LayoutBox, node_id: VexId) -> Option<&LayoutBox> {
+            if root.node_id == Some(node_id) {
+                return Some(root);
+            }
+            root.children
+                .iter()
+                .find_map(|child| find_box(child, node_id))
+        }
+
+        let doc = vex_html::parse_html(
+            "<html><body><div><p>Nested browser content</p></div></body></html>",
+        );
+        let styles = vex_css::compute_styles(&doc, &[], Size::new(800.0, 600.0));
+        let tree = layout_document(&doc, &styles, Size::new(800.0, 600.0));
+        let div = doc.get_elements_by_tag_name("div")[0];
+        let paragraph = doc.get_elements_by_tag_name("p")[0];
+        let div_box = find_box(&tree, div).expect("div layout box");
+        let paragraph_box = find_box(&tree, paragraph).expect("paragraph layout box");
+
+        assert!(
+            paragraph_box.dimensions.content.origin.y >= div_box.dimensions.content.origin.y,
+            "nested paragraph was not translated with its parent"
+        );
+    }
 }

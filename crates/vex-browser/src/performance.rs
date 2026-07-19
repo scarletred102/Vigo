@@ -283,17 +283,14 @@ impl Performance {
 
     /// Clear marks.
     pub fn clear_marks(&mut self, name: Option<&str>) {
-        self.entries.retain(|e| {
-            !(e.entry_type == EntryType::Mark
-                && name.map_or(true, |n| e.name == n))
-        });
+        self.entries
+            .retain(|e| !(e.entry_type == EntryType::Mark && name.map_or(true, |n| e.name == n)));
     }
 
     /// Clear measures.
     pub fn clear_measures(&mut self, name: Option<&str>) {
         self.entries.retain(|e| {
-            !(e.entry_type == EntryType::Measure
-                && name.map_or(true, |n| e.name == n))
+            !(e.entry_type == EntryType::Measure && name.map_or(true, |n| e.name == n))
         });
     }
 
@@ -434,8 +431,8 @@ mod tests {
 
     #[test]
     fn entry_with_detail() {
-        let entry = PerformanceEntry::new("test", EntryType::Mark, 0.0, 0.0)
-            .with_detail("extra info");
+        let entry =
+            PerformanceEntry::new("test", EntryType::Mark, 0.0, 0.0).with_detail("extra info");
         assert_eq!(entry.detail.as_deref(), Some("extra info"));
     }
 }

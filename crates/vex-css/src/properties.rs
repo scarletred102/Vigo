@@ -3,11 +3,11 @@
 
 //! CSS property enum covering ~50 most common properties.
 
-use crate::values::box_model::{BoxSizing, Visibility};
 use crate::values::animation::{
     AnimationDirection, AnimationFillMode, AnimationIterationCount, AnimationPlayState,
     TimingFunction, TransitionProperty,
 };
+use crate::values::box_model::{BoxSizing, Visibility};
 use crate::values::grid::{GridAutoFlow, GridLine, TrackList};
 use crate::values::text::Cursor;
 use crate::values::transform::{FilterList, TransformList, TransformOrigin};
@@ -119,15 +119,15 @@ pub enum Property {
 
     // Transitions
     TransitionProperty(TransitionProperty),
-    TransitionDuration(f32),       // seconds
+    TransitionDuration(f32), // seconds
     TransitionTimingFunction(TimingFunction),
-    TransitionDelay(f32),          // seconds
+    TransitionDelay(f32), // seconds
 
     // Animations
     AnimationName(String),
-    AnimationDuration(f32),        // seconds
+    AnimationDuration(f32), // seconds
     AnimationTimingFunction(TimingFunction),
-    AnimationDelay(f32),           // seconds
+    AnimationDelay(f32), // seconds
     AnimationIterationCount(AnimationIterationCount),
     AnimationDirection(AnimationDirection),
     AnimationFillMode(AnimationFillMode),
@@ -378,7 +378,7 @@ pub fn parse_declaration(name: &str, value: &str) -> Vec<Property> {
             .map(Property::FontStyle)
             .into_iter()
             .collect(),
-        "line-height" => parse_length_prop(value, Property::LineHeight),
+        "line-height" => parse_line_height(value),
 
         "text-align" => TextAlign::parse(value)
             .map(Property::TextAlign)
@@ -498,11 +498,9 @@ pub fn parse_declaration(name: &str, value: &str) -> Vec<Property> {
         "grid-column-end" => vec![Property::GridColumnEnd(GridLine::parse(value))],
         "grid-row-start" => vec![Property::GridRowStart(GridLine::parse(value))],
         "grid-row-end" => vec![Property::GridRowEnd(GridLine::parse(value))],
-        "grid-column" => parse_grid_line_shorthand(
-            value,
-            Property::GridColumnStart,
-            Property::GridColumnEnd,
-        ),
+        "grid-column" => {
+            parse_grid_line_shorthand(value, Property::GridColumnStart, Property::GridColumnEnd)
+        }
         "grid-row" => {
             parse_grid_line_shorthand(value, Property::GridRowStart, Property::GridRowEnd)
         }
@@ -522,7 +520,9 @@ pub fn parse_declaration(name: &str, value: &str) -> Vec<Property> {
 
         // Transitions
         "transition-property" => {
-            vec![Property::TransitionProperty(TransitionProperty::parse(value))]
+            vec![Property::TransitionProperty(TransitionProperty::parse(
+                value,
+            ))]
         }
         "transition-duration" => crate::values::animation::parse_time(value)
             .map(Property::TransitionDuration)
@@ -571,7 +571,9 @@ pub fn parse_declaration(name: &str, value: &str) -> Vec<Property> {
 
         // Transform & filters
         "transform" => vec![Property::Transform(TransformList::parse(value.trim()))],
-        "transform-origin" => vec![Property::TransformOrigin(TransformOrigin::parse(value.trim()))],
+        "transform-origin" => vec![Property::TransformOrigin(TransformOrigin::parse(
+            value.trim(),
+        ))],
         "filter" => vec![Property::Filter(FilterList::parse(value.trim()))],
         "backdrop-filter" => vec![Property::BackdropFilter(FilterList::parse(value.trim()))],
 
@@ -601,6 +603,24 @@ fn parse_font_size(value: &str) -> Vec<Property> {
         other => length::parse_length(other),
     };
     length.map(Property::FontSize).into_iter().collect()
+}
+
+/// Parse CSS `line-height` values.
+///
+/// Unlike general length properties, a unitless line-height is a multiplier of
+/// the element's computed font size rather than a pixel value. Represent it as
+/// `em` until the style-computation pass knows that font size.
+fn parse_line_height(value: &str) -> Vec<Property> {
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("normal") {
+        return vec![Property::LineHeight(LengthValue::Em(1.2))];
+    }
+
+    if let Ok(multiplier) = value.parse::<f32>() {
+        return vec![Property::LineHeight(LengthValue::Em(multiplier))];
+    }
+
+    parse_length_prop(value, Property::LineHeight)
 }
 
 /// Parse a 1-4 value shorthand (margin, padding, border-width).

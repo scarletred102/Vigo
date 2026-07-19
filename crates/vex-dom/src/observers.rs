@@ -107,12 +107,7 @@ impl IntersectionObserver {
     /// `element_rects` maps each observed VexId to its current bounding rect.
     /// `viewport` is the root bounds (screen/viewport rect).
     /// `time` is the current frame timestamp.
-    pub fn check(
-        &mut self,
-        viewport: Rect,
-        element_rects: &HashMap<VexId, Rect>,
-        time: f64,
-    ) {
+    pub fn check(&mut self, viewport: Rect, element_rects: &HashMap<VexId, Rect>, time: f64) {
         let root_viewport = if let Some(root_id) = self.options.root {
             element_rects.get(&root_id).copied().unwrap_or(viewport)
         } else {
@@ -141,8 +136,7 @@ impl IntersectionObserver {
             // Only notify if threshold crossing changed.
             if threshold_idx != state.last_threshold_index || state.last_ratio < 0.0 {
                 let is_intersecting = ratio > 0.0
-                    || (ratio == 0.0
-                        && self.options.thresholds.first().is_some_and(|&t| t == 0.0));
+                    || (ratio == 0.0 && self.options.thresholds.first().is_some_and(|&t| t == 0.0));
 
                 self.pending_entries.push(IntersectionEntry {
                     target: *target,

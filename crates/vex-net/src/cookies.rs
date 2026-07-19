@@ -8,9 +8,9 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
-use vex_crypto::{decrypt, derive_key, encrypt, generate_salt};
 use vex_core::VexUrl;
 use vex_core::{VexError, VexResult};
+use vex_crypto::{decrypt, derive_key, encrypt, generate_salt};
 
 /// A single stored cookie.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,11 +194,7 @@ impl CookieJar {
         cookies.sort_by(|a, b| {
             priority_rank(b.priority)
                 .cmp(&priority_rank(a.priority))
-                .then_with(|| {
-                    b.path
-                .len()
-                .cmp(&a.path.len())
-                })
+                .then_with(|| b.path.len().cmp(&a.path.len()))
                 .then_with(|| a.name.cmp(&b.name))
         });
 
@@ -316,8 +312,8 @@ fn domain_matches(host: &str, domain: &str, host_only: bool) -> bool {
 fn is_public_suffix(domain: &str) -> bool {
     // Minimal embedded suffix set for safety; can be replaced by full PSL data.
     const COMMON_SUFFIXES: &[&str] = &[
-        "com", "org", "net", "edu", "gov", "mil", "io", "app", "dev", "co", "uk",
-        "co.uk", "ac.uk", "de", "fr", "jp", "cn", "ru", "br", "au", "ca",
+        "com", "org", "net", "edu", "gov", "mil", "io", "app", "dev", "co", "uk", "co.uk", "ac.uk",
+        "de", "fr", "jp", "cn", "ru", "br", "au", "ca",
     ];
 
     let d = domain.trim().to_ascii_lowercase();
@@ -673,7 +669,9 @@ mod tests {
         let restored = CookieJar::new();
         restored.import_json(&json).expect("import json");
 
-        let cookies = restored.get_cookies(&test_url("https://example.com/app/page")).unwrap();
+        let cookies = restored
+            .get_cookies(&test_url("https://example.com/app/page"))
+            .unwrap();
         assert!(cookies.contains("a=1"));
         assert!(cookies.contains("b=2"));
     }

@@ -2,7 +2,6 @@
 
 # ── Rust ────────────────────────────────────────────────────────
 target/
-Cargo.lock
 
 # ── Zig ─────────────────────────────────────────────────────────
 zig/zig-cache/
@@ -34,6 +33,9 @@ Desktop.ini
 # ── Reference material (porting only) ──────────────────────────
 reference/
 refs/
+
+# ── Internal planning and review notes ──────────────────────────
+.internal-docs/
 
 # ── Secrets ─────────────────────────────────────────────────────
 *.key

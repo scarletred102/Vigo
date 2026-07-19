@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use vex_core::{Rect, VexId};
+use vex_core::VexId;
 use vex_css::values::text::{TextAlign, WhiteSpace};
 use vex_css::ComputedStyle;
 use vex_dom::{NodeArena, NodeData};
@@ -84,12 +84,12 @@ pub fn layout_inline_children(
 
         for frag in &line.fragments {
             let child = &mut layout_box.children[frag.child_index];
-            child.dimensions.content = Rect::new(
-                content_x + offset_x + frag.x,
-                content_y + cursor_y + frag.y,
-                frag.width,
-                frag.height,
-            );
+            let old_origin = child.dimensions.content.origin;
+            let target_x = content_x + offset_x + frag.x;
+            let target_y = content_y + cursor_y + frag.y;
+            child.translate_subtree(target_x - old_origin.x, target_y - old_origin.y);
+            child.dimensions.content.size.width = frag.width;
+            child.dimensions.content.size.height = frag.height;
         }
         cursor_y += line.height;
     }
@@ -335,6 +335,7 @@ fn apply_justify(line: &mut LineBox, available_width: f32, is_last_line: bool) {
 mod tests {
     use super::*;
     use crate::box_model::BoxType;
+    use vex_core::Rect;
 
     #[test]
     fn align_offset_left() {

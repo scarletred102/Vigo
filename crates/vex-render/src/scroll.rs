@@ -121,8 +121,10 @@ impl ScrollState {
 
         // Kinetic contribution.
         if self.velocity_x.abs() > 0.1 || self.velocity_y.abs() > 0.1 {
-            self.target_x = (self.target_x + self.velocity_x * dt_seconds).clamp(0.0, self.max_scroll_x());
-            self.target_y = (self.target_y + self.velocity_y * dt_seconds).clamp(0.0, self.max_scroll_y());
+            self.target_x =
+                (self.target_x + self.velocity_x * dt_seconds).clamp(0.0, self.max_scroll_x());
+            self.target_y =
+                (self.target_y + self.velocity_y * dt_seconds).clamp(0.0, self.max_scroll_y());
 
             let decay = (-self.friction * dt_seconds).exp();
             self.velocity_x *= decay;

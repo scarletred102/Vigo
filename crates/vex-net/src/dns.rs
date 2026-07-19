@@ -9,9 +9,9 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use hyper_util::client::legacy::connect::dns::Name;
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 use hickory_resolver::TokioAsyncResolver;
+use hyper_util::client::legacy::connect::dns::Name;
 use tower::Service;
 use vex_core::{VexError, VexResult};
 
@@ -113,9 +113,10 @@ impl Service<Name> for HyperDnsResolver {
         let resolver = self.resolver.clone();
         let host = name.as_str().to_string();
         Box::pin(async move {
-            let ips = resolver.resolve(&host).await.map_err(|e| {
-                std::io::Error::other(format!("DNS resolve failed: {e}"))
-            })?;
+            let ips = resolver
+                .resolve(&host)
+                .await
+                .map_err(|e| std::io::Error::other(format!("DNS resolve failed: {e}")))?;
             let addrs: Vec<SocketAddr> = ips
                 .into_iter()
                 // Hyper sets the destination port later; resolver provides host IPs.

@@ -73,10 +73,7 @@ impl AbortSignal {
     /// Throw if the signal has been aborted (returns `Err` if aborted).
     pub fn throw_if_aborted(&self) -> Result<(), AbortReason> {
         if self.aborted() {
-            Err(self
-                .reason
-                .clone()
-                .unwrap_or(AbortReason::Default))
+            Err(self.reason.clone().unwrap_or(AbortReason::Default))
         } else {
             Ok(())
         }
@@ -119,9 +116,7 @@ impl AbortSignal {
     pub fn any(signals: &[&AbortSignal]) -> Self {
         for signal in signals {
             if signal.aborted() {
-                return Self::abort_with(
-                    signal.reason.clone().unwrap_or(AbortReason::Default),
-                );
+                return Self::abort_with(signal.reason.clone().unwrap_or(AbortReason::Default));
             }
         }
         let inner = Arc::new(SignalInner {

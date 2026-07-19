@@ -64,9 +64,16 @@ fn build_box_for_node(
             // Build children.
             let child_boxes = collect_child_boxes(node_id, arena, styles);
 
+            // Whitespace between block-level or flex/grid children is source
+            // formatting, not visible content. Keeping it creates anonymous
+            // line boxes for each newline and pushes real content far down the
+            // page. Preserve whitespace for inline-only formatting contexts.
+            let child_boxes = discard_block_boundary_whitespace(child_boxes, arena);
+
             // Anonymous block wrapping: if a block container has mixed
             // block + inline children, wrap inline runs in anonymous blocks.
-            if box_type == BoxType::Block || box_type == BoxType::Flex || box_type == BoxType::Grid {
+            if box_type == BoxType::Block || box_type == BoxType::Flex || box_type == BoxType::Grid
+            {
                 layout_box.children = wrap_anonymous_blocks(child_boxes);
             } else {
                 layout_box.children = child_boxes;
@@ -99,6 +106,37 @@ fn build_box_for_node(
     }
 }
 
+/// Remove whitespace-only text nodes when they sit beside block-level boxes.
+///
+/// Inline formatting contexts keep these nodes so that normal word spacing is
+/// preserved. In a block/flex/grid flow, however, they are only indentation or
+/// line breaks in the HTML source and must not become their own line boxes.
+fn discard_block_boundary_whitespace(
+    children: Vec<LayoutBox>,
+    arena: &vex_dom::NodeArena,
+) -> Vec<LayoutBox> {
+    let has_block_level_child = children.iter().any(|child| {
+        matches!(
+            child.box_type,
+            BoxType::Block | BoxType::Flex | BoxType::Grid
+        )
+    });
+
+    if !has_block_level_child {
+        return children;
+    }
+
+    children
+        .into_iter()
+        .filter(|child| {
+            !matches!(
+                child.node_id.map(|id| &arena.get(id).data),
+                Some(NodeData::Text(text)) if text.trim().is_empty()
+            )
+        })
+        .collect()
+}
+
 fn collect_child_boxes(
     node_id: VexId,
     arena: &vex_dom::NodeArena,
@@ -125,11 +163,9 @@ fn collect_child_boxes(
                     child_boxes.push(build_box_for_node(child_id, arena, styles));
                 }
             }
-            NodeData::Text(text) => {
-                // Preserve whitespace text nodes for inline formatting; only skip truly empty nodes.
-                if !text.is_empty() {
-                    child_boxes.push(LayoutBox::new(Some(child_id), BoxType::Inline));
-                }
+            // Preserve whitespace text nodes for inline formatting; only skip truly empty nodes.
+            NodeData::Text(text) if !text.is_empty() => {
+                child_boxes.push(LayoutBox::new(Some(child_id), BoxType::Inline));
             }
             _ => {} // Skip comments, doctypes
         }
@@ -146,7 +182,7 @@ fn display_to_box_type(display: Display) -> BoxType {
         Display::InlineBlock => BoxType::InlineBlock,
         Display::Flex | Display::InlineFlex => BoxType::Flex,
         Display::Grid | Display::InlineGrid => BoxType::Grid,
-        Display::None => BoxType::Block,     // Shouldn't reach here
+        Display::None => BoxType::Block, // Shouldn't reach here
         Display::Contents => BoxType::Block,
         Display::TableRow | Display::TableCell => BoxType::Block,
     }
@@ -155,8 +191,7 @@ fn display_to_box_type(display: Display) -> BoxType {
 /// If a list of child boxes has a mix of block and inline children,
 /// wrap consecutive inline children in anonymous block boxes.
 fn wrap_anonymous_blocks(children: Vec<LayoutBox>) -> Vec<LayoutBox> {
-    let is_block_level =
-        |bt: BoxType| matches!(bt, BoxType::Block | BoxType::Flex | BoxType::Grid);
+    let is_block_level = |bt: BoxType| matches!(bt, BoxType::Block | BoxType::Flex | BoxType::Grid);
     let has_block = children.iter().any(|c| is_block_level(c.box_type));
     let has_inline = children.iter().any(|c| !is_block_level(c.box_type));
 
@@ -259,6 +294,26 @@ mod tests {
         assert_eq!(wrapped[0].box_type, BoxType::Anonymous);
         assert_eq!(wrapped[1].box_type, BoxType::Block);
         assert_eq!(wrapped[2].box_type, BoxType::Anonymous);
+    }
+
+    #[test]
+    fn block_boundary_whitespace_does_not_create_layout_boxes() {
+        let html = "<html><body>\n  <div>First</div>\n  <div>Second</div>\n</body></html>";
+        let (doc, styles) = build_test(html);
+        let tree = build_layout_tree(&doc, &styles);
+        let body = doc.get_elements_by_tag_name("body")[0];
+
+        fn find_box(root: &LayoutBox, node_id: VexId) -> Option<&LayoutBox> {
+            if root.node_id == Some(node_id) {
+                return Some(root);
+            }
+            root.children
+                .iter()
+                .find_map(|child| find_box(child, node_id))
+        }
+
+        let body_box = find_box(&tree, body).expect("body layout box");
+        assert_eq!(body_box.children.len(), 2);
     }
 
     #[test]

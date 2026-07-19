@@ -438,10 +438,7 @@ mod tests {
         let reg = mgr.get(id2).unwrap();
         // The new worker is installing while the old one stays active.
         assert!(reg.installing.is_some());
-        assert_eq!(
-            reg.installing.as_ref().unwrap().script_url,
-            "/sw-v2.js"
-        );
+        assert_eq!(reg.installing.as_ref().unwrap().script_url, "/sw-v2.js");
         assert!(reg.is_active()); // Old v1 still active.
     }
 

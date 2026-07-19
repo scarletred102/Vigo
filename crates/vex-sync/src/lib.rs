@@ -285,7 +285,10 @@ impl SyncClient {
     }
 
     /// Pull records changed since the last sync timestamp for a collection.
-    pub async fn pull_records(&mut self, collection: SyncCollection) -> Result<Vec<SyncRecord>, SyncError> {
+    pub async fn pull_records(
+        &mut self,
+        collection: SyncCollection,
+    ) -> Result<Vec<SyncRecord>, SyncError> {
         let since = self.last_sync_time(collection);
         self.pull_records_since(collection, since).await
     }
@@ -359,7 +362,8 @@ impl SyncClient {
         value: &T,
         key: &vex_crypto::SymmetricKey,
     ) -> Result<(), SyncError> {
-        let data = serde_json::to_vec(value).map_err(|e| SyncError::Serialization(e.to_string()))?;
+        let data =
+            serde_json::to_vec(value).map_err(|e| SyncError::Serialization(e.to_string()))?;
         let mut record = Self::build_record(record_id, collection, &data, key)?;
         record.modified = now_unix_ms();
         self.push_records(collection, &[record]).await

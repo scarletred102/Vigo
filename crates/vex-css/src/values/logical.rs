@@ -383,14 +383,8 @@ mod tests {
     fn map_size_properties() {
         let wm = WritingMode::HorizontalTb;
         let dir = Direction::Ltr;
-        assert_eq!(
-            map_logical_property("inline-size", wm, dir),
-            Some("width")
-        );
-        assert_eq!(
-            map_logical_property("block-size", wm, dir),
-            Some("height")
-        );
+        assert_eq!(map_logical_property("inline-size", wm, dir), Some("width"));
+        assert_eq!(map_logical_property("block-size", wm, dir), Some("height"));
         assert_eq!(
             map_logical_property("min-inline-size", wm, dir),
             Some("min-width")
@@ -401,14 +395,8 @@ mod tests {
     fn map_size_vertical() {
         let wm = WritingMode::VerticalRl;
         let dir = Direction::Ltr;
-        assert_eq!(
-            map_logical_property("inline-size", wm, dir),
-            Some("height")
-        );
-        assert_eq!(
-            map_logical_property("block-size", wm, dir),
-            Some("width")
-        );
+        assert_eq!(map_logical_property("inline-size", wm, dir), Some("height"));
+        assert_eq!(map_logical_property("block-size", wm, dir), Some("width"));
     }
 
     #[test]

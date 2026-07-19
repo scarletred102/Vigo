@@ -234,9 +234,7 @@ impl ResolvedColumns {
             }
         };
 
-        let offsets = (0..count)
-            .map(|i| i as f32 * (width + gap))
-            .collect();
+        let offsets = (0..count).map(|i| i as f32 * (width + gap)).collect();
 
         Self {
             count,
@@ -308,7 +306,10 @@ mod tests {
     fn column_fill_parse() {
         assert_eq!(ColumnFill::from_value("balance"), ColumnFill::Balance);
         assert_eq!(ColumnFill::from_value("auto"), ColumnFill::Auto);
-        assert_eq!(ColumnFill::from_value("balance-all"), ColumnFill::BalanceAll);
+        assert_eq!(
+            ColumnFill::from_value("balance-all"),
+            ColumnFill::BalanceAll
+        );
     }
 
     #[test]
@@ -320,7 +321,10 @@ mod tests {
     #[test]
     fn column_rule_style_parse() {
         assert_eq!(ColumnRuleStyle::from_value("solid"), ColumnRuleStyle::Solid);
-        assert_eq!(ColumnRuleStyle::from_value("dashed"), ColumnRuleStyle::Dashed);
+        assert_eq!(
+            ColumnRuleStyle::from_value("dashed"),
+            ColumnRuleStyle::Dashed
+        );
         assert_eq!(ColumnRuleStyle::from_value("none"), ColumnRuleStyle::None);
     }
 

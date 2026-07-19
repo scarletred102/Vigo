@@ -120,6 +120,11 @@ impl BookmarkManager {
         self.bookmarks.len()
     }
 
+    /// Get all bookmarks in the order they were added.
+    pub fn all(&self) -> impl Iterator<Item = &Bookmark> {
+        self.bookmarks.iter()
+    }
+
     /// All unique folder names.
     pub fn folders(&self) -> Vec<String> {
         let mut seen = HashMap::new();

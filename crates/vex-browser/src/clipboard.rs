@@ -114,8 +114,7 @@ impl Clipboard {
         let items = self.items.lock().map_err(|_| ClipboardError::Internal)?;
         for item in items.iter() {
             if let Some(data) = item.get_type("text/plain") {
-                return String::from_utf8(data.to_vec())
-                    .map_err(|_| ClipboardError::InvalidData);
+                return String::from_utf8(data.to_vec()).map_err(|_| ClipboardError::InvalidData);
             }
         }
         Ok(String::new())
@@ -283,7 +282,10 @@ impl DataTransfer {
 
     /// Get the list of MIME types present.
     pub fn types(&self) -> Vec<&str> {
-        self.items.iter().map(|item| item.mime_type.as_str()).collect()
+        self.items
+            .iter()
+            .map(|item| item.mime_type.as_str())
+            .collect()
     }
 }
 

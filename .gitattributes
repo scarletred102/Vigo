@@ -1,0 +1,5 @@
+# Keep source and workflow files consistent across Windows and CI.
+* text=auto eol=lf
+
+# Zig treats CRLF source files differently on Windows runners.
+*.zig text eol=lf

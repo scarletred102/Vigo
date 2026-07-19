@@ -37,7 +37,10 @@ pub struct CompositorLayer {
 }
 
 /// Build a flat composited layer list from a layout tree + styles.
-pub fn build_layers(root: &LayoutBox, styles: &HashMap<VexId, ComputedStyle>) -> Vec<CompositorLayer> {
+pub fn build_layers(
+    root: &LayoutBox,
+    styles: &HashMap<VexId, ComputedStyle>,
+) -> Vec<CompositorLayer> {
     let mut layers = Vec::new();
     layers.push(CompositorLayer {
         node_id: root.node_id,
@@ -82,7 +85,11 @@ fn collect_layers(
                 out.push(CompositorLayer {
                     node_id: Some(id),
                     bounds: layout_box.border_box(),
-                    z_index: if style.position.is_positioned() { style.z_index } else { 0 },
+                    z_index: if style.position.is_positioned() {
+                        style.z_index
+                    } else {
+                        0
+                    },
                     opaque: style.opacity >= 1.0 && style.background_color.a == 255,
                     reason,
                 });
@@ -96,7 +103,10 @@ fn collect_layers(
 }
 
 fn promotion_reason(layout_box: &LayoutBox, style: &ComputedStyle) -> Option<LayerReason> {
-    if matches!(style.position, Position::Fixed | Position::Sticky | Position::Absolute) {
+    if matches!(
+        style.position,
+        Position::Fixed | Position::Sticky | Position::Absolute
+    ) {
         return Some(LayerReason::Positioned);
     }
     if style.opacity < 1.0 {

@@ -21,10 +21,12 @@ pub fn compute_damage(previous: &DisplayList, next: &DisplayList, viewport: Rect
 
     for i in 0..common {
         if prev_cmds[i] != next_cmds[i] {
-            if let Some(r) = command_bounds(&prev_cmds[i]).and_then(|r| intersect_rect(r, viewport)) {
+            if let Some(r) = command_bounds(&prev_cmds[i]).and_then(|r| intersect_rect(r, viewport))
+            {
                 rects.push(r);
             }
-            if let Some(r) = command_bounds(&next_cmds[i]).and_then(|r| intersect_rect(r, viewport)) {
+            if let Some(r) = command_bounds(&next_cmds[i]).and_then(|r| intersect_rect(r, viewport))
+            {
                 rects.push(r);
             }
         }

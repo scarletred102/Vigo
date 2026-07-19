@@ -127,11 +127,7 @@ impl MutationRecord {
     }
 
     /// Create an attributes mutation record.
-    pub fn attributes(
-        target: VexId,
-        name: &str,
-        old_value: Option<String>,
-    ) -> Self {
+    pub fn attributes(target: VexId, name: &str, old_value: Option<String>) -> Self {
         Self {
             mutation_type: MutationType::Attributes,
             target,
@@ -537,7 +533,12 @@ mod tests {
 
         // Mutation on a descendant should be caught.
         let descendant = VexId::new(5);
-        set.notify_attribute(descendant, &[descendant, VexId::new(2), root], "class", None);
+        set.notify_attribute(
+            descendant,
+            &[descendant, VexId::new(2), root],
+            "class",
+            None,
+        );
 
         let records = set.observer_mut(id).unwrap().take_records();
         assert_eq!(records.len(), 1);

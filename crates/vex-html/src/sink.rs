@@ -259,7 +259,11 @@ impl TreeSink for VexSink {
 
     fn append_before_sibling(&self, sibling: &VexId, new_node: NodeOrText<VexId>) {
         let mut doc = self.doc.borrow_mut();
-        let parent = doc.arena().get(*sibling).parent.unwrap_or_else(|| doc.root());
+        let parent = doc
+            .arena()
+            .get(*sibling)
+            .parent
+            .unwrap_or_else(|| doc.root());
 
         match new_node {
             NodeOrText::AppendNode(id) => {

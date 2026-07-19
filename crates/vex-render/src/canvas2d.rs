@@ -397,8 +397,7 @@ impl Canvas2D {
                 if dst_x < self.width && dst_y < self.height {
                     let si = ((row * image_data.width + col) * 4) as usize;
                     let di = ((dst_y * self.width + dst_x) * 4) as usize;
-                    self.pixels[di..di + 4]
-                        .copy_from_slice(&image_data.data[si..si + 4]);
+                    self.pixels[di..di + 4].copy_from_slice(&image_data.data[si..si + 4]);
                 }
             }
         }
@@ -449,8 +448,7 @@ impl Canvas2D {
         self.pixels[i] = (color[0] as f32 * sa + self.pixels[i] as f32 * da) as u8;
         self.pixels[i + 1] = (color[1] as f32 * sa + self.pixels[i + 1] as f32 * da) as u8;
         self.pixels[i + 2] = (color[2] as f32 * sa + self.pixels[i + 2] as f32 * da) as u8;
-        self.pixels[i + 3] =
-            ((color[3] as f32 + self.pixels[i + 3] as f32 * da).min(255.0)) as u8;
+        self.pixels[i + 3] = ((color[3] as f32 + self.pixels[i + 3] as f32 * da).min(255.0)) as u8;
     }
 
     /// Fill a raw rectangle (before transform) with the given color.
@@ -497,8 +495,7 @@ impl Canvas2D {
                 }
             }
 
-            intersections
-                .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            intersections.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
             for pair in intersections.chunks(2) {
                 if pair.len() == 2 {
@@ -576,10 +573,8 @@ impl Canvas2D {
                     for i in 1..=steps {
                         let t = i as f32 / steps as f32;
                         let angle = start_angle + angle_span * t;
-                        let p = self.transform_point(
-                            cx + radius * angle.cos(),
-                            cy + radius * angle.sin(),
-                        );
+                        let p = self
+                            .transform_point(cx + radius * angle.cos(), cy + radius * angle.sin());
                         lines.push((prev.0, prev.1, p.0, p.1));
                         prev = p;
                     }

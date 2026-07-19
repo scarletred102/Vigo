@@ -171,11 +171,25 @@ pub struct GestureRecognizer {
 /// Recognized gesture.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Gesture {
-    Tap { x: f64, y: f64 },
-    DoubleTap { x: f64, y: f64 },
-    LongPress { x: f64, y: f64 },
-    Swipe { direction: SwipeDirection, distance: f64 },
-    Pinch { scale: f64 },
+    Tap {
+        x: f64,
+        y: f64,
+    },
+    DoubleTap {
+        x: f64,
+        y: f64,
+    },
+    LongPress {
+        x: f64,
+        y: f64,
+    },
+    Swipe {
+        direction: SwipeDirection,
+        distance: f64,
+    },
+    Pinch {
+        scale: f64,
+    },
 }
 
 /// Swipe direction.
@@ -198,8 +212,12 @@ impl GestureRecognizer {
 
     /// Record a touch start.
     pub fn on_touch_start(&mut self, touch: &Touch) {
-        self.start_touches
-            .push((touch.identifier, touch.client_x, touch.client_y, Instant::now()));
+        self.start_touches.push((
+            touch.identifier,
+            touch.client_x,
+            touch.client_y,
+            Instant::now(),
+        ));
     }
 
     /// Process a touch end and detect gestures.

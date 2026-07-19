@@ -107,7 +107,10 @@ impl CachedResponse {
     }
 
     pub fn can_serve_while_revalidating(&self) -> bool {
-        match (self.staleness_secs(), self.directives.stale_while_revalidate) {
+        match (
+            self.staleness_secs(),
+            self.directives.stale_while_revalidate,
+        ) {
             (Some(stale), Some(window)) => stale <= window,
             _ => false,
         }
@@ -265,9 +268,10 @@ impl HttpCache {
             .entry(cache_key(url, request_headers))
             .or_default();
 
-        if let Some(existing) = variants.iter_mut().find(|v| {
-            v.vary_on == entry.vary_on && v.vary_values == entry.vary_values
-        }) {
+        if let Some(existing) = variants
+            .iter_mut()
+            .find(|v| v.vary_on == entry.vary_on && v.vary_values == entry.vary_values)
+        {
             *existing = entry;
         } else {
             variants.push(entry);
@@ -283,11 +287,11 @@ impl HttpCache {
         self.entries
             .get(&cache_key(url, request_headers))
             .and_then(|variants| {
-            variants
-                .iter()
-                .filter(|entry| request_matches_variant(request_headers, entry))
-                .max_by_key(|entry| entry.vary_on.len())
-        })
+                variants
+                    .iter()
+                    .filter(|entry| request_matches_variant(request_headers, entry))
+                    .max_by_key(|entry| entry.vary_on.len())
+            })
     }
 
     /// Return a stale entry that can be served under `stale-if-error`.
@@ -299,11 +303,11 @@ impl HttpCache {
         self.entries
             .get(&cache_key(url, request_headers))
             .and_then(|variants| {
-            variants
-                .iter()
-                .filter(|entry| request_matches_variant(request_headers, entry))
-                .find(|entry| !entry.is_fresh() && entry.can_serve_if_error())
-        })
+                variants
+                    .iter()
+                    .filter(|entry| request_matches_variant(request_headers, entry))
+                    .find(|entry| !entry.is_fresh() && entry.can_serve_if_error())
+            })
     }
 
     /// Store a partial byte-range response.
@@ -593,7 +597,10 @@ mod tests {
 
         let entry = cache.get(&url, &req).unwrap();
         assert_eq!(entry.etag.as_deref(), Some("\"v2\""));
-        assert_eq!(entry.last_modified.as_deref(), Some("Wed, 21 Oct 2015 08:28:00 GMT"));
+        assert_eq!(
+            entry.last_modified.as_deref(),
+            Some("Wed, 21 Oct 2015 08:28:00 GMT")
+        );
         assert_eq!(entry.directives.max_age, Some(120));
         assert_eq!(entry.freshness_lifetime_secs, Some(120));
     }

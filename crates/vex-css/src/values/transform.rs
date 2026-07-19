@@ -46,7 +46,10 @@ impl TransformFunction {
         match name {
             "translate" => {
                 let parts = parse_values(args_str, 2)?;
-                Some(Self::Translate(parts[0], parts.get(1).copied().unwrap_or(0.0)))
+                Some(Self::Translate(
+                    parts[0],
+                    parts.get(1).copied().unwrap_or(0.0),
+                ))
             }
             "translateX" => {
                 let v = parse_single_value(args_str)?;
@@ -273,7 +276,10 @@ impl FilterFunction {
                 if parts.len() >= 2 {
                     let x = parse_single_value(parts[0])?;
                     let y = parse_single_value(parts[1])?;
-                    let blur = parts.get(2).and_then(|s| parse_single_value(s)).unwrap_or(0.0);
+                    let blur = parts
+                        .get(2)
+                        .and_then(|s| parse_single_value(s))
+                        .unwrap_or(0.0);
                     let color = parts.get(3).map(|s| s.to_string()).unwrap_or_default();
                     Some(Self::DropShadow(x, y, blur, color))
                 } else {
@@ -490,7 +496,10 @@ mod tests {
     #[test]
     fn parse_matrix() {
         let f = TransformFunction::parse("matrix(1, 0, 0, 1, 50, 100)").unwrap();
-        assert_eq!(f, TransformFunction::Matrix(1.0, 0.0, 0.0, 1.0, 50.0, 100.0));
+        assert_eq!(
+            f,
+            TransformFunction::Matrix(1.0, 0.0, 0.0, 1.0, 50.0, 100.0)
+        );
     }
 
     #[test]
@@ -567,7 +576,10 @@ mod tests {
     #[test]
     fn parse_drop_shadow() {
         let f = FilterFunction::parse("drop-shadow(2px 4px 6px black)").unwrap();
-        assert_eq!(f, FilterFunction::DropShadow(2.0, 4.0, 6.0, "black".to_string()));
+        assert_eq!(
+            f,
+            FilterFunction::DropShadow(2.0, 4.0, 6.0, "black".to_string())
+        );
     }
 
     #[test]

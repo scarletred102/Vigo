@@ -23,32 +23,17 @@ use vex_dom::document::Document;
 #[derive(Debug, Clone, PartialEq)]
 pub enum DomMutation {
     /// An attribute was set / changed / removed on `node`.
-    AttributeChanged {
-        node: VexId,
-        name: String,
-    },
+    AttributeChanged { node: VexId, name: String },
     /// A class was added or removed on `node`.
-    ClassChanged {
-        node: VexId,
-    },
+    ClassChanged { node: VexId },
     /// The inline `style` attribute changed on `node`.
-    InlineStyleChanged {
-        node: VexId,
-    },
+    InlineStyleChanged { node: VexId },
     /// A child was inserted/appended under `parent`.
-    ChildInserted {
-        parent: VexId,
-        child: VexId,
-    },
+    ChildInserted { parent: VexId, child: VexId },
     /// A child was removed from `parent`.
-    ChildRemoved {
-        parent: VexId,
-        child: VexId,
-    },
+    ChildRemoved { parent: VexId, child: VexId },
     /// The text content of a text node changed.
-    TextChanged {
-        node: VexId,
-    },
+    TextChanged { node: VexId },
     /// A node was moved (remove + insert).
     NodeMoved {
         old_parent: VexId,
@@ -356,11 +341,7 @@ mod tests {
         doc.append_child(body, text);
 
         let mut map = InvalidationMap::new();
-        invalidate(
-            &mut map,
-            &doc,
-            &DomMutation::TextChanged { node: text },
-        );
+        invalidate(&mut map, &doc, &DomMutation::TextChanged { node: text });
         assert!(map.is_dirty(text));
         assert!(map.is_dirty(body)); // parent affected by :empty
     }

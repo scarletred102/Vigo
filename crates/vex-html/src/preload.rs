@@ -49,7 +49,8 @@ pub fn extract_preload_candidates(doc: &Document) -> Vec<PreloadCandidate> {
         match el.tag_name.as_str() {
             "script" => {
                 if let Some(src) = get_attribute(arena, nid, "src") {
-                    let script_type = get_attribute(arena, nid, "type").map(str::to_ascii_lowercase);
+                    let script_type =
+                        get_attribute(arena, nid, "type").map(str::to_ascii_lowercase);
                     let kind = if script_type.as_deref() == Some("module") {
                         PreloadKind::ModuleScript
                     } else {
@@ -218,18 +219,30 @@ mod tests {
         );
 
         let c = extract_preload_candidates(&doc);
-        assert!(c.iter().any(|x| x.url == "/a.css" && x.kind == PreloadKind::Style));
-        assert!(c.iter().any(|x| x.url == "/a.js" && x.kind == PreloadKind::Script));
-        assert!(c.iter().any(|x| x.url == "/mod.js" && x.kind == PreloadKind::ModuleScript));
-        assert!(c.iter().any(|x| x.url == "/hero.webp" && x.kind == PreloadKind::Image));
-        assert!(c.iter().any(|x| x.url == "/img.png" && x.kind == PreloadKind::Image));
+        assert!(c
+            .iter()
+            .any(|x| x.url == "/a.css" && x.kind == PreloadKind::Style));
+        assert!(c
+            .iter()
+            .any(|x| x.url == "/a.js" && x.kind == PreloadKind::Script));
+        assert!(c
+            .iter()
+            .any(|x| x.url == "/mod.js" && x.kind == PreloadKind::ModuleScript));
+        assert!(c
+            .iter()
+            .any(|x| x.url == "/hero.webp" && x.kind == PreloadKind::Image));
+        assert!(c
+            .iter()
+            .any(|x| x.url == "/img.png" && x.kind == PreloadKind::Image));
     }
 
     #[test]
     fn rel_token_parsing_is_case_insensitive() {
         let doc = parse_html(r#"<link rel="PreLoad STYLESHEET" href="/x.css" as="style">"#);
         let c = extract_preload_candidates(&doc);
-        assert!(c.iter().any(|x| x.url == "/x.css" && x.kind == PreloadKind::Style));
+        assert!(c
+            .iter()
+            .any(|x| x.url == "/x.css" && x.kind == PreloadKind::Style));
     }
 
     #[test]

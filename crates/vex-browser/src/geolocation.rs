@@ -297,7 +297,9 @@ mod tests {
         geo.set_permission(ORIGIN, GeoPermission::Granted);
         geo.set_simulated_position(make_coords(), 1000.0);
 
-        let pos = geo.get_current_position(ORIGIN, &PositionOptions::default()).unwrap();
+        let pos = geo
+            .get_current_position(ORIGIN, &PositionOptions::default())
+            .unwrap();
         assert!((pos.coords.latitude - 37.7749).abs() < 0.001);
         assert!((pos.coords.longitude - (-122.4194)).abs() < 0.001);
     }
@@ -314,7 +316,9 @@ mod tests {
     fn watch_position() {
         let mut geo = GeolocationService::new();
         geo.set_permission(ORIGIN, GeoPermission::Granted);
-        let id = geo.watch_position(ORIGIN, PositionOptions::default()).unwrap();
+        let id = geo
+            .watch_position(ORIGIN, PositionOptions::default())
+            .unwrap();
         assert_eq!(geo.watcher_count(), 1);
         assert!(geo.clear_watch(id));
         assert_eq!(geo.watcher_count(), 0);
