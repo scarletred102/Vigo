@@ -132,7 +132,7 @@ fn run() {
     };
     let mut zoom = ZoomState::new();
     let mut bookmarks = BookmarkManager::new();
-    let mut downloads = DownloadManager::new();
+    let mut downloads = DownloadManager::with_download_dir(data.join("downloads"));
     let mut find = FindState::new();
     let mut context_menu: Option<ContextMenu> = None;
     let mut embedder_bus = EmbedderBus::new();
@@ -2356,7 +2356,7 @@ mod tests {
         let history = vex_browser::BrowsingHistory::new();
         let mut bookmarks = vex_browser::BookmarkManager::new();
         bookmarks.add("Example", "https://example.com", "Bookmarks Bar");
-        let mut downloads = vex_browser::DownloadManager::new();
+        let downloads = vex_browser::DownloadManager::new();
         downloads.start_download(
             "https://example.com/archive.zip",
             "archive.zip",
@@ -2428,7 +2428,7 @@ fn render_internal_page(
             vex_browser::internal_pages::bookmarks_page(&records)
         }
         Some("downloads") => {
-            let records: Vec<_> = downloads.all().cloned().collect();
+            let records = downloads.all();
             vex_browser::internal_pages::downloads_page(&records)
         }
         _ => vex_browser::internal_pages::newtab_page(),
@@ -2462,9 +2462,10 @@ fn navigate_tab(
 
     // Task 37: detect download URLs by file extension.
     if is_download_url(url_str) {
-        let filename = vex_browser::downloads::suggest_filename(url_str);
-        tracing::info!("Download detected: {url_str} → {filename}");
-        // Actual download wiring will use DownloadManager from caller context.
+        match downloads.queue_download(url_str) {
+            Ok(id) => tracing::info!(download_id = id.0, "Download queued: {url_str}"),
+            Err(error) => tracing::error!("Could not queue download for {url_str}: {error}"),
+        }
         return;
     }
 

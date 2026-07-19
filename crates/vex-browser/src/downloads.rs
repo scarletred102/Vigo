@@ -1,9 +1,13 @@
 // Copyright (c) Vigo Contributors
 // SPDX-License-Identifier: MPL-2.0
 
-//! Download manager — tracks in-progress and completed downloads.
+//! Download manager — queues HTTP(S) transfers and exposes live download state.
 
-use std::path::PathBuf;
+use std::collections::HashSet;
+use std::fs::{self, OpenOptions};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -49,37 +53,94 @@ pub struct Download {
     pub mime_type: Option<String>,
 }
 
-/// Download manager — tracks all downloads.
-#[derive(Debug, Default)]
-pub struct DownloadManager {
+/// Errors returned while a download is being queued.
+#[derive(Debug, thiserror::Error)]
+pub enum DownloadError {
+    #[error("could not create the download directory: {0}")]
+    CreateDirectory(#[source] std::io::Error),
+    #[error("could not reserve a destination file: {0}")]
+    ReserveDestination(#[source] std::io::Error),
+    #[error("could not start the download worker: {0}")]
+    SpawnWorker(#[source] std::io::Error),
+}
+
+#[derive(Debug)]
+struct DownloadStore {
     downloads: Vec<Download>,
+    cancelled: HashSet<DownloadId>,
     next_id: u64,
 }
 
+/// Download manager — a cloneable, thread-safe handle for browser UI and
+/// background workers. Transfers always write to a temporary `.part` file and
+/// atomically rename it only after a successful response body has been read.
+#[derive(Debug, Clone)]
+pub struct DownloadManager {
+    store: Arc<Mutex<DownloadStore>>,
+    download_dir: PathBuf,
+}
+
+impl Default for DownloadManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DownloadManager {
-    /// Create a new empty download manager.
+    /// Create a manager using a local `downloads` directory as a conservative
+    /// fallback. The application should use [`Self::with_download_dir`] for its
+    /// profile-owned download directory.
     pub fn new() -> Self {
+        Self::with_download_dir(PathBuf::from("downloads"))
+    }
+
+    /// Create a manager that stores completed files in `download_dir`.
+    pub fn with_download_dir(download_dir: impl Into<PathBuf>) -> Self {
         Self {
-            downloads: Vec::new(),
-            next_id: 1,
+            store: Arc::new(Mutex::new(DownloadStore {
+                downloads: Vec::new(),
+                cancelled: HashSet::new(),
+                next_id: 1,
+            })),
+            download_dir: download_dir.into(),
         }
     }
 
-    /// Start a new download. Returns the download ID.
-    pub fn start_download(
-        &mut self,
-        url: &str,
-        filename: &str,
-        download_dir: &std::path::Path,
-    ) -> DownloadId {
-        let id = DownloadId(self.next_id);
-        self.next_id += 1;
+    /// Queue an HTTP(S) transfer on a background thread.
+    ///
+    /// The URL is recorded immediately. Its final state can be observed via
+    /// [`Self::all`] without blocking the browser UI.
+    pub fn queue_download(&self, url: &str) -> Result<DownloadId, DownloadError> {
+        fs::create_dir_all(&self.download_dir).map_err(DownloadError::CreateDirectory)?;
+        let filename = suggest_filename(url);
+        let path = reserve_destination(&self.download_dir, &filename)
+            .map_err(DownloadError::ReserveDestination)?;
+        let id = self.insert_download(url, &filename, path.clone());
+        let manager = self.clone();
+        let url = url.to_owned();
 
-        let path = download_dir.join(filename);
-        self.downloads.push(Download {
+        std::thread::Builder::new()
+            .name(format!("vigo-download-{}", id.0))
+            .spawn(move || manager.transfer(id, &url, &path))
+            .map_err(DownloadError::SpawnWorker)?;
+
+        Ok(id)
+    }
+
+    /// Record a download without starting a network transfer. This is useful
+    /// for imported/download-restoration state and unit tests.
+    pub fn start_download(&self, url: &str, filename: &str, download_dir: &Path) -> DownloadId {
+        self.insert_download(url, filename, download_dir.join(safe_filename(filename)))
+    }
+
+    fn insert_download(&self, url: &str, filename: &str, path: PathBuf) -> DownloadId {
+        let mut store = self.store.lock().expect("download store lock poisoned");
+        let id = DownloadId(store.next_id);
+        store.next_id += 1;
+        store.downloads.push(Download {
             id,
             url: url.to_string(),
-            filename: filename.to_string(),
+            filename: safe_filename(filename),
             path,
             state: DownloadState::Pending,
             started_at: current_timestamp(),
@@ -88,58 +149,167 @@ impl DownloadManager {
         id
     }
 
+    fn transfer(&self, id: DownloadId, url: &str, destination: &Path) {
+        let result = self.transfer_inner(id, url, destination);
+        if let Err(error) = result {
+            if !self.is_cancelled(id) {
+                self.mark_failed(id, &error);
+            }
+        }
+    }
+
+    fn transfer_inner(&self, id: DownloadId, url: &str, destination: &Path) -> Result<(), String> {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("Vigo/0.1 (download)")
+            .build()
+            .map_err(|error| format!("could not create HTTP client: {error}"))?;
+        let mut response = client
+            .get(url)
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|error| format!("request failed: {error}"))?;
+        let total = response.content_length();
+        self.update_progress(id, 0, total);
+
+        let temporary = temporary_path(destination);
+        let mut output = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| format!("could not create temporary file: {error}"))?;
+
+        let mut received = 0_u64;
+        let mut buffer = [0_u8; 64 * 1024];
+        loop {
+            if self.is_cancelled(id) {
+                let _ = fs::remove_file(&temporary);
+                return Ok(());
+            }
+
+            let read = response
+                .read(&mut buffer)
+                .map_err(|error| format!("could not read response: {error}"))?;
+            if read == 0 {
+                break;
+            }
+            output
+                .write_all(&buffer[..read])
+                .map_err(|error| format!("could not write file: {error}"))?;
+            received += read as u64;
+            self.update_progress(id, received, total);
+        }
+        output
+            .sync_all()
+            .map_err(|error| format!("could not finalize temporary file: {error}"))?;
+        drop(output);
+
+        if self.is_cancelled(id) {
+            let _ = fs::remove_file(&temporary);
+            return Ok(());
+        }
+        fs::rename(&temporary, destination)
+            .map_err(|error| format!("could not finalize download: {error}"))?;
+        self.mark_complete(id);
+        Ok(())
+    }
+
     /// Update download progress.
-    pub fn update_progress(&mut self, id: DownloadId, received: u64, total: Option<u64>) {
-        if let Some(dl) = self.downloads.iter_mut().find(|d| d.id == id) {
-            dl.state = DownloadState::InProgress { received, total };
+    pub fn update_progress(&self, id: DownloadId, received: u64, total: Option<u64>) {
+        let mut store = self.store.lock().expect("download store lock poisoned");
+        if let Some(download) = store
+            .downloads
+            .iter_mut()
+            .find(|download| download.id == id)
+        {
+            if !matches!(download.state, DownloadState::Cancelled) {
+                download.state = DownloadState::InProgress { received, total };
+            }
         }
     }
 
     /// Mark a download as complete.
-    pub fn mark_complete(&mut self, id: DownloadId) {
-        if let Some(dl) = self.downloads.iter_mut().find(|d| d.id == id) {
-            dl.state = DownloadState::Complete;
+    pub fn mark_complete(&self, id: DownloadId) {
+        let mut store = self.store.lock().expect("download store lock poisoned");
+        if let Some(download) = store
+            .downloads
+            .iter_mut()
+            .find(|download| download.id == id)
+        {
+            if !matches!(download.state, DownloadState::Cancelled) {
+                download.state = DownloadState::Complete;
+            }
         }
     }
 
     /// Mark a download as failed.
-    pub fn mark_failed(&mut self, id: DownloadId, error: &str) {
-        if let Some(dl) = self.downloads.iter_mut().find(|d| d.id == id) {
-            dl.state = DownloadState::Failed(error.to_string());
+    pub fn mark_failed(&self, id: DownloadId, error: &str) {
+        let mut store = self.store.lock().expect("download store lock poisoned");
+        if let Some(download) = store
+            .downloads
+            .iter_mut()
+            .find(|download| download.id == id)
+        {
+            if !matches!(download.state, DownloadState::Cancelled) {
+                download.state = DownloadState::Failed(error.to_string());
+            }
         }
     }
 
-    /// Cancel a download.
-    pub fn cancel(&mut self, id: DownloadId) {
-        if let Some(dl) = self.downloads.iter_mut().find(|d| d.id == id) {
-            dl.state = DownloadState::Cancelled;
+    /// Cancel a download. The worker removes its temporary file on its next
+    /// buffer boundary; completed files are never deleted by cancellation.
+    pub fn cancel(&self, id: DownloadId) {
+        let mut store = self.store.lock().expect("download store lock poisoned");
+        store.cancelled.insert(id);
+        if let Some(download) = store
+            .downloads
+            .iter_mut()
+            .find(|download| download.id == id)
+        {
+            if !matches!(download.state, DownloadState::Complete) {
+                download.state = DownloadState::Cancelled;
+            }
         }
     }
 
-    /// Remove a download from the list (doesn't delete the file).
-    pub fn remove(&mut self, id: DownloadId) -> bool {
-        let len_before = self.downloads.len();
-        self.downloads.retain(|d| d.id != id);
-        self.downloads.len() < len_before
+    /// Remove a download from the list. This never deletes its completed file.
+    pub fn remove(&self, id: DownloadId) -> bool {
+        let mut store = self.store.lock().expect("download store lock poisoned");
+        let before = store.downloads.len();
+        store.downloads.retain(|download| download.id != id);
+        store.cancelled.remove(&id);
+        store.downloads.len() != before
     }
 
-    /// Get a download by ID.
-    pub fn get(&self, id: DownloadId) -> Option<&Download> {
-        self.downloads.iter().find(|d| d.id == id)
-    }
-
-    /// Get all downloads, most recent first.
-    pub fn all(&self) -> impl Iterator<Item = &Download> {
-        self.downloads.iter().rev()
-    }
-
-    /// Get in-progress downloads.
-    pub fn in_progress(&self) -> Vec<&Download> {
-        self.downloads
+    /// Get a snapshot of a download by ID.
+    pub fn get(&self, id: DownloadId) -> Option<Download> {
+        self.store
+            .lock()
+            .expect("download store lock poisoned")
+            .downloads
             .iter()
-            .filter(|d| {
+            .find(|download| download.id == id)
+            .cloned()
+    }
+
+    /// Get all downloads, most recent first, as a stable snapshot.
+    pub fn all(&self) -> Vec<Download> {
+        self.store
+            .lock()
+            .expect("download store lock poisoned")
+            .downloads
+            .iter()
+            .rev()
+            .cloned()
+            .collect()
+    }
+
+    /// Get in-progress downloads as snapshots.
+    pub fn in_progress(&self) -> Vec<Download> {
+        self.all()
+            .into_iter()
+            .filter(|download| {
                 matches!(
-                    d.state,
+                    download.state,
                     DownloadState::Pending | DownloadState::InProgress { .. }
                 )
             })
@@ -148,31 +318,94 @@ impl DownloadManager {
 
     /// Total download count.
     pub fn count(&self) -> usize {
-        self.downloads.len()
+        self.store
+            .lock()
+            .expect("download store lock poisoned")
+            .downloads
+            .len()
     }
 
-    /// Clear completed/failed/cancelled downloads.
-    pub fn clear_finished(&mut self) {
-        self.downloads.retain(|d| {
+    /// Clear completed, failed, and cancelled downloads from the UI list.
+    pub fn clear_finished(&self) {
+        let mut store = self.store.lock().expect("download store lock poisoned");
+        store.downloads.retain(|download| {
             matches!(
-                d.state,
+                download.state,
                 DownloadState::Pending | DownloadState::InProgress { .. }
             )
         });
     }
+
+    fn is_cancelled(&self, id: DownloadId) -> bool {
+        self.store
+            .lock()
+            .expect("download store lock poisoned")
+            .cancelled
+            .contains(&id)
+    }
 }
 
-/// Suggest a filename from a URL.
+/// Suggest a safe filename from a URL.
 pub fn suggest_filename(url: &str) -> String {
-    // Extract the last path segment.
-    if let Some(path) = url.split('?').next() {
-        if let Some(segment) = path.rsplit('/').next() {
-            if !segment.is_empty() && segment.contains('.') {
-                return segment.to_string();
-            }
+    let candidate = url
+        .split('?')
+        .next()
+        .and_then(|path| path.rsplit('/').next())
+        .filter(|segment| !segment.is_empty())
+        .unwrap_or("download");
+    safe_filename(candidate)
+}
+
+fn safe_filename(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|ch| match ch {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' | '\0' => '_',
+            ch if ch.is_control() => '_',
+            ch => ch,
+        })
+        .collect();
+    let cleaned = cleaned.trim_matches([' ', '.']);
+    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
+        "download".to_string()
+    } else {
+        cleaned.chars().take(180).collect()
+    }
+}
+
+fn reserve_destination(dir: &Path, filename: &str) -> std::io::Result<PathBuf> {
+    let original = safe_filename(filename);
+    let stem = Path::new(&original)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("download");
+    let extension = Path::new(&original)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| format!(".{extension}"))
+        .unwrap_or_default();
+
+    for suffix in 0..10_000 {
+        let name = if suffix == 0 {
+            original.clone()
+        } else {
+            format!("{stem} ({suffix}){extension}")
+        };
+        let candidate = dir.join(name);
+        if !candidate.exists() && !temporary_path(&candidate).exists() {
+            return Ok(candidate);
         }
     }
-    "download".to_string()
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "could not find an unused filename",
+    ))
+}
+
+fn temporary_path(destination: &Path) -> PathBuf {
+    let mut name = destination.as_os_str().to_os_string();
+    name.push(".part");
+    PathBuf::from(name)
 }
 
 fn current_timestamp() -> u64 {
@@ -185,33 +418,30 @@ fn current_timestamp() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     #[test]
     fn start_and_get_download() {
-        let mut mgr = DownloadManager::new();
+        let mgr = DownloadManager::new();
         let id = mgr.start_download(
             "https://example.com/file.zip",
             "file.zip",
             Path::new("/tmp"),
         );
-        let dl = mgr.get(id).unwrap();
-        assert_eq!(dl.url, "https://example.com/file.zip");
-        assert_eq!(dl.state, DownloadState::Pending);
+        assert_eq!(mgr.get(id).unwrap().url, "https://example.com/file.zip");
+        assert_eq!(mgr.get(id).unwrap().state, DownloadState::Pending);
     }
 
     #[test]
     fn update_progress() {
-        let mut mgr = DownloadManager::new();
+        let mgr = DownloadManager::new();
         let id = mgr.start_download(
             "https://example.com/file.zip",
             "file.zip",
             Path::new("/tmp"),
         );
         mgr.update_progress(id, 500, Some(1000));
-        let dl = mgr.get(id).unwrap();
         assert_eq!(
-            dl.state,
+            mgr.get(id).unwrap().state,
             DownloadState::InProgress {
                 received: 500,
                 total: Some(1000)
@@ -220,51 +450,84 @@ mod tests {
     }
 
     #[test]
-    fn mark_complete() {
-        let mut mgr = DownloadManager::new();
-        let id = mgr.start_download("https://example.com/a.txt", "a.txt", Path::new("/tmp"));
-        mgr.mark_complete(id);
-        assert_eq!(mgr.get(id).unwrap().state, DownloadState::Complete);
-    }
-
-    #[test]
-    fn cancel_download() {
-        let mut mgr = DownloadManager::new();
+    fn cancel_prevents_completion() {
+        let mgr = DownloadManager::new();
         let id = mgr.start_download("https://example.com/a.txt", "a.txt", Path::new("/tmp"));
         mgr.cancel(id);
+        mgr.mark_complete(id);
         assert_eq!(mgr.get(id).unwrap().state, DownloadState::Cancelled);
     }
 
     #[test]
-    fn clear_finished() {
-        let mut mgr = DownloadManager::new();
-        let id1 = mgr.start_download("https://a.com/a", "a", Path::new("/tmp"));
-        let _id2 = mgr.start_download("https://b.com/b", "b", Path::new("/tmp"));
-        mgr.mark_complete(id1);
+    fn reserve_destination_adds_a_suffix() {
+        let dir = std::env::temp_dir().join(format!("vigo-download-test-{}", current_timestamp()));
+        fs::create_dir_all(&dir).unwrap();
+        std::fs::File::create(dir.join("report.pdf")).unwrap();
+        assert_eq!(
+            reserve_destination(&dir, "report.pdf").unwrap(),
+            dir.join("report (1).pdf")
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn filename_is_sanitized() {
+        assert_eq!(
+            suggest_filename("https://example.test/../../evil?.zip"),
+            "evil"
+        );
+        assert_eq!(safe_filename("..\\evil:thing?.txt"), "_evil_thing_.txt");
+    }
+
+    #[test]
+    fn queue_download_transfers_a_local_http_response() {
+        use std::net::TcpListener;
+        use std::time::{Duration, Instant};
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request).unwrap();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 18\r\nConnection: close\r\n\r\nVigo download test")
+                .unwrap();
+        });
+
+        let dir = std::env::temp_dir().join(format!(
+            "vigo-download-transfer-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = DownloadManager::with_download_dir(&dir);
+        let id = manager
+            .queue_download(&format!("http://{address}/fixture.txt"))
+            .unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            if matches!(manager.get(id).unwrap().state, DownloadState::Complete) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let download = manager.get(id).unwrap();
+        assert_eq!(download.state, DownloadState::Complete);
+        assert_eq!(fs::read(download.path).unwrap(), b"Vigo download test");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn clear_finished_keeps_active_downloads() {
+        let mgr = DownloadManager::new();
+        let finished = mgr.start_download("https://a.com/a", "a", Path::new("/tmp"));
+        let _pending = mgr.start_download("https://b.com/b", "b", Path::new("/tmp"));
+        mgr.mark_complete(finished);
         mgr.clear_finished();
         assert_eq!(mgr.count(), 1);
-    }
-
-    #[test]
-    fn suggest_filename_from_url() {
-        assert_eq!(
-            suggest_filename("https://example.com/path/file.pdf"),
-            "file.pdf"
-        );
-        assert_eq!(
-            suggest_filename("https://example.com/path/file.zip?token=abc"),
-            "file.zip"
-        );
-        assert_eq!(suggest_filename("https://example.com/"), "download");
-    }
-
-    #[test]
-    fn in_progress_filter() {
-        let mut mgr = DownloadManager::new();
-        let id1 = mgr.start_download("https://a.com/a", "a", Path::new("/tmp"));
-        let _id2 = mgr.start_download("https://b.com/b", "b", Path::new("/tmp"));
-        mgr.mark_complete(id1);
-        let active = mgr.in_progress();
-        assert_eq!(active.len(), 1);
     }
 }

@@ -5,8 +5,15 @@
 //!
 //! Provides key generation, encrypt/decrypt, sign/verify, digest,
 //! import/export for web-compatible cryptographic operations.
+//!
+//! Operations without a standards-compliant provider fail closed. In
+//! particular, this module must never substitute demo cryptography for the
+//! Web Crypto API's AES or asymmetric algorithms.
 
 use std::collections::HashMap;
+
+use sha1::Sha1;
+use sha2::{Digest, Sha256, Sha384, Sha512};
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -239,46 +246,18 @@ impl SubtleCrypto {
     }
 
     /// Generate an asymmetric key pair.
+    ///
+    /// This fails until a standards-compliant asymmetric provider is wired.
     pub fn generate_key_pair(
         &mut self,
         algorithm: CryptoAlgorithm,
         extractable: bool,
         usages: Vec<KeyUsage>,
     ) -> Result<CryptoKeyPair, CryptoError> {
-        let (pub_usages, priv_usages) = split_usages(&usages);
-
-        // Generate mock key material (real impl would use actual crypto lib)
-        let pub_raw = generate_random_bytes(32);
-        let priv_raw = generate_random_bytes(64);
-
-        let pub_id = self.next_id();
-        let priv_id = self.next_id();
-
-        let public_key = CryptoKey {
-            id: pub_id,
-            key_type: KeyType::Public,
-            extractable: true, // Public keys always extractable
-            algorithm: algorithm.clone(),
-            usages: pub_usages,
-            raw: pub_raw,
-        };
-
-        let private_key = CryptoKey {
-            id: priv_id,
-            key_type: KeyType::Private,
-            extractable,
-            algorithm,
-            usages: priv_usages,
-            raw: priv_raw,
-        };
-
-        self.key_store.insert(pub_id, public_key.clone());
-        self.key_store.insert(priv_id, private_key.clone());
-
-        Ok(CryptoKeyPair {
-            public_key,
-            private_key,
-        })
+        let _ = (algorithm, extractable, usages);
+        Err(CryptoError::NotSupported(
+            "asymmetric WebCrypto key generation is not available yet".to_string(),
+        ))
     }
 
     /// Import a key from raw bytes.
@@ -326,28 +305,18 @@ impl SubtleCrypto {
 
     /// Compute a digest (hash).
     pub fn digest(&self, algorithm: HashAlgorithm, data: &[u8]) -> Result<Vec<u8>, CryptoError> {
-        // Simple hash simulation using a basic algorithm.
-        // Real implementation would use ring/openssl.
-        let output_len = algorithm.output_length();
-        let mut hash = vec![0u8; output_len];
-
-        // Simple non-cryptographic hash for structural correctness.
-        // The real implementation hooks into vex-crypto.
-        let mut state: u64 = 0xcbf2_9ce4_8422_2325; // FNV offset basis
-        for &byte in data {
-            state ^= byte as u64;
-            state = state.wrapping_mul(0x0100_0000_01b3); // FNV prime
-        }
-
-        for (i, chunk) in hash.iter_mut().enumerate() {
-            *chunk = ((state >> ((i % 8) * 8)) & 0xFF) as u8;
-            state = state.wrapping_mul(0x0100_0000_01b3);
-        }
-
-        Ok(hash)
+        Ok(match algorithm {
+            HashAlgorithm::Sha1 => Sha1::digest(data).to_vec(),
+            HashAlgorithm::Sha256 => Sha256::digest(data).to_vec(),
+            HashAlgorithm::Sha384 => Sha384::digest(data).to_vec(),
+            HashAlgorithm::Sha512 => Sha512::digest(data).to_vec(),
+        })
     }
 
     /// Encrypt data.
+    ///
+    /// This fails until AES-GCM/CBC is backed by a standards-compliant
+    /// implementation with the required Web Crypto parameters.
     pub fn encrypt(&self, key: &CryptoKey, data: &[u8]) -> Result<Vec<u8>, CryptoError> {
         if !key.usages.contains(&KeyUsage::Encrypt) {
             return Err(CryptoError::InvalidKey(
@@ -355,12 +324,11 @@ impl SubtleCrypto {
             ));
         }
 
-        // XOR-based placeholder encryption (real impl uses AES-GCM/CBC via vex-crypto)
-        let mut output = data.to_vec();
-        for (i, byte) in output.iter_mut().enumerate() {
-            *byte ^= key.raw[i % key.raw.len()];
-        }
-        Ok(output)
+        let _ = data;
+        Err(CryptoError::NotSupported(
+            "AES encryption is unavailable until standards-compliant AES-GCM/CBC support is wired"
+                .to_string(),
+        ))
     }
 
     /// Decrypt data.
@@ -371,12 +339,11 @@ impl SubtleCrypto {
             ));
         }
 
-        // XOR is symmetric
-        let mut output = data.to_vec();
-        for (i, byte) in output.iter_mut().enumerate() {
-            *byte ^= key.raw[i % key.raw.len()];
-        }
-        Ok(output)
+        let _ = data;
+        Err(CryptoError::NotSupported(
+            "AES decryption is unavailable until standards-compliant AES-GCM/CBC support is wired"
+                .to_string(),
+        ))
     }
 
     /// Get random values (fills buffer with random bytes).
@@ -410,47 +377,8 @@ impl SubtleCrypto {
     }
 }
 
-fn split_usages(usages: &[KeyUsage]) -> (Vec<KeyUsage>, Vec<KeyUsage>) {
-    let pub_u: Vec<_> = usages
-        .iter()
-        .filter(|u| matches!(u, KeyUsage::Verify | KeyUsage::Encrypt | KeyUsage::WrapKey))
-        .copied()
-        .collect();
-    let priv_u: Vec<_> = usages
-        .iter()
-        .filter(|u| {
-            matches!(
-                u,
-                KeyUsage::Sign
-                    | KeyUsage::Decrypt
-                    | KeyUsage::UnwrapKey
-                    | KeyUsage::DeriveKey
-                    | KeyUsage::DeriveBits
-            )
-        })
-        .copied()
-        .collect();
-    (pub_u, priv_u)
-}
-
-/// Generate pseudo-random bytes. In a real implementation, this uses
-/// a CSPRNG. For the structural implementation, we use a simple PRNG.
 fn generate_random_bytes(len: usize) -> Vec<u8> {
-    use std::time::SystemTime;
-    let seed = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos() as u64;
-
-    let mut state = seed ^ 0x5DEE_CE66_D1A4_F87D;
-    let mut bytes = Vec::with_capacity(len);
-    for _ in 0..len {
-        state ^= state << 13;
-        state ^= state >> 7;
-        state ^= state << 17;
-        bytes.push((state & 0xFF) as u8);
-    }
-    bytes
+    vex_crypto::random_bytes(len)
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -488,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn generate_key_pair() {
+    fn asymmetric_key_generation_is_not_advertised_without_real_key_material() {
         let mut crypto = SubtleCrypto::new();
         let pair = crypto
             .generate_key_pair(
@@ -498,13 +426,12 @@ mod tests {
                 true,
                 vec![KeyUsage::Sign, KeyUsage::Verify],
             )
-            .unwrap();
-        assert_eq!(pair.public_key.key_type, KeyType::Public);
-        assert_eq!(pair.private_key.key_type, KeyType::Private);
+            .unwrap_err();
+        assert!(matches!(pair, CryptoError::NotSupported(_)));
     }
 
     #[test]
-    fn encrypt_decrypt_roundtrip() {
+    fn aes_operations_fail_closed_until_a_real_provider_is_wired() {
         let mut crypto = SubtleCrypto::new();
         let key = crypto
             .generate_key(
@@ -514,12 +441,14 @@ mod tests {
             )
             .unwrap();
 
-        let plaintext = b"hello world";
-        let ciphertext = crypto.encrypt(&key, plaintext).unwrap();
-        assert_ne!(&ciphertext, plaintext);
-
-        let decrypted = crypto.decrypt(&key, &ciphertext).unwrap();
-        assert_eq!(&decrypted, plaintext);
+        assert!(matches!(
+            crypto.encrypt(&key, b"hello world"),
+            Err(CryptoError::NotSupported(_))
+        ));
+        assert!(matches!(
+            crypto.decrypt(&key, b"ciphertext"),
+            Err(CryptoError::NotSupported(_))
+        ));
     }
 
     #[test]
@@ -551,6 +480,20 @@ mod tests {
         let h1 = crypto.digest(HashAlgorithm::Sha256, b"test").unwrap();
         let h2 = crypto.digest(HashAlgorithm::Sha256, b"test").unwrap();
         assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn digest_matches_sha256_test_vector() {
+        let crypto = SubtleCrypto::new();
+        let hash = crypto.digest(HashAlgorithm::Sha256, b"abc").unwrap();
+        assert_eq!(
+            hash,
+            vec![
+                0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d, 0xae,
+                0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61,
+                0xf2, 0x00, 0x15, 0xad,
+            ]
+        );
     }
 
     #[test]

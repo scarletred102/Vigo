@@ -20,9 +20,13 @@ vex-media = { path = "../vex-media" }
 vex-security = { path = "../vex-security" }
 vex-storage = { path = "../vex-storage" }
 vex-privacy = { path = "../vex-privacy" }
+vex-crypto = { path = "../vex-crypto" }
 tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 url.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+reqwest.workspace = true

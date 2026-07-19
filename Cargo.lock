@@ -4347,13 +4347,17 @@ dependencies = [
 name = "vex-browser"
 version = "0.1.0"
 dependencies = [
+ "reqwest",
  "serde",
  "serde_json",
+ "sha1",
+ "sha2",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
  "url",
  "vex-core",
+ "vex-crypto",
  "vex-css",
  "vex-dom",
  "vex-html",

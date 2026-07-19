@@ -122,3 +122,4 @@ base64 = "0.22"
 
 # SHA-1 for WebSocket handshake
 sha1 = "0.10"
+sha2 = "0.10"
