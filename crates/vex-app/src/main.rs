@@ -153,6 +153,10 @@ fn run() {
     let mut find_bar_visible = false;
     let mut find_bar_text = String::new();
 
+    // JavaScript dialogs are rendered by browser chrome rather than written
+    // only to the DevTools console.
+    let mut pending_dialog: Option<BrowserDialog> = None;
+
     // ── DevTools state (Tasks 51-56) ─────────────────────────────
     let mut devtools = DevToolsState::new();
     let mut console_state = ConsoleState::new();
@@ -357,6 +361,9 @@ fn run() {
 
                 // ── Scroll ──────────────────────────────────────
                 Event::MouseScroll { dy, .. } => {
+                    if pending_dialog.is_some() {
+                        continue;
+                    }
                     context_menu = None;
                     tab_mgr.active_tab_mut().scroll_by_smooth(0.0, -dy * 40.0);
                 }
@@ -365,6 +372,19 @@ fn run() {
                 Event::MouseButtonDown { button, x, y } => {
                     let fx = x as f32;
                     let fy = y as f32;
+
+                    // A JavaScript dialog is modal: the page and browser
+                    // chrome cannot receive input until it is dismissed.
+                    if let Some(dialog) = pending_dialog.as_ref() {
+                        if button == MouseButton::Left
+                            && dialog
+                                .dismiss_button(vp_w, vp_h)
+                                .contains(Point::new(fx, fy))
+                        {
+                            pending_dialog = None;
+                        }
+                        continue;
+                    }
 
                     // Context menu hit first (if visible).
                     if let Some(ref menu) = context_menu {
@@ -515,6 +535,13 @@ fn run() {
 
                 // ── Keyboard ────────────────────────────────────
                 Event::KeyDown { keycode, modifiers } => {
+                    if pending_dialog.is_some() {
+                        // Escape, Enter, and Space are standard alert dismissal keys.
+                        if matches!(keycode, 0x1B | 0x0D | 0x20) {
+                            pending_dialog = None;
+                        }
+                        continue;
+                    }
                     let ctrl = modifiers & 0x01 != 0;
                     let shift = modifiers & 0x02 != 0;
                     let alt = modifiers & 0x04 != 0;
@@ -867,6 +894,7 @@ fn run() {
             &bookmarks,
             &downloads,
             &mut console_state,
+            &mut pending_dialog,
             vp_w,
             vp_h,
         );
@@ -912,6 +940,8 @@ fn run() {
             &settings,
             &zoom,
             vp_w,
+            vp_h,
+            pending_dialog.as_ref(),
             &devtools,
             &console_state,
             &perf_state,
@@ -1919,6 +1949,7 @@ fn process_embedder_bus(
     bookmarks: &vex_browser::BookmarkManager,
     downloads: &vex_browser::DownloadManager,
     console_state: &mut vex_browser::devtools::console::ConsoleState,
+    pending_dialog: &mut Option<BrowserDialog>,
     vp_w: f32,
     vp_h: f32,
 ) {
@@ -2102,21 +2133,16 @@ fn process_embedder_bus(
                 };
                 console_state.log_message(log_level, &message);
             }
-            vex_browser::EmbedderMsg::ShowDialog(_, request) => match request {
-                vex_browser::DialogRequest::Alert(msg) => {
-                    console_state.log_message(LogLevel::System, &format!("alert: {msg}"));
-                }
-                vex_browser::DialogRequest::Confirm(msg) => {
-                    console_state.log_message(LogLevel::System, &format!("confirm: {msg}"));
-                }
-                vex_browser::DialogRequest::Prompt(msg, default) => {
-                    let default = default.unwrap_or_default();
+            vex_browser::EmbedderMsg::ShowDialog(tab_id, request) => {
+                if pending_dialog.is_none() {
+                    *pending_dialog = Some(BrowserDialog::new(tab_id, request));
+                } else {
                     console_state.log_message(
-                        LogLevel::System,
-                        &format!("prompt: {msg} (default={default})"),
+                        LogLevel::Warn,
+                        "Ignoring a JavaScript dialog while another dialog is open",
                     );
                 }
-            },
+            }
             other => {
                 tracing::debug!(target: "vigo::embedder", "embedder msg: {other:?}");
             }
@@ -2131,7 +2157,7 @@ mod tests {
         hit_test_extension_action, launch_options_from_iter, load_session_health,
         merge_synced_settings, platform_to_shortcut, render_history_page, render_internal_page,
         resolve_browser_request_url, save_session_health, snapshot_history_payload,
-        startup_target_from_input, sync_renderer_processes, write_kpi_snapshot,
+        startup_target_from_input, sync_renderer_processes, write_kpi_snapshot, BrowserDialog,
         SessionHealthSnapshot,
     };
     use std::collections::HashMap;
@@ -2144,6 +2170,22 @@ mod tests {
         let resolved = resolve_browser_request_url("https://vigo.dev/docs", &base)
             .expect("absolute URL should parse");
         assert_eq!(resolved.as_ref(), "https://vigo.dev/docs");
+    }
+
+    #[test]
+    fn javascript_dialog_is_centered_and_has_a_dismiss_button() {
+        let dialog = BrowserDialog::new(
+            vex_browser::TabId::new(1),
+            vex_browser::DialogRequest::Alert("hello".to_owned()),
+        );
+        let panel = dialog.panel(1280.0, 800.0);
+        let button = dialog.dismiss_button(1280.0, 800.0);
+
+        assert!(panel.contains(Point::new(640.0, 400.0)));
+        assert!(panel.contains(Point::new(
+            button.origin.x + button.size.width / 2.0,
+            button.origin.y + button.size.height / 2.0,
+        )));
     }
 
     #[test]
@@ -3191,6 +3233,8 @@ fn compose_frame(
     settings: &vex_browser::BrowserSettings,
     zoom: &vex_browser::ZoomState,
     vp_w: f32,
+    vp_h: f32,
+    pending_dialog: Option<&BrowserDialog>,
     devtools: &vex_browser::DevToolsState,
     console_state: &vex_browser::devtools::console::ConsoleState,
     perf_state: &vex_browser::devtools::performance::PerformanceState,
@@ -3524,7 +3568,135 @@ fn compose_frame(
         menu.render(&mut dl);
     }
 
+    if let Some(dialog) = pending_dialog {
+        render_browser_dialog(&mut dl, dialog, vp_w, vp_h);
+    }
+
     dl
+}
+
+/// A pending JavaScript dialog owned by browser chrome.
+#[cfg(target_os = "windows")]
+struct BrowserDialog {
+    _tab_id: vex_browser::tab::TabId,
+    request: vex_browser::DialogRequest,
+}
+
+#[cfg(target_os = "windows")]
+impl BrowserDialog {
+    fn new(tab_id: vex_browser::tab::TabId, request: vex_browser::DialogRequest) -> Self {
+        Self {
+            _tab_id: tab_id,
+            request,
+        }
+    }
+
+    fn title(&self) -> &'static str {
+        match &self.request {
+            vex_browser::DialogRequest::Alert(_) => "This page says",
+            vex_browser::DialogRequest::Confirm(_) => "Confirmation requested",
+            vex_browser::DialogRequest::Prompt(_, _) => "Input requested",
+        }
+    }
+
+    fn message(&self) -> &str {
+        match &self.request {
+            vex_browser::DialogRequest::Alert(message)
+            | vex_browser::DialogRequest::Confirm(message)
+            | vex_browser::DialogRequest::Prompt(message, _) => message,
+        }
+    }
+
+    fn panel(&self, viewport_width: f32, viewport_height: f32) -> vex_core::geometry::Rect {
+        let width = 400.0_f32.min((viewport_width - 32.0).max(220.0));
+        let height = 170.0;
+        vex_core::geometry::Rect::new(
+            (viewport_width - width) / 2.0,
+            ((viewport_height - height) / 2.0).max(16.0),
+            width,
+            height,
+        )
+    }
+
+    fn dismiss_button(
+        &self,
+        viewport_width: f32,
+        viewport_height: f32,
+    ) -> vex_core::geometry::Rect {
+        let panel = self.panel(viewport_width, viewport_height);
+        vex_core::geometry::Rect::new(
+            panel.origin.x + panel.size.width - 86.0,
+            panel.origin.y + panel.size.height - 42.0,
+            70.0,
+            28.0,
+        )
+    }
+}
+
+/// Render the modal surface for a JavaScript `alert()` request.
+#[cfg(target_os = "windows")]
+fn render_browser_dialog(
+    dl: &mut vex_render::display_list::DisplayList,
+    dialog: &BrowserDialog,
+    viewport_width: f32,
+    viewport_height: f32,
+) {
+    use vex_core::color::Color;
+    use vex_core::geometry::{Point, Rect};
+    use vex_render::display_list::DisplayCommand;
+
+    let panel = dialog.panel(viewport_width, viewport_height);
+    let button = dialog.dismiss_button(viewport_width, viewport_height);
+    let max_message_chars = 54;
+    let message = dialog.message();
+    let display_message = if message.chars().count() > max_message_chars {
+        format!(
+            "{}…",
+            message
+                .chars()
+                .take(max_message_chars - 1)
+                .collect::<String>()
+        )
+    } else {
+        message.to_owned()
+    };
+
+    dl.push(DisplayCommand::FillRect {
+        rect: Rect::new(0.0, 0.0, viewport_width, viewport_height),
+        color: Color::rgba(0, 0, 0, 110),
+        border_radius: 0.0,
+    });
+    dl.push(DisplayCommand::FillRect {
+        rect: panel,
+        color: Color::rgb(255, 255, 255),
+        border_radius: 10.0,
+    });
+    dl.push(DisplayCommand::DrawText {
+        position: Point::new(panel.origin.x + 20.0, panel.origin.y + 18.0),
+        text: dialog.title().to_owned(),
+        color: Color::rgb(28, 28, 28),
+        font_size: 15.0,
+        line_height: 18.0,
+    });
+    dl.push(DisplayCommand::DrawText {
+        position: Point::new(panel.origin.x + 20.0, panel.origin.y + 58.0),
+        text: display_message,
+        color: Color::rgb(58, 58, 58),
+        font_size: 13.0,
+        line_height: 16.0,
+    });
+    dl.push(DisplayCommand::FillRect {
+        rect: button,
+        color: Color::rgb(53, 103, 189),
+        border_radius: 6.0,
+    });
+    dl.push(DisplayCommand::DrawText {
+        position: Point::new(button.origin.x + 24.0, button.origin.y + 6.0),
+        text: "OK".to_owned(),
+        color: Color::WHITE,
+        font_size: 13.0,
+        line_height: 16.0,
+    });
 }
 
 // ─── toolbar sub-renderers ─────────────────────────────────────────────

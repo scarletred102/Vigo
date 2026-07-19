@@ -11,6 +11,7 @@
 pub mod api;
 pub mod browser_request;
 pub mod context;
+pub mod dialog;
 pub mod dom_bridge;
 pub mod gc_roots;
 pub mod lifecycle;

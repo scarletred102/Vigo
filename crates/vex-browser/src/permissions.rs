@@ -6,12 +6,13 @@
 //! Manages permission requests and states for browser features like
 //! geolocation, notifications, camera, microphone, clipboard, etc.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // ── Permission Names ─────────────────────────────────────────────────────────
 
 /// Standard permission names from the Permissions API spec.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PermissionName {
     Geolocation,
     Notifications,
@@ -67,7 +68,7 @@ impl PermissionName {
 // ── Permission State ─────────────────────────────────────────────────────────
 
 /// Permission state (W3C spec states).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum PermissionState {
     /// The user has granted permission.
     Granted,
@@ -99,7 +100,7 @@ impl PermissionState {
 // ── PermissionPolicy ─────────────────────────────────────────────────────────
 
 /// Controls what the default policy is for unrecognized permissions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum DefaultPolicy {
     /// Deny unknown permissions automatically.
     #[default]
@@ -118,7 +119,7 @@ pub struct PermissionDescriptor {
 // ── PermissionManager ────────────────────────────────────────────────────────
 
 /// Manages permissions per origin.
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionManager {
     /// Map from origin → (permission_name → state).
     permissions: HashMap<String, HashMap<PermissionName, PermissionState>>,

@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use crate::permissions::PermissionManager;
 use serde::{Deserialize, Serialize};
 use vex_core::error::VexError;
 use vex_core::VexResult;
@@ -63,6 +64,11 @@ pub struct BrowserSettings {
     /// Always ask where to save downloads.
     pub ask_download_location: bool,
 
+    // -- Permissions --
+    /// Persisted per-origin permission decisions.
+    #[serde(default)]
+    pub permissions: PermissionManager,
+
     // -- Privacy configs (runtime-only, not serialized) --
     /// Canvas fingerprint protection config (session seed randomized at startup).
     #[serde(skip)]
@@ -119,6 +125,7 @@ impl Default for BrowserSettings {
             default_encoding: "UTF-8".to_string(),
             download_dir: default_download_dir(),
             ask_download_location: false,
+            permissions: PermissionManager::new(),
             canvas_fingerprint: CanvasFingerprintConfig::default(),
             webgl_mask: WebGlMask::default(),
             font_restriction: FontRestrictionConfig::default(),
@@ -187,6 +194,7 @@ fn default_download_dir() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::permissions::{PermissionName, PermissionState};
 
     #[test]
     fn defaults_are_sensible() {
@@ -225,6 +233,11 @@ mod tests {
         let mut s = BrowserSettings::new();
         s.default_zoom = 150;
         s.show_bookmarks_bar = false;
+        s.permissions.set(
+            "https://example.com",
+            PermissionName::Notifications,
+            PermissionState::Granted,
+        );
 
         let dir = std::env::temp_dir().join("vex_settings_test");
         std::fs::create_dir_all(&dir).unwrap();
@@ -234,6 +247,9 @@ mod tests {
         let loaded = BrowserSettings::load(&path);
         assert_eq!(loaded.default_zoom, 150);
         assert!(!loaded.show_bookmarks_bar);
+        assert!(loaded
+            .permissions
+            .is_allowed("https://example.com", &PermissionName::Notifications,));
 
         std::fs::remove_dir_all(&dir).ok();
     }
