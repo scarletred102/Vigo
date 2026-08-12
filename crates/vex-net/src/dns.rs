@@ -55,9 +55,9 @@ impl DnsResolver {
                 Ok(resolver) => resolver,
                 Err(err) => {
                     tracing::warn!(
-                        "failed to load system DNS config: {err}; falling back to default resolver"
+                        "failed to load system DNS config: {err}; falling back to Cloudflare public resolver"
                     );
-                    TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
+                    TokioAsyncResolver::tokio(ResolverConfig::cloudflare(), ResolverOpts::default())
                 }
             },
             DnsMode::DoH(provider) => {

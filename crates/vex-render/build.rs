@@ -16,8 +16,23 @@ fn main() {
 
     let zig_lib_dir = workspace_root.join("zig").join("zig-out").join("lib");
 
+    println!("cargo:warning=zig_lib_dir resolved to: {}", zig_lib_dir.display());
+    println!("cargo:rustc-link-search=native={}", zig_lib_dir.display());
+    println!("cargo:rerun-if-changed={}", zig_lib_dir.display());
+
     if zig_lib_dir.exists() {
-        println!("cargo:rustc-link-search=native={}", zig_lib_dir.display());
+        // Alias static libraries to GNU-compatible lib*.a / lib*.lib names for MinGW ld toolchains
+        let libs = ["vex_platform", "vex_compositor", "vex_alloc"];
+        for lib in &libs {
+            let src = zig_lib_dir.join(format!("{lib}.lib"));
+            if src.exists() {
+                let dst_a = zig_lib_dir.join(format!("lib{lib}.a"));
+                let dst_lib = zig_lib_dir.join(format!("lib{lib}.lib"));
+                let _ = std::fs::copy(&src, &dst_a);
+                let _ = std::fs::copy(&src, &dst_lib);
+            }
+        }
+
         println!("cargo:rustc-link-lib=static=vex_platform");
         println!("cargo:rustc-link-lib=static=vex_compositor");
         println!("cargo:rustc-link-lib=static=vex_alloc");

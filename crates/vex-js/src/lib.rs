@@ -17,8 +17,9 @@ pub mod gc_roots;
 pub mod lifecycle;
 pub mod script_runner;
 
+pub use api::browser_bridge::BrowserPromiseResult;
 pub use api::events::EventBridge;
-pub use browser_request::{new_request_queue, BrowserRequest, RequestQueue};
+pub use browser_request::{new_request_queue, BrowserDialogKind, BrowserRequest, RequestQueue};
 pub use context::JsRuntime;
 pub use dom_bridge::{shared_document, SharedDocument};
 pub use gc_roots::GcRootSet;

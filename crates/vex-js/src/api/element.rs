@@ -63,6 +63,7 @@ fn build_element_proxy_internal(
         }
     };
 
+    let realm = context.realm().clone();
     let mut builder = ObjectInitializer::new(context);
 
     // Internal id for round-tripping back to Rust.
@@ -143,13 +144,40 @@ fn build_element_proxy_internal(
             }
         }
 
-        // textContent for elements
+        // textContent for elements. This must be a live accessor rather than
+        // a plain JS property so asynchronous page code updates the actual
+        // DOM tree that the renderer consumes.
         if matches!(&node.data, NodeData::Element(_)) {
-            let tc = doc_ref.text_content(id);
-            builder.property(
+            let doc_get = doc.clone();
+            let get = unsafe {
+                NativeFunction::from_closure(move |this, _args, ctx| {
+                    let node_id = extract_vex_id(this, ctx)?;
+                    Ok(JsValue::from(js_string!(doc_get
+                        .borrow()
+                        .text_content(node_id))))
+                })
+            }
+            .to_js_function(&realm);
+            let doc_set = doc.clone();
+            let set = unsafe {
+                NativeFunction::from_closure(move |this, args, ctx| {
+                    let node_id = extract_vex_id(this, ctx)?;
+                    let value = args
+                        .first()
+                        .unwrap_or(&JsValue::undefined())
+                        .to_string(ctx)?
+                        .to_std_string_escaped();
+                    doc_set.borrow_mut().set_text_content(node_id, &value);
+                    mark_dom_dirty_node(ctx, node_id);
+                    Ok(JsValue::undefined())
+                })
+            }
+            .to_js_function(&realm);
+            builder.accessor(
                 js_string!("textContent"),
-                js_string!(tc),
-                Attribute::WRITABLE | Attribute::CONFIGURABLE,
+                Some(get),
+                Some(set),
+                Attribute::CONFIGURABLE,
             );
         }
 
@@ -630,6 +658,19 @@ mod tests {
             ))
             .unwrap();
         assert_eq!(result.as_string().unwrap().to_std_string_escaped(), "Hello");
+    }
+
+    #[test]
+    fn text_content_write_updates_dom_and_marks_it_dirty() {
+        let (mut ctx, doc) = setup();
+        ctx.eval(Source::from_bytes(
+            "document.querySelector('p').textContent = 'Updated';",
+        ))
+        .unwrap();
+
+        let p = doc.borrow().query_selector("p").unwrap().unwrap();
+        assert_eq!(doc.borrow().text_content(p), "Updated");
+        assert!(super::super::dom_dirty::take_dom_dirty_nodes(&mut ctx).contains(&p));
     }
 
     #[test]

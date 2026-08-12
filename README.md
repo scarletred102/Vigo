@@ -14,15 +14,25 @@ The current build can:
 - load HTTP(S) pages through the Vex fetch, HTML, CSS, layout, JavaScript, and GPU-rendering pipeline;
 - open and navigate tabs with back/forward/reload controls and address-bar search;
 - persist browsing history and bookmarks, and display them in built-in pages;
+- download direct file URLs and `Content-Disposition: attachment` responses to the profile-owned downloads folder;
+- submit basic URL-encoded HTML forms over GET and POST;
+- present native JavaScript dialogs and permission-backed text clipboard access;
 - provide find-in-page, browser settings, DevTools scaffolding, and extension loading; and
 - build the native window/platform layer from Zig.
 
 Some important boundaries are still incomplete:
 
-- Download UI is present, but navigation does not yet queue or transfer files to disk.
+- Downloads are basic: there is no destination chooser, pause/resume support, or reputation/malware scanning.
+- Forms currently cover URL-encoded GET/POST controls; multipart file uploads and full select/validation semantics are incomplete.
 - Renderer-process management currently uses a single-process sandbox policy hook; it is not a hardened process sandbox.
 - The WebView/DRM fallback is scaffolded rather than a complete integration.
 - Web-platform compatibility is incomplete, so many sites will not behave like they do in mature browsers.
+
+JavaScript dialogs are asynchronous in the current engine: use `await alert(...)`,
+`await confirm(...)`, and `await prompt(...)`. Clipboard access uses
+`await navigator.clipboard.readText()` and `await navigator.clipboard.writeText(...)`,
+and is gated per HTTP(S) origin. This differs from the synchronous dialog behavior
+of mature browser engines.
 
 The current limitations above define the public release boundary.
 

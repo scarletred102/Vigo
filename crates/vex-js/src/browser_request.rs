@@ -13,6 +13,17 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// A browser dialog requested by page JavaScript.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BrowserDialogKind {
+    Alert(String),
+    Confirm(String),
+    Prompt {
+        message: String,
+        default: Option<String>,
+    },
+}
+
 /// A request from JavaScript to the browser shell.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BrowserRequest {
@@ -29,8 +40,14 @@ pub enum BrowserRequest {
         /// Optional URL for the new history entry.
         url: Option<String>,
     },
-    /// `alert(message)` — show a message to the user.
+    /// Legacy fire-and-forget `alert(message)` request.
     Alert(String),
+    /// A dialog whose JavaScript promise must be settled by browser chrome.
+    Dialog { id: u64, kind: BrowserDialogKind },
+    /// Read plain text from the operating-system clipboard.
+    ClipboardRead { id: u64 },
+    /// Write plain text to the operating-system clipboard.
+    ClipboardWrite { id: u64, text: String },
     /// `console.*()` entry for the DevTools console panel.
     ConsoleLog {
         /// Log level: "log", "info", "warn", "error", "debug".

@@ -24,6 +24,7 @@ use vex_js::{JsRuntime, SharedDocument};
 use vex_layout::LayoutBox;
 use vex_render::scroll::ScrollState;
 
+use crate::forms::{submission_for_control, FormSubmission};
 use crate::links::{self, LinkAction};
 
 /// Result of processing a mouse click.
@@ -31,6 +32,8 @@ use crate::links::{self, LinkAction};
 pub enum ClickResult {
     /// A link navigation was triggered.
     Navigate(LinkAction),
+    /// A form default action produced a URL-encoded submission.
+    Submit(FormSubmission),
     /// The click was handled but did not trigger navigation.
     Handled,
     /// No element was hit at the given position.
@@ -81,6 +84,17 @@ pub fn process_click(
         runtime.dispatch_dom_event(shared_doc, &mut input_evt);
         let mut change_evt = Event::new(EventType::Change, target_id);
         runtime.dispatch_dom_event(shared_doc, &mut change_evt);
+    }
+
+    if let Some((form_id, submission)) = {
+        let doc = shared_doc.borrow();
+        default_form_submission(&doc, target_id, current_url)
+    } {
+        let mut submit = Event::new(EventType::Submit, form_id);
+        if !runtime.dispatch_dom_event(shared_doc, &mut submit) {
+            return ClickResult::Submit(submission);
+        }
+        return ClickResult::Handled;
     }
 
     // Default action — check if the target is inside an <a> element.
@@ -274,6 +288,39 @@ fn find_ancestor_input(doc: &Document, start: VexId) -> Option<VexId> {
     None
 }
 
+fn default_form_submission(
+    doc: &Document,
+    start: VexId,
+    current_url: &VexUrl,
+) -> Option<(VexId, FormSubmission)> {
+    let mut current = Some(start);
+    while let Some(id) = current {
+        let node = doc.arena().get(id);
+        let NodeData::Element(element) = &node.data else {
+            current = node.parent;
+            continue;
+        };
+        let is_submit = match element.tag_name.as_str() {
+            "input" => element_input_type(element) == InputType::Submit,
+            "button" => element
+                .attributes
+                .iter()
+                .find(|attribute| attribute.name.eq_ignore_ascii_case("type"))
+                .map(|attribute| {
+                    !attribute.value.eq_ignore_ascii_case("button")
+                        && !attribute.value.eq_ignore_ascii_case("reset")
+                })
+                .unwrap_or(true),
+            _ => false,
+        };
+        if is_submit {
+            return submission_for_control(id, doc, current_url);
+        }
+        current = node.parent;
+    }
+    None
+}
+
 fn element_input_type(el: &vex_dom::node::ElementData) -> InputType {
     el.attributes
         .iter()
@@ -413,7 +460,7 @@ fn apply_key_to_input(
     if !doc.form_states().contains(id) {
         let node = doc.arena().get(id);
         if let NodeData::Element(ref el) = node.data {
-            let state = match el.tag_name.as_str() {
+            let mut state = match el.tag_name.as_str() {
                 "textarea" => vex_dom::InputState::new_textarea(),
                 "input" => {
                     let it = el
@@ -426,6 +473,19 @@ fn apply_key_to_input(
                 }
                 _ => return false,
             };
+            state.name = el
+                .attributes
+                .iter()
+                .find(|attribute| attribute.name.eq_ignore_ascii_case("name"))
+                .map(|attribute| attribute.value.clone())
+                .unwrap_or_default();
+            state.value = el
+                .attributes
+                .iter()
+                .find(|attribute| attribute.name.eq_ignore_ascii_case("value"))
+                .map(|attribute| attribute.value.clone())
+                .unwrap_or_default();
+            state.set_cursor(state.value.len());
             doc.form_states_mut().insert(id, state);
         }
     }
@@ -607,6 +667,27 @@ mod tests {
             .map(|s| s.checked)
             .unwrap_or(false);
         assert!(checked);
+    }
+
+    #[test]
+    fn submit_button_click_builds_a_get_submission() {
+        let doc = vex_html::parse_html(
+            r#"<form action="/search"><input name="q" value="vigo"><button type="submit">Go</button></form>"#,
+        );
+        let button = doc.get_elements_by_tag_name("button")[0];
+        let root = make_box(Some(button), 0.0, 0.0, 100.0, 40.0);
+        let shared = vex_js::shared_document(doc);
+        let scroll = ScrollState::new(800.0, 600.0);
+        let url = VexUrl::parse("https://example.test/start").unwrap();
+        let mut runtime = JsRuntime::new();
+
+        let result = process_click(10.0, 10.0, &root, &scroll, &shared, &url, &mut runtime);
+
+        assert!(matches!(
+            result,
+            ClickResult::Submit(FormSubmission { ref url, method: crate::forms::FormMethod::Get, ref body })
+                if url.as_ref() == "https://example.test/search?q=vigo" && body == "q=vigo"
+        ));
     }
 
     #[test]

@@ -28,8 +28,21 @@ fn main() {
 
     let zig_lib_dir = workspace_root.join("zig").join("zig-out").join("lib");
 
+    println!("cargo:rustc-link-search=native={}", zig_lib_dir.display());
+    println!("cargo:rerun-if-changed={}", zig_lib_dir.display());
+
     if zig_lib_dir.exists() {
-        println!("cargo:rustc-link-search=native={}", zig_lib_dir.display());
+        let libs = ["vex_media_zig", "vex_text"];
+        for lib in &libs {
+            let src = zig_lib_dir.join(format!("{lib}.lib"));
+            if src.exists() {
+                let dst_a = zig_lib_dir.join(format!("lib{lib}.a"));
+                let dst_lib = zig_lib_dir.join(format!("lib{lib}.lib"));
+                let _ = std::fs::copy(&src, &dst_a);
+                let _ = std::fs::copy(&src, &dst_lib);
+            }
+        }
+
         println!("cargo:rustc-link-lib=static=vex_media_zig");
         println!("cargo:rustc-link-lib=static=vex_text");
     } else {

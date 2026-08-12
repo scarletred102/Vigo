@@ -10,6 +10,8 @@ use vex_core::{engine_name, engine_version};
 
 #[cfg(target_os = "windows")]
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "windows")]
+use vex_js::{BrowserDialogKind, BrowserPromiseResult};
 
 fn main() {
     #[cfg(not(target_os = "windows"))]
@@ -376,12 +378,29 @@ fn run() {
                     // A JavaScript dialog is modal: the page and browser
                     // chrome cannot receive input until it is dismissed.
                     if let Some(dialog) = pending_dialog.as_ref() {
-                        if button == MouseButton::Left
-                            && dialog
-                                .dismiss_button(vp_w, vp_h)
+                        if button == MouseButton::Left {
+                            let action = if dialog
+                                .accept_button(vp_w, vp_h)
                                 .contains(Point::new(fx, fy))
-                        {
-                            pending_dialog = None;
+                            {
+                                Some(true)
+                            } else if dialog
+                                .cancel_button(vp_w, vp_h)
+                                .is_some_and(|rect| rect.contains(Point::new(fx, fy)))
+                            {
+                                Some(false)
+                            } else {
+                                None
+                            };
+                            if let Some(accepted) = action {
+                                let dialog = pending_dialog.take().expect("dialog was present");
+                                complete_browser_dialog(
+                                    &mut tab_mgr,
+                                    &mut settings,
+                                    dialog,
+                                    accepted,
+                                );
+                            }
                         }
                         continue;
                     }
@@ -536,9 +555,13 @@ fn run() {
                 // ── Keyboard ────────────────────────────────────
                 Event::KeyDown { keycode, modifiers } => {
                     if pending_dialog.is_some() {
-                        // Escape, Enter, and Space are standard alert dismissal keys.
-                        if matches!(keycode, 0x1B | 0x0D | 0x20) {
-                            pending_dialog = None;
+                        let accepted = matches!(keycode, 0x0D);
+                        let cancelled = matches!(keycode, 0x1B);
+                        if accepted || cancelled {
+                            let dialog = pending_dialog.take().expect("dialog was present");
+                            complete_browser_dialog(&mut tab_mgr, &mut settings, dialog, accepted);
+                        } else if let Some(dialog) = pending_dialog.as_mut() {
+                            dialog.handle_key(keycode, modifiers);
                         }
                         continue;
                     }
@@ -798,6 +821,39 @@ fn run() {
                             active_tab_id,
                             DialogRequest::Alert(msg),
                         ));
+                    }
+                    BrowserRequest::Dialog { id, kind } => {
+                        if pending_dialog.is_none() {
+                            pending_dialog =
+                                Some(BrowserDialog::javascript(active_tab_id, id, kind));
+                        } else if let Some(runtime) = tab_mgr.active_tab_mut().runtime.as_mut() {
+                            runtime.settle_browser_promise(
+                                id,
+                                BrowserPromiseResult::Error(
+                                    "another browser dialog is already open".to_owned(),
+                                ),
+                            );
+                        }
+                    }
+                    BrowserRequest::ClipboardRead { id } => {
+                        handle_clipboard_request(
+                            &mut tab_mgr,
+                            &mut settings,
+                            &mut pending_dialog,
+                            active_tab_id,
+                            id,
+                            ClipboardOperation::Read,
+                        );
+                    }
+                    BrowserRequest::ClipboardWrite { id, text } => {
+                        handle_clipboard_request(
+                            &mut tab_mgr,
+                            &mut settings,
+                            &mut pending_dialog,
+                            active_tab_id,
+                            id,
+                            ClipboardOperation::Write(text),
+                        );
                     }
                     BrowserRequest::Navigate(raw_url) => {
                         let current_url = tab_mgr.active_tab().url.clone();
@@ -2135,7 +2191,18 @@ fn process_embedder_bus(
             }
             vex_browser::EmbedderMsg::ShowDialog(tab_id, request) => {
                 if pending_dialog.is_none() {
-                    *pending_dialog = Some(BrowserDialog::new(tab_id, request));
+                    let kind = match request {
+                        vex_browser::DialogRequest::Alert(message) => {
+                            BrowserDialogKind::Alert(message)
+                        }
+                        vex_browser::DialogRequest::Confirm(message) => {
+                            BrowserDialogKind::Confirm(message)
+                        }
+                        vex_browser::DialogRequest::Prompt(message, default) => {
+                            BrowserDialogKind::Prompt { message, default }
+                        }
+                    };
+                    *pending_dialog = Some(BrowserDialog::javascript(tab_id, 0, kind));
                 } else {
                     console_state.log_message(
                         LogLevel::Warn,
@@ -2174,12 +2241,13 @@ mod tests {
 
     #[test]
     fn javascript_dialog_is_centered_and_has_a_dismiss_button() {
-        let dialog = BrowserDialog::new(
+        let dialog = BrowserDialog::javascript(
             vex_browser::TabId::new(1),
-            vex_browser::DialogRequest::Alert("hello".to_owned()),
+            1,
+            vex_js::BrowserDialogKind::Alert("hello".to_owned()),
         );
         let panel = dialog.panel(1280.0, 800.0);
-        let button = dialog.dismiss_button(1280.0, 800.0);
+        let button = dialog.accept_button(1280.0, 800.0);
 
         assert!(panel.contains(Point::new(640.0, 400.0)));
         assert!(panel.contains(Point::new(
@@ -2532,37 +2600,16 @@ fn navigate_tab(
 
     // Real network navigation for HTTP(S).
     if url_str.starts_with("http://") || url_str.starts_with("https://") {
-        let rt = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(rt) => rt,
-            Err(e) => {
-                tracing::error!("Failed to create tokio runtime for navigation: {e}");
-                let tab = tab_mgr.active_tab_mut();
-                tab.start_load(url.clone());
-                tab.load_html(
-                    &format!(
-                        "<!doctype html><html><head><title>Navigation Error</title></head><body><h1>Navigation Error</h1><p>{e}</p></body></html>"
-                    ),
-                    viewport,
-                );
-                tab.set_content_size(vp_w, vp_h);
-                return;
-            }
-        };
-
-        let tab = tab_mgr.active_tab_mut();
-        rt.block_on(tab.load_url(url.clone(), viewport));
-
-        let content_height = tab
-            .layout
-            .as_ref()
-            .map(estimated_layout_height)
-            .unwrap_or(vp_h)
-            .max(vp_h);
-        tab.set_content_size(vp_w, content_height + 32.0);
-        browsing_history.record_visit(&tab.url.to_string(), &tab.title);
+        navigate_network_request(
+            tab_mgr,
+            url,
+            vex_net::Method::Get,
+            None,
+            browsing_history,
+            downloads,
+            vp_w,
+            vp_h,
+        );
         return;
     }
 
@@ -2577,6 +2624,74 @@ fn navigate_tab(
         viewport,
     );
     tab.set_content_size(vp_w, vp_h);
+}
+
+/// Run a top-level HTTP(S) navigation or URL-encoded form submission.
+#[cfg(target_os = "windows")]
+fn navigate_network_request(
+    tab_mgr: &mut vex_browser::TabManager,
+    url: &vex_core::VexUrl,
+    method: vex_net::Method,
+    body: Option<Vec<u8>>,
+    browsing_history: &mut vex_browser::history::BrowsingHistory,
+    downloads: &vex_browser::DownloadManager,
+    vp_w: f32,
+    vp_h: f32,
+) {
+    let viewport = vex_core::geometry::Size::new(vp_w, vp_h);
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(error) => {
+            tracing::error!("Failed to create tokio runtime for navigation: {error}");
+            let tab = tab_mgr.active_tab_mut();
+            tab.start_load(url.clone());
+            tab.load_html(
+                &format!(
+                    "<!doctype html><html><head><title>Navigation Error</title></head><body><h1>Navigation Error</h1><p>{error}</p></body></html>"
+                ),
+                viewport,
+            );
+            tab.set_content_size(vp_w, vp_h);
+            return;
+        }
+    };
+
+    let outcome = {
+        let tab = tab_mgr.active_tab_mut();
+        rt.block_on(tab.load_request(url.clone(), method, body, viewport))
+    };
+    match outcome {
+        vex_browser::NavigationOutcome::PageLoaded => {
+            let tab = tab_mgr.active_tab_mut();
+            let content_height = tab
+                .layout
+                .as_ref()
+                .map(estimated_layout_height)
+                .unwrap_or(vp_h)
+                .max(vp_h);
+            tab.set_content_size(vp_w, content_height + 32.0);
+            browsing_history.record_visit(&tab.url.to_string(), &tab.title);
+        }
+        vex_browser::NavigationOutcome::Download {
+            url,
+            filename,
+            mime_type,
+            body,
+        } => match downloads.queue_response(&url, Some(&filename), mime_type.as_deref(), body) {
+            Ok(id) => tracing::info!(
+                download_id = id.0,
+                filename,
+                "Attachment download queued: {url}"
+            ),
+            Err(error) => tracing::error!(
+                filename,
+                "Could not queue attachment download for {url}: {error}"
+            ),
+        },
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -3104,6 +3219,41 @@ fn handle_content_click(
     let mut needs_relayout = focus_changed;
 
     match click_result {
+        Some(vex_browser::event_handler::ClickResult::Submit(submission)) => {
+            let tab_id = tab_mgr.active_tab_id();
+            let title = tab_mgr.active_tab().title.clone();
+            let scroll = vex_core::geometry::Point::new(
+                tab_mgr.active_tab().scroll.offset_x,
+                tab_mgr.active_tab().scroll.offset_y,
+            );
+            nav_histories
+                .entry(tab_id)
+                .or_default()
+                .push(submission.url.clone(), title, scroll);
+            match submission.method {
+                vex_browser::forms::FormMethod::Get => navigate_tab(
+                    tab_mgr,
+                    &submission.url,
+                    browsing_history,
+                    bookmarks,
+                    downloads,
+                    vp_w,
+                    vp_h,
+                ),
+                vex_browser::forms::FormMethod::Post => navigate_network_request(
+                    tab_mgr,
+                    &submission.url,
+                    vex_net::Method::Post,
+                    Some(submission.body.into_bytes()),
+                    browsing_history,
+                    downloads,
+                    vp_w,
+                    vp_h,
+                ),
+            }
+            *focused_node = None;
+            needs_relayout = false;
+        }
         Some(vex_browser::event_handler::ClickResult::Navigate(
             vex_browser::links::LinkAction::Navigate(url),
         )) => {
@@ -3575,41 +3725,123 @@ fn compose_frame(
     dl
 }
 
-/// A pending JavaScript dialog owned by browser chrome.
+/// Browser-chrome request that is awaiting a user decision.
 #[cfg(target_os = "windows")]
 struct BrowserDialog {
-    _tab_id: vex_browser::tab::TabId,
-    request: vex_browser::DialogRequest,
+    tab_id: vex_browser::tab::TabId,
+    id: u64,
+    request: BrowserModalRequest,
+    input: String,
+}
+
+#[cfg(target_os = "windows")]
+enum BrowserModalRequest {
+    JavaScript(vex_js::BrowserDialogKind),
+    Clipboard {
+        origin: String,
+        permission: vex_browser::PermissionName,
+        operation: ClipboardOperation,
+    },
+}
+
+#[cfg(target_os = "windows")]
+enum ClipboardOperation {
+    Read,
+    Write(String),
 }
 
 #[cfg(target_os = "windows")]
 impl BrowserDialog {
-    fn new(tab_id: vex_browser::tab::TabId, request: vex_browser::DialogRequest) -> Self {
+    fn javascript(tab_id: vex_browser::tab::TabId, id: u64, request: BrowserDialogKind) -> Self {
+        let input = match &request {
+            BrowserDialogKind::Prompt { default, .. } => default.clone().unwrap_or_default(),
+            _ => String::new(),
+        };
         Self {
-            _tab_id: tab_id,
-            request,
+            tab_id,
+            id,
+            request: BrowserModalRequest::JavaScript(request),
+            input,
+        }
+    }
+
+    fn clipboard(
+        tab_id: vex_browser::tab::TabId,
+        id: u64,
+        origin: String,
+        permission: vex_browser::PermissionName,
+        operation: ClipboardOperation,
+    ) -> Self {
+        Self {
+            tab_id,
+            id,
+            request: BrowserModalRequest::Clipboard {
+                origin,
+                permission,
+                operation,
+            },
+            input: String::new(),
         }
     }
 
     fn title(&self) -> &'static str {
         match &self.request {
-            vex_browser::DialogRequest::Alert(_) => "This page says",
-            vex_browser::DialogRequest::Confirm(_) => "Confirmation requested",
-            vex_browser::DialogRequest::Prompt(_, _) => "Input requested",
+            BrowserModalRequest::JavaScript(BrowserDialogKind::Alert(_)) => "This page says",
+            BrowserModalRequest::JavaScript(BrowserDialogKind::Confirm(_)) => {
+                "Confirmation requested"
+            }
+            BrowserModalRequest::JavaScript(BrowserDialogKind::Prompt { .. }) => "Input requested",
+            BrowserModalRequest::Clipboard { .. } => "Clipboard permission",
         }
     }
 
-    fn message(&self) -> &str {
+    fn message(&self) -> String {
         match &self.request {
-            vex_browser::DialogRequest::Alert(message)
-            | vex_browser::DialogRequest::Confirm(message)
-            | vex_browser::DialogRequest::Prompt(message, _) => message,
+            BrowserModalRequest::JavaScript(BrowserDialogKind::Alert(message))
+            | BrowserModalRequest::JavaScript(BrowserDialogKind::Confirm(message)) => {
+                message.clone()
+            }
+            BrowserModalRequest::JavaScript(BrowserDialogKind::Prompt { message, .. }) => {
+                message.clone()
+            }
+            BrowserModalRequest::Clipboard {
+                origin, permission, ..
+            } => {
+                format!("{origin} wants to use {}.", permission.as_str())
+            }
+        }
+    }
+
+    fn needs_text_input(&self) -> bool {
+        matches!(
+            &self.request,
+            BrowserModalRequest::JavaScript(BrowserDialogKind::Prompt { .. })
+        )
+    }
+
+    fn accept_label(&self) -> &'static str {
+        match &self.request {
+            BrowserModalRequest::JavaScript(BrowserDialogKind::Alert(_)) => "OK",
+            BrowserModalRequest::JavaScript(_) => "OK",
+            BrowserModalRequest::Clipboard { .. } => "Allow",
+        }
+    }
+
+    fn cancel_label(&self) -> Option<&'static str> {
+        match &self.request {
+            BrowserModalRequest::JavaScript(BrowserDialogKind::Alert(_)) => None,
+            BrowserModalRequest::JavaScript(_) => Some("Cancel"),
+            BrowserModalRequest::Clipboard { .. } => Some("Block"),
         }
     }
 
     fn panel(&self, viewport_width: f32, viewport_height: f32) -> vex_core::geometry::Rect {
         let width = 400.0_f32.min((viewport_width - 32.0).max(220.0));
-        let height = 170.0;
+        let height = if self.needs_text_input() {
+            214.0
+        } else {
+            170.0
+        };
         vex_core::geometry::Rect::new(
             (viewport_width - width) / 2.0,
             ((viewport_height - height) / 2.0).max(16.0),
@@ -3618,11 +3850,7 @@ impl BrowserDialog {
         )
     }
 
-    fn dismiss_button(
-        &self,
-        viewport_width: f32,
-        viewport_height: f32,
-    ) -> vex_core::geometry::Rect {
+    fn accept_button(&self, viewport_width: f32, viewport_height: f32) -> vex_core::geometry::Rect {
         let panel = self.panel(viewport_width, viewport_height);
         vex_core::geometry::Rect::new(
             panel.origin.x + panel.size.width - 86.0,
@@ -3630,6 +3858,66 @@ impl BrowserDialog {
             70.0,
             28.0,
         )
+    }
+
+    fn cancel_button(
+        &self,
+        viewport_width: f32,
+        viewport_height: f32,
+    ) -> Option<vex_core::geometry::Rect> {
+        self.cancel_label().map(|_| {
+            let panel = self.panel(viewport_width, viewport_height);
+            vex_core::geometry::Rect::new(
+                panel.origin.x + panel.size.width - 166.0,
+                panel.origin.y + panel.size.height - 42.0,
+                70.0,
+                28.0,
+            )
+        })
+    }
+
+    fn input_rect(
+        &self,
+        viewport_width: f32,
+        viewport_height: f32,
+    ) -> Option<vex_core::geometry::Rect> {
+        self.needs_text_input().then(|| {
+            let panel = self.panel(viewport_width, viewport_height);
+            vex_core::geometry::Rect::new(
+                panel.origin.x + 20.0,
+                panel.origin.y + 94.0,
+                panel.size.width - 40.0,
+                30.0,
+            )
+        })
+    }
+
+    fn handle_key(&mut self, keycode: u32, modifiers: u32) {
+        if !self.needs_text_input() {
+            return;
+        }
+        if keycode == 0x08 {
+            self.input.pop();
+            return;
+        }
+        if modifiers & 0x01 != 0 {
+            return;
+        }
+        match keycode {
+            0x20 => self.input.push(' '),
+            0x30..=0x39 => self.input.push(keycode as u8 as char),
+            0x41..=0x5A => {
+                let letter = keycode as u8 as char;
+                self.input.push(if modifiers & 0x02 != 0 {
+                    letter
+                } else {
+                    letter.to_ascii_lowercase()
+                });
+            }
+            0xBD => self.input.push('-'),
+            0xBE => self.input.push('.'),
+            _ => {}
+        }
     }
 }
 
@@ -3646,7 +3934,8 @@ fn render_browser_dialog(
     use vex_render::display_list::DisplayCommand;
 
     let panel = dialog.panel(viewport_width, viewport_height);
-    let button = dialog.dismiss_button(viewport_width, viewport_height);
+    let accept_button = dialog.accept_button(viewport_width, viewport_height);
+    let cancel_button = dialog.cancel_button(viewport_width, viewport_height);
     let max_message_chars = 54;
     let message = dialog.message();
     let display_message = if message.chars().count() > max_message_chars {
@@ -3658,7 +3947,7 @@ fn render_browser_dialog(
                 .collect::<String>()
         )
     } else {
-        message.to_owned()
+        message
     };
 
     dl.push(DisplayCommand::FillRect {
@@ -3685,18 +3974,183 @@ fn render_browser_dialog(
         font_size: 13.0,
         line_height: 16.0,
     });
+    if let Some(input) = dialog.input_rect(viewport_width, viewport_height) {
+        dl.push(DisplayCommand::FillRect {
+            rect: input,
+            color: Color::rgb(246, 247, 249),
+            border_radius: 5.0,
+        });
+        dl.push(DisplayCommand::DrawText {
+            position: Point::new(input.origin.x + 8.0, input.origin.y + 7.0),
+            text: dialog.input.clone(),
+            color: Color::rgb(28, 28, 28),
+            font_size: 13.0,
+            line_height: 16.0,
+        });
+    }
+    if let Some(button) = cancel_button {
+        dl.push(DisplayCommand::FillRect {
+            rect: button,
+            color: Color::rgb(226, 229, 234),
+            border_radius: 6.0,
+        });
+        dl.push(DisplayCommand::DrawText {
+            position: Point::new(button.origin.x + 10.0, button.origin.y + 6.0),
+            text: dialog.cancel_label().unwrap_or_default().to_owned(),
+            color: Color::rgb(48, 48, 48),
+            font_size: 13.0,
+            line_height: 16.0,
+        });
+    }
     dl.push(DisplayCommand::FillRect {
-        rect: button,
+        rect: accept_button,
         color: Color::rgb(53, 103, 189),
         border_radius: 6.0,
     });
     dl.push(DisplayCommand::DrawText {
-        position: Point::new(button.origin.x + 24.0, button.origin.y + 6.0),
-        text: "OK".to_owned(),
+        position: Point::new(accept_button.origin.x + 15.0, accept_button.origin.y + 6.0),
+        text: dialog.accept_label().to_owned(),
         color: Color::WHITE,
         font_size: 13.0,
         line_height: 16.0,
     });
+}
+
+#[cfg(target_os = "windows")]
+fn handle_clipboard_request(
+    tab_mgr: &mut vex_browser::TabManager,
+    settings: &mut vex_browser::BrowserSettings,
+    pending_dialog: &mut Option<BrowserDialog>,
+    tab_id: vex_browser::tab::TabId,
+    id: u64,
+    operation: ClipboardOperation,
+) {
+    let Some(tab) = tab_mgr.tab_mut(tab_id) else {
+        return;
+    };
+    let raw_url = tab.url.as_ref();
+    let origin = url::Url::parse(raw_url)
+        .ok()
+        .filter(|url| matches!(url.scheme(), "http" | "https"))
+        .map(|url| url.origin().ascii_serialization())
+        .filter(|origin| origin != "null");
+    let Some(origin) = origin else {
+        if let Some(runtime) = tab.runtime.as_mut() {
+            runtime.settle_browser_promise(
+                id,
+                BrowserPromiseResult::Error(
+                    "clipboard access requires an HTTP(S) origin".to_owned(),
+                ),
+            );
+        }
+        return;
+    };
+    let permission = match &operation {
+        ClipboardOperation::Read => vex_browser::PermissionName::ClipboardRead,
+        ClipboardOperation::Write(_) => vex_browser::PermissionName::ClipboardWrite,
+    };
+    match settings.permissions.query(&origin, &permission) {
+        vex_browser::PermissionState::Granted => {
+            complete_clipboard_operation(tab, id, operation);
+        }
+        vex_browser::PermissionState::Denied => {
+            if let Some(runtime) = tab.runtime.as_mut() {
+                runtime.settle_browser_promise(
+                    id,
+                    BrowserPromiseResult::Error("clipboard permission was blocked".to_owned()),
+                );
+            }
+        }
+        vex_browser::PermissionState::Prompt => {
+            if pending_dialog.is_none() {
+                *pending_dialog = Some(BrowserDialog::clipboard(
+                    tab_id, id, origin, permission, operation,
+                ));
+            } else if let Some(runtime) = tab.runtime.as_mut() {
+                runtime.settle_browser_promise(
+                    id,
+                    BrowserPromiseResult::Error(
+                        "another browser dialog is already open".to_owned(),
+                    ),
+                );
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn complete_browser_dialog(
+    tab_mgr: &mut vex_browser::TabManager,
+    settings: &mut vex_browser::BrowserSettings,
+    dialog: BrowserDialog,
+    accepted: bool,
+) {
+    let Some(tab) = tab_mgr.tab_mut(dialog.tab_id) else {
+        return;
+    };
+    match dialog.request {
+        BrowserModalRequest::JavaScript(BrowserDialogKind::Alert(_)) => {
+            if let Some(runtime) = tab.runtime.as_mut() {
+                runtime.settle_browser_promise(dialog.id, BrowserPromiseResult::Undefined);
+            }
+        }
+        BrowserModalRequest::JavaScript(BrowserDialogKind::Confirm(_)) => {
+            if let Some(runtime) = tab.runtime.as_mut() {
+                runtime.settle_browser_promise(dialog.id, BrowserPromiseResult::Bool(accepted));
+            }
+        }
+        BrowserModalRequest::JavaScript(BrowserDialogKind::Prompt { .. }) => {
+            if let Some(runtime) = tab.runtime.as_mut() {
+                runtime.settle_browser_promise(
+                    dialog.id,
+                    if accepted {
+                        BrowserPromiseResult::String(dialog.input)
+                    } else {
+                        BrowserPromiseResult::Null
+                    },
+                );
+            }
+        }
+        BrowserModalRequest::Clipboard {
+            origin,
+            permission,
+            operation,
+        } => {
+            let state = if accepted {
+                vex_browser::PermissionState::Granted
+            } else {
+                vex_browser::PermissionState::Denied
+            };
+            settings.permissions.set(&origin, permission, state);
+            if accepted {
+                complete_clipboard_operation(tab, dialog.id, operation);
+            } else if let Some(runtime) = tab.runtime.as_mut() {
+                runtime.settle_browser_promise(
+                    dialog.id,
+                    BrowserPromiseResult::Error("clipboard permission was blocked".to_owned()),
+                );
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn complete_clipboard_operation(
+    tab: &mut vex_browser::Tab,
+    id: u64,
+    operation: ClipboardOperation,
+) {
+    let result = match operation {
+        ClipboardOperation::Read => vex_browser::read_system_clipboard_text()
+            .map(BrowserPromiseResult::String)
+            .unwrap_or_else(|error| BrowserPromiseResult::Error(error.to_string())),
+        ClipboardOperation::Write(text) => vex_browser::write_system_clipboard_text(&text)
+            .map(|_| BrowserPromiseResult::Undefined)
+            .unwrap_or_else(|error| BrowserPromiseResult::Error(error.to_string())),
+    };
+    if let Some(runtime) = tab.runtime.as_mut() {
+        runtime.settle_browser_promise(id, result);
+    }
 }
 
 // ─── toolbar sub-renderers ─────────────────────────────────────────────

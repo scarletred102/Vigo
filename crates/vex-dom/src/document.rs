@@ -189,6 +189,21 @@ impl Document {
         out
     }
 
+    /// Replace all children of an element with one text node.
+    ///
+    /// This is the DOM-side operation used by the JavaScript
+    /// `Element.textContent` setter. Existing child nodes remain allocated in
+    /// the arena but are detached from the document tree.
+    pub fn set_text_content(&mut self, node: VexId, text: &str) {
+        while let Some(child) = self.arena.get(node).first_child {
+            self.remove_child(node, child);
+        }
+        if !text.is_empty() {
+            let text_node = self.create_text(text);
+            self.append_child(node, text_node);
+        }
+    }
+
     fn collect_text(&self, out: &mut String, node: VexId) {
         match &self.arena.get(node).data {
             NodeData::Text(t) => out.push_str(t),
@@ -276,6 +291,25 @@ mod tests {
         doc.append_child(span, t2);
 
         assert_eq!(doc.text_content(p), "Hello world");
+    }
+
+    #[test]
+    fn set_text_content_replaces_existing_children() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let p = doc.create_element("p", Namespace::Html);
+        let old = doc.create_text("old");
+        doc.append_child(root, p);
+        doc.append_child(p, old);
+
+        doc.set_text_content(p, "new");
+
+        assert_eq!(doc.text_content(p), "new");
+        assert!(doc.arena().get(p).first_child.is_some());
+        assert_eq!(
+            doc.arena().get(p).first_child,
+            doc.arena().get(p).last_child
+        );
     }
 
     #[test]

@@ -3,6 +3,7 @@
 
 //! Web API implementations registered on the JS context.
 
+pub mod browser_bridge;
 pub mod console;
 pub mod document;
 pub(crate) mod dom_dirty;

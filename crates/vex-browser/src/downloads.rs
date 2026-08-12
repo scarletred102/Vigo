@@ -3,7 +3,7 @@
 
 //! Download manager — queues HTTP(S) transfers and exposes live download state.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -115,7 +115,7 @@ impl DownloadManager {
         let filename = suggest_filename(url);
         let path = reserve_destination(&self.download_dir, &filename)
             .map_err(DownloadError::ReserveDestination)?;
-        let id = self.insert_download(url, &filename, path.clone());
+        let id = self.insert_download(url, &filename, path.clone(), None);
         let manager = self.clone();
         let url = url.to_owned();
 
@@ -127,13 +127,58 @@ impl DownloadManager {
         Ok(id)
     }
 
+    /// Queue bytes already received by a navigation response.
+    ///
+    /// Keeping the file write on a worker prevents a response that asks to be
+    /// downloaded through `Content-Disposition: attachment` from blocking the
+    /// browser chrome a second time or issuing a duplicate network request.
+    pub fn queue_response(
+        &self,
+        url: &str,
+        filename: Option<&str>,
+        mime_type: Option<&str>,
+        body: Vec<u8>,
+    ) -> Result<DownloadId, DownloadError> {
+        fs::create_dir_all(&self.download_dir).map_err(DownloadError::CreateDirectory)?;
+        let filename = filename
+            .map(safe_filename)
+            .unwrap_or_else(|| suggest_filename(url));
+        let path = reserve_destination(&self.download_dir, &filename)
+            .map_err(DownloadError::ReserveDestination)?;
+        let id = self.insert_download(
+            url,
+            &filename,
+            path.clone(),
+            mime_type.map(ToOwned::to_owned),
+        );
+        let manager = self.clone();
+
+        std::thread::Builder::new()
+            .name(format!("vigo-download-response-{}", id.0))
+            .spawn(move || manager.write_response(id, body, &path))
+            .map_err(DownloadError::SpawnWorker)?;
+
+        Ok(id)
+    }
+
     /// Record a download without starting a network transfer. This is useful
     /// for imported/download-restoration state and unit tests.
     pub fn start_download(&self, url: &str, filename: &str, download_dir: &Path) -> DownloadId {
-        self.insert_download(url, filename, download_dir.join(safe_filename(filename)))
+        self.insert_download(
+            url,
+            filename,
+            download_dir.join(safe_filename(filename)),
+            None,
+        )
     }
 
-    fn insert_download(&self, url: &str, filename: &str, path: PathBuf) -> DownloadId {
+    fn insert_download(
+        &self,
+        url: &str,
+        filename: &str,
+        path: PathBuf,
+        mime_type: Option<String>,
+    ) -> DownloadId {
         let mut store = self.store.lock().expect("download store lock poisoned");
         let id = DownloadId(store.next_id);
         store.next_id += 1;
@@ -144,7 +189,7 @@ impl DownloadManager {
             path,
             state: DownloadState::Pending,
             started_at: current_timestamp(),
-            mime_type: None,
+            mime_type,
         });
         id
     }
@@ -156,6 +201,58 @@ impl DownloadManager {
                 self.mark_failed(id, &error);
             }
         }
+    }
+
+    fn write_response(&self, id: DownloadId, body: Vec<u8>, destination: &Path) {
+        let result = self.write_response_inner(id, &body, destination);
+        if let Err(error) = result {
+            if !self.is_cancelled(id) {
+                self.mark_failed(id, &error);
+            }
+        }
+    }
+
+    fn write_response_inner(
+        &self,
+        id: DownloadId,
+        body: &[u8],
+        destination: &Path,
+    ) -> Result<(), String> {
+        let total = body.len() as u64;
+        self.update_progress(id, 0, Some(total));
+        let temporary = temporary_path(destination);
+        let mut output = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| format!("could not create temporary file: {error}"))?;
+
+        let mut received = 0usize;
+        while received < body.len() {
+            if self.is_cancelled(id) {
+                let _ = fs::remove_file(&temporary);
+                return Ok(());
+            }
+            let next = (received + 64 * 1024).min(body.len());
+            output
+                .write_all(&body[received..next])
+                .map_err(|error| format!("could not write file: {error}"))?;
+            received = next;
+            self.update_progress(id, received as u64, Some(total));
+        }
+        output
+            .sync_all()
+            .map_err(|error| format!("could not finalize temporary file: {error}"))?;
+        drop(output);
+
+        if self.is_cancelled(id) {
+            let _ = fs::remove_file(&temporary);
+            return Ok(());
+        }
+        fs::rename(&temporary, destination)
+            .map_err(|error| format!("could not finalize download: {error}"))?;
+        self.mark_complete(id);
+        Ok(())
     }
 
     fn transfer_inner(&self, id: DownloadId, url: &str, destination: &Path) -> Result<(), String> {
@@ -345,6 +442,113 @@ impl DownloadManager {
     }
 }
 
+/// Return the suggested filename for an attachment response, if the server
+/// explicitly requested a download with `Content-Disposition: attachment`.
+///
+/// `filename*` uses RFC 5987 percent encoding and takes precedence over the
+/// legacy `filename` parameter when both are present.
+pub fn attachment_filename(headers: &HashMap<String, String>, url: &str) -> Option<String> {
+    let value = header_value(headers, "content-disposition")?;
+    let (disposition, parameters) = split_content_disposition(value);
+    if !disposition.eq_ignore_ascii_case("attachment") {
+        return None;
+    }
+
+    let filename = parameters
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("filename*"))
+        .and_then(|(_, value)| decode_extended_filename(value))
+        .or_else(|| {
+            parameters
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("filename"))
+                .map(|(_, value)| unquote_filename(value))
+        })
+        .filter(|filename| !filename.is_empty())
+        .unwrap_or_else(|| suggest_filename(url));
+
+    Some(safe_filename(&filename))
+}
+
+/// Extract a normalized MIME type without Content-Type parameters.
+pub fn response_mime_type(headers: &HashMap<String, String>) -> Option<String> {
+    header_value(headers, "content-type")
+        .map(|value| {
+            value
+                .split(';')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase()
+        })
+        .filter(|value| !value.is_empty())
+}
+
+fn header_value<'a>(headers: &'a HashMap<String, String>, name: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
+}
+
+fn split_content_disposition(value: &str) -> (&str, Vec<(String, String)>) {
+    let mut segments = Vec::new();
+    let mut start = 0usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (index, byte) in value.bytes().enumerate() {
+        match byte {
+            b'\\' if quoted => escaped = !escaped,
+            b'"' if !escaped => quoted = !quoted,
+            b';' if !quoted => {
+                segments.push(&value[start..index]);
+                start = index + 1;
+                escaped = false;
+            }
+            _ => escaped = false,
+        }
+    }
+    segments.push(&value[start..]);
+
+    let disposition = segments.first().copied().unwrap_or_default().trim();
+    let parameters = segments
+        .into_iter()
+        .skip(1)
+        .filter_map(|segment| {
+            let (name, value) = segment.split_once('=')?;
+            Some((name.trim().to_owned(), value.trim().to_owned()))
+        })
+        .collect();
+    (disposition, parameters)
+}
+
+fn unquote_filename(value: &str) -> String {
+    let value = value.trim();
+    let value = value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .unwrap_or(value);
+    value.replace("\\\"", "\"").replace("\\\\", "\\")
+}
+
+fn decode_extended_filename(value: &str) -> Option<String> {
+    let (_, encoded) = value.split_once("''")?;
+    let mut bytes = Vec::with_capacity(encoded.len());
+    let mut chars = encoded.as_bytes().iter().copied();
+    while let Some(byte) = chars.next() {
+        if byte == b'%' {
+            let high = chars.next()?;
+            let low = chars.next()?;
+            let high = (high as char).to_digit(16)? as u8;
+            let low = (low as char).to_digit(16)? as u8;
+            bytes.push(high << 4 | low);
+        } else {
+            bytes.push(byte);
+        }
+    }
+    String::from_utf8(bytes).ok()
+}
+
 /// Suggest a safe filename from a URL.
 pub fn suggest_filename(url: &str) -> String {
     let candidate = url
@@ -519,6 +723,78 @@ mod tests {
         assert_eq!(download.state, DownloadState::Complete);
         assert_eq!(fs::read(download.path).unwrap(), b"Vigo download test");
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn queue_response_writes_navigation_bytes_without_refetching() {
+        use std::time::{Duration, Instant};
+
+        let dir = std::env::temp_dir().join(format!(
+            "vigo-download-response-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = DownloadManager::with_download_dir(&dir);
+        let id = manager
+            .queue_response(
+                "https://example.test/report",
+                Some("report.txt"),
+                Some("text/plain"),
+                b"downloaded through navigation".to_vec(),
+            )
+            .unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            if matches!(manager.get(id).unwrap().state, DownloadState::Complete) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let download = manager.get(id).unwrap();
+        assert_eq!(download.state, DownloadState::Complete);
+        assert_eq!(download.mime_type.as_deref(), Some("text/plain"));
+        assert_eq!(
+            fs::read(download.path).unwrap(),
+            b"downloaded through navigation"
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn attachment_filename_prefers_rfc5987_and_sanitizes_it() {
+        let mut headers = HashMap::new();
+        headers.insert(
+            "Content-Disposition".to_owned(),
+            "attachment; filename=backup.zip; filename*=UTF-8''Vigo%20report%20%F0%9F%93%84.txt"
+                .to_owned(),
+        );
+        headers.insert(
+            "content-type".to_owned(),
+            "text/plain; charset=utf-8".to_owned(),
+        );
+
+        assert_eq!(
+            attachment_filename(&headers, "https://example.test/export"),
+            Some("Vigo report 📄.txt".to_owned())
+        );
+        assert_eq!(response_mime_type(&headers).as_deref(), Some("text/plain"));
+    }
+
+    #[test]
+    fn inline_content_disposition_does_not_trigger_download() {
+        let mut headers = HashMap::new();
+        headers.insert(
+            "content-disposition".to_owned(),
+            "inline; filename=manual.pdf".to_owned(),
+        );
+        assert_eq!(
+            attachment_filename(&headers, "https://example.test/manual"),
+            None
+        );
     }
 
     #[test]

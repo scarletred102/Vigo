@@ -14,6 +14,10 @@ use boa_engine::property::Attribute;
 use boa_engine::{js_string, Context, JsValue, Source};
 use vex_core::{VexError, VexId, VexResult};
 
+use crate::api::browser_bridge::{
+    cancel_all as cancel_browser_promises, new_browser_promise_broker,
+    settle as settle_browser_promise, BrowserPromiseResult, SharedBrowserPromiseBroker,
+};
 use crate::api::events::EventBridge;
 use crate::browser_request::{new_request_queue, RequestQueue};
 use crate::dom_bridge::SharedDocument;
@@ -36,6 +40,8 @@ pub struct JsRuntime {
     microtask_queue: VecDeque<JsFunction>,
     /// Shared request queue for JS → browser communication.
     request_queue: RequestQueue,
+    /// Pending embedder-owned browser promises (dialogs and clipboard).
+    browser_promises: SharedBrowserPromiseBroker,
     /// Event bridge (callbacks, listener map, registry).
     event_bridge: EventBridge,
     /// Shared tokio runtime handle for async operations (fetch, etc.).
@@ -71,12 +77,15 @@ impl JsRuntime {
         crate::api::timers::register(&mut context);
         crate::api::fetch::register_with_handle(&handle, &mut context);
         crate::api::window::register_with_queue(&queue, &mut context);
+        let browser_promises = new_browser_promise_broker();
+        crate::api::browser_bridge::register(&queue, &browser_promises, &mut context);
         crate::api::extensions::register_with_queue(&queue, &mut context);
         Self {
             context,
             timer_queue: BTreeMap::new(),
             microtask_queue: VecDeque::new(),
             request_queue: queue,
+            browser_promises,
             event_bridge: EventBridge::new(),
             tokio_handle: handle,
             tokio_runtime: Some(rt),
@@ -91,6 +100,24 @@ impl JsRuntime {
     /// navigation requests, alerts, console logs, etc.
     pub fn request_queue(&self) -> &RequestQueue {
         &self.request_queue
+    }
+
+    /// Settle a dialog or clipboard promise after browser chrome responds.
+    pub fn settle_browser_promise(&mut self, id: u64, result: BrowserPromiseResult) -> bool {
+        let settled = settle_browser_promise(&self.browser_promises, id, result, &mut self.context);
+        if settled {
+            self.run_pending_microtasks();
+        }
+        settled
+    }
+
+    /// Reject all browser-owned promises before a document is discarded.
+    pub fn cancel_browser_promises(&mut self, message: &str) -> usize {
+        let cancelled = cancel_browser_promises(&self.browser_promises, &mut self.context, message);
+        if cancelled > 0 {
+            self.run_pending_microtasks();
+        }
+        cancelled
     }
 
     /// Access the shared tokio runtime handle.

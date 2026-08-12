@@ -1,0 +1,14 @@
+<!doctype html>
+<title>Clipboard smoke test</title>
+<main>
+  <h1>Clipboard smoke test</h1>
+  <p id="result">Waiting for clipboard permission…</p>
+</main>
+<script>
+  async function runClipboardSmokeTest() {
+    await navigator.clipboard.writeText('Vigo clipboard smoke test');
+    const value = await navigator.clipboard.readText();
+    document.getElementById('result').textContent = value;
+  }
+  runClipboardSmokeTest();
+</script>

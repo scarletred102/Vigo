@@ -50,6 +50,7 @@ pub mod session_history;
 pub mod settings;
 pub mod streams;
 pub mod structured_clone;
+pub mod system_clipboard;
 pub mod tab;
 pub mod tab_manager;
 pub mod touch_events;
@@ -119,7 +120,11 @@ pub use streams::{
 pub use structured_clone::{
     CloneError, StructuredValue, Transferable, TransferableType, TypedArrayKind,
 };
-pub use tab::{LoadingState, Tab, TabId};
+pub use system_clipboard::{
+    read_text as read_system_clipboard_text, write_text as write_system_clipboard_text,
+    SystemClipboardError,
+};
+pub use tab::{LoadingState, NavigationOutcome, Tab, TabId};
 pub use tab_manager::TabManager;
 pub use touch_events::{Gesture, GestureRecognizer, Touch, TouchEvent, TouchEventType, TouchList};
 pub use ui::nav_bar::NavBarAction;

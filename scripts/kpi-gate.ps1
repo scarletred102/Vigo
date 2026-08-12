@@ -30,12 +30,23 @@ function Run-CargoTest {
     Write-Host "=== $Name ===" -ForegroundColor Cyan
     Write-Host "cargo $($Args -join ' ')" -ForegroundColor DarkGray
 
-    $output = & cargo @Args 2>&1
+    # Cargo writes normal compiler progress to stderr. Capture it without
+    # letting `$ErrorActionPreference = "Stop"` turn that output into a
+    # PowerShell error record; the Cargo exit code is the authoritative result.
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $output = & cargo @Args 2>&1 | ForEach-Object { $_.ToString() }
+        $cargoExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     $text = ($output | Out-String)
     Write-Host $text
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "Benchmark command failed for '$Name' (exit code $LASTEXITCODE)."
+    if ($cargoExitCode -ne 0) {
+        throw "Benchmark command failed for '$Name' (exit code $cargoExitCode)."
     }
 
     return $text

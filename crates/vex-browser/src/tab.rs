@@ -89,6 +89,20 @@ pub enum LoadingState {
     Complete,
 }
 
+/// Result of a top-level network navigation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NavigationOutcome {
+    /// A document was loaded into the tab.
+    PageLoaded,
+    /// The response requested a file download instead of document rendering.
+    Download {
+        url: String,
+        filename: String,
+        mime_type: Option<String>,
+        body: Vec<u8>,
+    },
+}
+
 /// A single browser tab owns its page state: URL, DOM, styles, layout,
 /// display list, JS runtime, scroll position, and loading status.
 pub struct Tab {
@@ -518,23 +532,11 @@ impl Tab {
             .is_some_and(|rt| rt.has_pending_timers())
     }
 
-    /// Begin loading a URL — resets tab state, sets loading to Connecting.
+    /// Begin loading a URL while retaining the committed document until a new
+    /// response is ready to replace it.
     pub fn start_load(&mut self, url: VexUrl) {
         self.url = url;
         self.loading = LoadingState::Connecting;
-        self.shared_doc = None;
-        self.runtime = None;
-        // Keep session_storage: tab-scoped lifetime persists across navigations.
-        self.styles = None;
-        self.stylesheets.clear();
-        self.layout = None;
-        self.display_list = None;
-        self.image_bindings.clear();
-        self.media_elements.clear();
-        self.media_formats.clear();
-        self.reflow_plan.clear();
-        self.injected_extensions.clear();
-        self.dirty = true;
         tracing::info!("Tab {} loading: {}", self.id, self.url);
     }
 
@@ -563,24 +565,37 @@ impl Tab {
     /// Fetch a URL over the network and run the full page pipeline:
     /// fetch → parse HTML → extract CSS → compute styles → layout → display list.
     ///
-    /// On error, loads an error page instead.
-    pub async fn load_url(&mut self, url: VexUrl, viewport: Size) {
+    /// On error, loads an error page instead. Attachment responses return a
+    /// download outcome without replacing the currently committed document.
+    pub async fn load_url(&mut self, url: VexUrl, viewport: Size) -> NavigationOutcome {
+        self.load_request(url, vex_net::Method::Get, None, viewport)
+            .await
+    }
+
+    /// Load a top-level navigation request using an existing persistent HTTP client.
+    pub async fn load_request_with_client(
+        &mut self,
+        client: &vex_net::HttpClient,
+        url: VexUrl,
+        method: vex_net::Method,
+        body: Option<Vec<u8>>,
+        viewport: Size,
+    ) -> NavigationOutcome {
+        let previous_url = self.url.clone();
         self.start_load(url.clone());
 
-        let client = match vex_net::HttpClient::new() {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!("Tab {}: failed to create HTTP client: {e}", self.id);
-                self.load_error_page("Connection Error", &format!("{e}"), viewport);
-                return;
-            }
-        };
-
+        let mut headers = std::collections::HashMap::new();
+        if method == vex_net::Method::Post {
+            headers.insert(
+                "content-type".to_owned(),
+                "application/x-www-form-urlencoded;charset=UTF-8".to_owned(),
+            );
+        }
         let request = vex_net::Request {
             url,
-            method: vex_net::Method::Get,
-            headers: std::collections::HashMap::new(),
-            body: None,
+            method,
+            headers,
+            body,
         };
 
         let privacy = privacy_layer_for_navigation();
@@ -595,7 +610,20 @@ impl Tab {
                 if response.status >= 400 {
                     let msg = format!("HTTP {} — {}", response.status, self.url);
                     self.load_error_page("Page Error", &msg, viewport);
-                    return;
+                    return NavigationOutcome::PageLoaded;
+                }
+
+                if let Some(filename) =
+                    crate::downloads::attachment_filename(&response.headers, response.url.as_ref())
+                {
+                    self.url = previous_url;
+                    self.loading = LoadingState::Complete;
+                    return NavigationOutcome::Download {
+                        url: response.url.to_string(),
+                        filename,
+                        mime_type: crate::downloads::response_mime_type(&response.headers),
+                        body: response.body,
+                    };
                 }
 
                 self.url = response.url.clone();
@@ -611,17 +639,38 @@ impl Tab {
                 // Pre-fetch external resources (scripts and stylesheets)
                 // so that load_html can use them synchronously.
                 let resources =
-                    prefetch_external_resources(&client, &self.url, &html, &security_ctx, &privacy)
+                    prefetch_external_resources(client, &self.url, &html, &security_ctx, &privacy)
                         .await;
 
+                self.loading = LoadingState::Loading { progress: 0.7 };
                 self.load_html_with_resources(&html, viewport, &resources);
-                tracing::info!("Tab {} loaded: {} ({})", self.id, self.url, self.title);
+                self.loading = LoadingState::Complete;
+                NavigationOutcome::PageLoaded
             }
             Err(e) => {
-                tracing::warn!("Tab {}: fetch failed: {e}", self.id);
-                self.load_error_page("Page Load Failed", &format!("{e}"), viewport);
+                tracing::error!("Tab {}: navigation fetch error for {}: {e}", self.id, self.url);
+                self.load_error_page("Navigation Failed", &format!("{e}"), viewport);
+                NavigationOutcome::PageLoaded
             }
         }
+    }
+
+    /// Load a top-level navigation request, including URL-encoded form POSTs.
+    pub async fn load_request(
+        &mut self,
+        url: VexUrl,
+        method: vex_net::Method,
+        body: Option<Vec<u8>>,
+        viewport: Size,
+    ) -> NavigationOutcome {
+        static SHARED_CLIENT: std::sync::OnceLock<vex_net::HttpClient> = std::sync::OnceLock::new();
+        let client = SHARED_CLIENT.get_or_init(|| {
+            vex_net::HttpClient::new().unwrap_or_else(|_| {
+                vex_net::HttpClient::with_config(vex_net::ClientConfig::default())
+                    .expect("failed to initialize default HttpClient")
+            })
+        });
+        self.load_request_with_client(client, url, method, body, viewport).await
     }
 
     /// Load a built-in error page.
@@ -1118,6 +1167,118 @@ mod tests {
         // Runtime is always created (for event handling, etc).
         assert!(tab.runtime.is_some());
         assert!(tab.has_document());
+    }
+
+    #[test]
+    fn start_load_keeps_committed_document_until_navigation_commits() {
+        let mut tab = Tab::blank(TabId::new(1));
+        tab.load_html(
+            "<title>Existing page</title><p>Still visible</p>",
+            Size::new(800.0, 600.0),
+        );
+        let next = VexUrl::parse("https://example.test/download").unwrap();
+
+        tab.start_load(next);
+
+        assert!(tab.shared_doc.is_some());
+        assert_eq!(tab.title, "Existing page");
+        assert!(matches!(tab.loading, LoadingState::Connecting));
+    }
+
+    #[test]
+    fn attachment_response_becomes_download_without_replacing_page() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request).unwrap();
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Disposition: attachment; filename=report.txt\r\nContent-Length: 16\r\nConnection: close\r\n\r\nnavigation bytes",
+                )
+                .unwrap();
+        });
+
+        let original = VexUrl::parse("https://example.test/original").unwrap();
+        let mut tab = Tab::new(TabId::new(1), original.clone());
+        tab.load_html(
+            "<title>Existing page</title><p>Still visible</p>",
+            Size::new(800.0, 600.0),
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let outcome = runtime.block_on(tab.load_url(
+            VexUrl::parse(&format!("http://{address}/download")).unwrap(),
+            Size::new(800.0, 600.0),
+        ));
+
+        assert_eq!(tab.url, original);
+        assert_eq!(tab.title, "Existing page");
+        assert!(tab.has_document());
+        assert!(matches!(
+            outcome,
+            NavigationOutcome::Download {
+                filename,
+                mime_type: Some(mime_type),
+                body,
+                ..
+            } if filename == "report.txt" && mime_type == "text/plain" && body == b"navigation bytes"
+        ));
+    }
+
+    #[test]
+    fn load_request_sends_url_encoded_post_body() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (request_tx, request_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4096];
+            let read = stream.read(&mut request).unwrap();
+            request_tx
+                .send(String::from_utf8_lossy(&request[..read]).into_owned())
+                .unwrap();
+            let body = "<title>Posted</title><p>Success</p>";
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        });
+
+        let mut tab = Tab::blank(TabId::new(1));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let outcome = runtime.block_on(tab.load_request(
+            VexUrl::parse(&format!("http://{address}/submit")).unwrap(),
+            vex_net::Method::Post,
+            Some(b"name=Vigo+Browser".to_vec()),
+            Size::new(800.0, 600.0),
+        ));
+
+        let request = request_rx
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .unwrap();
+        assert!(request.starts_with("POST /submit HTTP/1.1"));
+        assert!(request.contains("content-type: application/x-www-form-urlencoded;charset=UTF-8"));
+        assert!(request.contains("name=Vigo+Browser"));
+        assert_eq!(outcome, NavigationOutcome::PageLoaded);
+        assert_eq!(tab.title, "Posted");
     }
 
     #[test]

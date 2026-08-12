@@ -6,6 +6,7 @@
 
 use url::Url;
 use vex_core::VexId;
+use vex_core::VexUrl;
 use vex_dom::forms::{FormElementKind, FormStateMap, InputType};
 use vex_dom::{Document, NodeArena, NodeData};
 
@@ -25,6 +26,14 @@ pub enum FormEditResult {
 pub enum FormMethod {
     Get,
     Post,
+}
+
+/// A resolved URL-encoded form submission ready for browser navigation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormSubmission {
+    pub url: VexUrl,
+    pub method: FormMethod,
+    pub body: String,
 }
 
 impl FormMethod {
@@ -247,33 +256,56 @@ fn collect_inputs_recursive(
 ) {
     let node = arena.get(node_id);
 
-    // Check if this node has a form state entry with a name.
-    if let Some(state) = form_states.get(node_id) {
-        if !state.name.is_empty() {
-            // Skip unchecked checkboxes/radios.
-            let include = match state.kind {
-                FormElementKind::Input(InputType::Checkbox | InputType::Radio) => state.checked,
-                FormElementKind::Input(
-                    InputType::Submit | InputType::Button | InputType::Hidden,
-                ) => {
-                    // Submit buttons only included if they are the submitter.
-                    // For simplicity, include hidden fields always.
-                    matches!(state.kind, FormElementKind::Input(InputType::Hidden))
-                }
-                _ => true,
+    if let NodeData::Element(element) = &node.data {
+        let name = form_states
+            .get(node_id)
+            .map(|state| state.name.clone())
+            .filter(|name| !name.is_empty())
+            .or_else(|| {
+                element
+                    .attributes
+                    .iter()
+                    .find(|attribute| attribute.name.eq_ignore_ascii_case("name"))
+                    .map(|attribute| attribute.value.clone())
+            });
+        if let Some(name) = name.filter(|name| !name.is_empty()) {
+            let input_type = element
+                .attributes
+                .iter()
+                .find(|attribute| attribute.name.eq_ignore_ascii_case("type"))
+                .map(|attribute| InputType::from_attr(&attribute.value))
+                .unwrap_or(InputType::Text);
+            let state = form_states.get(node_id);
+            let is_control = matches!(element.tag_name.as_str(), "input" | "textarea" | "select");
+            let checked = state.map(|state| state.checked).unwrap_or_else(|| {
+                element
+                    .attributes
+                    .iter()
+                    .any(|attribute| attribute.name.eq_ignore_ascii_case("checked"))
+            });
+            let include = match input_type {
+                InputType::Checkbox | InputType::Radio => checked,
+                InputType::Submit | InputType::Button => false,
+                _ => is_control,
             };
             if include {
-                let value =
-                    if state.kind == FormElementKind::Input(InputType::Checkbox) && state.checked {
-                        if state.value.is_empty() {
-                            "on".to_string()
+                let value = state
+                    .map(|state| state.value.clone())
+                    .or_else(|| {
+                        element
+                            .attributes
+                            .iter()
+                            .find(|attribute| attribute.name.eq_ignore_ascii_case("value"))
+                            .map(|attribute| attribute.value.clone())
+                    })
+                    .unwrap_or_else(|| {
+                        if input_type == InputType::Checkbox {
+                            "on".to_owned()
                         } else {
-                            state.value.clone()
+                            String::new()
                         }
-                    } else {
-                        state.value.clone()
-                    };
-                out.push((state.name.clone(), value));
+                    });
+                out.push((name, value));
             }
         }
     }
@@ -317,6 +349,54 @@ pub fn build_submission_url(
         }
         FormMethod::Post => Some(resolved),
     }
+}
+
+/// Construct the default submission for a submit button or text control.
+///
+/// The caller is responsible for dispatching the cancellable `submit` event
+/// before performing this navigation.
+pub fn submission_for_control(
+    control_id: VexId,
+    doc: &Document,
+    current_url: &VexUrl,
+) -> Option<(VexId, FormSubmission)> {
+    let form_id = find_form_ancestor(control_id, doc)?;
+    let form = doc.arena().get(form_id);
+    let NodeData::Element(form) = &form.data else {
+        return None;
+    };
+    let action = form
+        .attributes
+        .iter()
+        .find(|attribute| attribute.name.eq_ignore_ascii_case("action"))
+        .map(|attribute| attribute.value.as_str())
+        .unwrap_or("");
+    let method = form
+        .attributes
+        .iter()
+        .find(|attribute| attribute.name.eq_ignore_ascii_case("method"))
+        .map(|attribute| FormMethod::from_attr(&attribute.value))
+        .unwrap_or(FormMethod::Get);
+    let base = Url::parse(current_url.as_ref()).ok()?;
+    let values = collect_form_values(form_id, doc, doc.form_states());
+    let body = encode_form_data(&values);
+    let resolved = build_submission_url(action, &base, method, &values)?;
+    let url = VexUrl::parse(resolved.as_str()).ok()?;
+
+    Some((form_id, FormSubmission { url, method, body }))
+}
+
+fn find_form_ancestor(element_id: VexId, doc: &Document) -> Option<VexId> {
+    let mut current = Some(element_id);
+    while let Some(id) = current {
+        let node = doc.arena().get(id);
+        if matches!(&node.data, NodeData::Element(element) if element.tag_name.eq_ignore_ascii_case("form"))
+        {
+            return Some(id);
+        }
+        current = node.parent;
+    }
+    None
 }
 
 /// Simple percent-encoding for form data.
@@ -451,5 +531,32 @@ mod tests {
         let url = build_submission_url("/submit", &base, FormMethod::Post, &pairs).unwrap();
         // POST URL should not have query string.
         assert_eq!(url.as_str(), "https://example.com/submit");
+    }
+
+    #[test]
+    fn submission_uses_default_control_values_and_get_query() {
+        let doc = vex_html::parse_html(
+            r#"<form action="/search" method="get">
+                <input name="q" value="rust browser">
+                <input type="checkbox" name="safe" checked>
+                <input type="hidden" name="source" value="vigo">
+                <button type="submit">Search</button>
+            </form>"#,
+        );
+        let button = doc.get_elements_by_tag_name("button")[0];
+        let current_url = VexUrl::parse("https://example.test/docs/page").unwrap();
+
+        let (form_id, submission) = submission_for_control(button, &doc, &current_url).unwrap();
+
+        assert!(matches!(
+            &doc.arena().get(form_id).data,
+            NodeData::Element(element) if element.tag_name == "form"
+        ));
+        assert_eq!(submission.method, FormMethod::Get);
+        assert_eq!(submission.body, "q=rust+browser&safe=on&source=vigo");
+        assert_eq!(
+            submission.url.as_ref(),
+            "https://example.test/search?q=rust+browser&safe=on&source=vigo"
+        );
     }
 }

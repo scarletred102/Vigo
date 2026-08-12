@@ -1,0 +1,15 @@
+<!doctype html>
+<title>Dialog smoke test</title>
+<main>
+  <h1>Dialog smoke test</h1>
+  <p id="result">Waiting for confirmation…</p>
+</main>
+<script>
+  async function runDialogSmokeTest() {
+    const confirmed = await confirm('Continue to the prompt test?');
+    const answer = await prompt('What should Vigo display?', 'Vigo');
+    document.getElementById('result').textContent =
+      confirmed ? `Confirmed: ${answer}` : 'Cancelled';
+  }
+  runDialogSmokeTest();
+</script>

@@ -6,10 +6,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
-    // Force MSVC ABI so Zig emits __chkstk (MSVC) instead of ___chkstk_ms
-    // (MinGW).  This is required because the final link is done by MSVC's
-    // link.exe via Rust/Cargo.
-    const target = b.resolveTargetQuery(.{ .abi = .msvc });
+    const target = b.standardTargetOptions(.{});
 
     // ── Static libraries ──────────────────────────────────────────
 
